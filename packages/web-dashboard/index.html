@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>宜昌市城镇供水、燃气行业态势大屏</title>
+<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<script>window.echarts||document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\/script>')</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Microsoft YaHei','PingFang SC',sans-serif;background:#000}
+#scale-wrapper{width:1920px;height:1080px;transform-origin:left top;position:absolute;left:0;top:0;overflow:hidden}
+#app{width:100%;height:100%;display:flex;flex-direction:column;padding:8px 14px;min-height:0;background:#0a1628}
+.header{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;padding:8px 20px 4px}
+.header-title{font-size:26px;font-weight:700;color:#d0e8ff;letter-spacing:2px;text-shadow:0 0 20px rgba(60,144,255,0.5)}
+.header-time{color:#7eb8ff;font-size:13px}
+.indicators{display:flex;justify-content:center;gap:16px;flex-shrink:0;padding:6px 0}
+.ind-card{flex:1;max-width:200px;background:linear-gradient(180deg,rgba(20,60,130,0.55) 0%,rgba(10,30,70,0.75) 100%);border:1px solid rgba(60,140,255,0.25);border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 8px;position:relative;overflow:hidden}
+.ind-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#3c90ff,transparent)}
+.ind-label{font-size:12px;color:#8ab4e0;margin-bottom:4px}
+.ind-value{font-size:30px;font-weight:700;color:#ffd54f;font-family:'DIN','Arial',monospace;line-height:1}
+.ind-sub{font-size:10px;color:#5a8ab5;margin-top:3px}
+.main-content{flex:1;display:flex;gap:10px;min-height:0}
+.left-panel,.right-panel{width:310px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.panel-block{background:rgba(10,30,60,0.7);border:1px solid rgba(60,140,255,0.2);border-radius:5px;padding:8px 10px;position:relative;display:flex;flex-direction:column;min-height:0}
+.panel-block::before{content:'';position:absolute;top:0;left:10px;right:10px;height:1px;background:linear-gradient(90deg,transparent,rgba(60,140,255,0.5),transparent)}
+.panel-title{font-size:13px;font-weight:600;color:#b0d4ff;margin-bottom:6px;padding-left:10px;border-left:3px solid #3c90ff;flex-shrink:0}
+.chart-wrap{flex:1;min-height:0;width:100%}
+.panel-info{display:flex;flex-wrap:wrap;gap:2px 16px;color:#b0cce0;font-size:11px;padding:2px 6px}
+.panel-info span{color:#ffd54f}
+.center-panel{flex:1;position:relative;background:rgba(10,30,60,0.7);border:1px solid rgba(60,140,255,0.2);border-radius:5px;overflow:hidden;min-height:0}
+.map-container{width:100%;height:100%}
+.map-overlay{position:absolute;top:10px;right:10px;background:rgba(10,20,50,0.88);border:1px solid rgba(60,140,255,0.3);border-radius:5px;padding:6px 10px;z-index:10}
+.map-overlay label{color:#8ab4e0;font-size:11px;margin-right:6px;cursor:pointer}
+.map-overlay input{margin-right:3px}
+.bottom-nav{display:flex;justify-content:center;gap:32px;flex-shrink:0;padding:6px 0;align-items:center}
+.nav-item{color:#5a8ab5;font-size:12px;cursor:pointer;padding:5px 16px;border-radius:3px;transition:all .3s}
+.nav-item:hover,.nav-item.active{color:#ffd54f;background:rgba(60,140,255,0.15)}
+@keyframes glow{0%,100%{box-shadow:0 0 5px rgba(60,140,255,0.2)}50%{box-shadow:0 0 15px rgba(60,140,255,0.4)}}
+.ind-card{animation:glow 3s infinite}
+</style>
+</head>
+<body>
+<div id="scale-wrapper"><div id="app">
+<div class="header">
+<span class="header-title">宜昌市城镇供水、燃气行业态势大屏</span>
+<span class="header-time" id="headerTime"></span>
+</div>
+<div class="indicators">
+<div class="ind-card"><span class="ind-label">今日诉求总量</span><span class="ind-value" id="v1">1,247</span><span class="ind-sub">较昨日 ↑12.3%</span></div>
+<div class="ind-card"><span class="ind-label">供水诉求</span><span class="ind-value" id="v2">683</span><span class="ind-sub">占比 54.8%</span></div>
+<div class="ind-card"><span class="ind-label">燃气诉求</span><span class="ind-value" id="v3">564</span><span class="ind-sub">占比 45.2%</span></div>
+<div class="ind-card"><span class="ind-label">敏感诉求</span><span class="ind-value" id="v4">28</span><span class="ind-sub">待交办 12 件</span></div>
+<div class="ind-card"><span class="ind-label">超时未办结</span><span class="ind-value" id="v5">15</span><span class="ind-sub">超时率 1.2%</span></div>
+<div class="ind-card"><span class="ind-label">平均处理时长</span><span class="ind-value">4.2h</span><span class="ind-sub">目标 ≤ 6h</span></div>
+</div>
+<div class="main-content">
+<div class="left-panel">
+<div class="panel-block" style="flex:0 0 110px">
+<div class="panel-title">供水基本信息</div>
+<div class="panel-info">
+<div>供水企业：<span>3家</span></div><div>水厂数量：<span>12座</span></div><div>日供水能力：<span>68万吨</span></div><div>管网总长：<span>3,826km</span></div><div>服务人口：<span>168万人</span></div><div>DN100+管线：<span>1,245km</span></div><div>二次供水泵房：<span>326座</span></div><div>在线监测点：<span>458个</span></div>
+</div>
+</div>
+<div class="panel-block" style="flex:1">
+<div class="panel-title">供水诉求趋势（今日时段）</div>
+<div class="chart-wrap" id="c1"></div>
+</div>
+<div class="panel-block" style="flex:0 0 170px">
+<div class="panel-title">供水诉求分类分布</div>
+<div class="chart-wrap" id="c2"></div>
+</div>
+<div class="panel-block" style="flex:0 0 150px">
+<div class="panel-title">设备监测告警</div>
+<div class="chart-wrap" id="c3"></div>
+</div>
+</div>
+<div class="center-panel">
+<div class="map-container" id="cMap"></div>
+<div class="map-overlay">
+<label><input type="checkbox" checked> 供水管线</label>
+<label><input type="checkbox" checked> 燃气管线</label>
+<label><input type="checkbox" checked> 设施标记</label>
+</div>
+</div>
+<div class="right-panel">
+<div class="panel-block" style="flex:0 0 110px">
+<div class="panel-title">燃气基本信息</div>
+<div class="panel-info">
+<div>燃气企业：<span>4家</span></div><div>门站数量：<span>6座</span></div><div>日供气能力：<span>120万m³</span></div><div>管网总长：<span>2,154km</span></div><div>天然气用户：<span>52万户</span></div><div>液化气站：<span>38座</span></div><div>调压站：<span>1,280座</span></div><div>在线监测点：<span>326个</span></div>
+</div>
+</div>
+<div class="panel-block" style="flex:1">
+<div class="panel-title">燃气诉求趋势（近7天）</div>
+<div class="chart-wrap" id="c4"></div>
+</div>
+<div class="panel-block" style="flex:0 0 170px">
+<div class="panel-title">燃气诉求分类分布</div>
+<div class="chart-wrap" id="c5"></div>
+</div>
+<div class="panel-block" style="flex:0 0 150px">
+<div class="panel-title">区域诉求热力排名</div>
+<div class="chart-wrap" id="c6"></div>
+</div>
+</div>
+</div>
+<div class="bottom-nav">
+<div class="nav-item active">数据大屏</div><div class="nav-item">诉求汇聚</div><div class="nav-item">数据分析</div><div class="nav-item">敏感交办</div><div class="nav-item">企业管理</div><div class="nav-item">网格管理</div><div class="nav-item">停供管理</div><div class="nav-item">系统管理</div>
+</div>
+</div>
+</div>
+<script>
+(function(){
+var E=echarts;
+if(!E){document.getElementById('app').innerHTML='<div style="color:#fff;text-align:center;padding-top:200px"><h2>ECharts 加载中...</h2><p>如长时间未显示，请检查网络连接</p></div>';return}
+
+// ==================== 屏幕缩放适配 ====================
+var DESIGN_W = 1920, DESIGN_H = 1080;
+var wrapper = document.getElementById('scale-wrapper');
+
+function debounce(fn, ms) { var t; return function() { clearTimeout(t); t = setTimeout(fn, ms); }; }
+
+function setScale() {
+  var ww = window.innerWidth, wh = window.innerHeight;
+  var sc = Math.min(ww / DESIGN_W, wh / DESIGN_H);
+  wrapper.style.transform = 'scale(' + sc + ')';
+  wrapper.style.left = (ww - DESIGN_W * sc) / 2 + 'px';
+  wrapper.style.top = (wh - DESIGN_H * sc) / 2 + 'px';
+}
+
+setScale();
+
+// Time
+function tick(){var n=new Date();document.getElementById('headerTime').textContent=n.getFullYear()+'年'+(n.getMonth()+1)+'月'+n.getDate()+'日 '+String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0')}
+tick();setInterval(tick,1000);
+
+function darkAxis(){return{axisLabel:{color:'#5a8ab5',fontSize:10},axisLine:{lineStyle:{color:'#1a3a5e'}},splitLine:{lineStyle:{color:'#1a3050'}}}}
+
+// c1 - Water trend line
+var c1=E.init(document.getElementById('c1'));
+c1.setOption({tooltip:{trigger:'axis'},legend:{show:true,right:0,textStyle:{color:'#8ab4e0',fontSize:10}},grid:{left:38,right:18,top:28,bottom:12},xAxis:[{type:'category',data:['00:00','04:00','08:00','12:00','16:00','20:00','24:00'],...darkAxis()}],yAxis:[{type:'value',...darkAxis()}],series:[{name:'供水',type:'line',smooth:true,data:[15,8,35,68,82,55,42],lineStyle:{color:'#3c90ff'},itemStyle:{color:'#3c90ff'},areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(60,144,255,0.4)'},{offset:1,color:'rgba(60,144,255,0.02)'}]}}},{name:'燃气',type:'line',smooth:true,data:[12,5,28,55,70,48,35],lineStyle:{color:'#ff8c42'},itemStyle:{color:'#ff8c42'},areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(255,140,66,0.4)'},{offset:1,color:'rgba(255,140,66,0.02)'}]}}}]});
+
+// c2 - Water pie
+var c2=E.init(document.getElementById('c2'));
+c2.setOption({tooltip:{trigger:'item'},legend:{show:true,orient:'vertical',right:0,top:'middle',textStyle:{color:'#8ab4e0',fontSize:9}},series:[{type:'pie',radius:['40%','65%'],center:['32%','50%'],label:{show:false},emphasis:{label:{show:true,color:'#fff'}},data:[{value:245,name:'水压不足',itemStyle:{color:'#3c90ff'}},{value:186,name:'管道漏水',itemStyle:{color:'#5cb0ff'}},{value:120,name:'水质问题',itemStyle:{color:'#7cc8ff'}},{value:82,name:'水表故障',itemStyle:{color:'#50d0a0'}},{value:50,name:'其他',itemStyle:{color:'#8ab4e0'}}]}]});
+
+// c3 - Alarm gauge
+var c3=E.init(document.getElementById('c3'));
+c3.setOption({series:[{type:'gauge',center:['25%','52%'],radius:'78%',startAngle:200,endAngle:-20,axisLine:{lineStyle:{width:10,color:[[0.3,'#50d0a0'],[0.7,'#ffd54f'],[1,'#ff4d4f']]}},axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},pointer:{length:'55%',width:3,itemStyle:{color:'#b0cce0'}},detail:{offsetCenter:[0,'78%'],valueAnimation:true,fontSize:16,color:'#ffd54f',formatter:'{value}个'},data:[{value:12,name:'供水告警'}]},{type:'gauge',center:['75%','52%'],radius:'78%',startAngle:200,endAngle:-20,axisLine:{lineStyle:{width:10,color:[[0.3,'#50d0a0'],[0.7,'#ffd54f'],[1,'#ff4d4f']]}},axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},pointer:{length:'55%',width:3,itemStyle:{color:'#b0cce0'}},detail:{offsetCenter:[0,'78%'],valueAnimation:true,fontSize:16,color:'#ffd54f',formatter:'{value}个'},data:[{value:8,name:'燃气告警'}]}]});
+
+// c4 - Gas trend bar
+var c4=E.init(document.getElementById('c4'));
+c4.setOption({tooltip:{trigger:'axis'},legend:{show:true,right:0,textStyle:{color:'#8ab4e0',fontSize:10}},grid:{left:38,right:18,top:28,bottom:12},xAxis:[{type:'category',data:['5/22','5/23','5/24','5/25','5/26','5/27','5/28'],...darkAxis()}],yAxis:[{type:'value',...darkAxis()}],series:[{name:'天然气',type:'bar',data:[320,280,350,410,380,420,390],barWidth:12,itemStyle:{color:new E.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'#ff8c42'},{offset:1,color:'#5a3020'}])}},{name:'液化气',type:'bar',data:[85,72,90,105,95,110,98],barWidth:12,itemStyle:{color:new E.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'#e07040'},{offset:1,color:'#4a2018'}])}}]});
+
+// c5 - Gas pie
+var c5=E.init(document.getElementById('c5'));
+c5.setOption({tooltip:{trigger:'item'},legend:{show:true,orient:'vertical',right:0,top:'middle',textStyle:{color:'#8ab4e0',fontSize:9}},series:[{type:'pie',radius:['40%','65%'],center:['32%','50%'],label:{show:false},emphasis:{label:{show:true,color:'#fff'}},data:[{value:198,name:'气压不足',itemStyle:{color:'#ff8c42'}},{value:156,name:'管道漏气',itemStyle:{color:'#ffa860'}},{value:98,name:'用气安全',itemStyle:{color:'#ffc480'}},{value:72,name:'表具故障',itemStyle:{color:'#f0a050'}},{value:40,name:'其他',itemStyle:{color:'#c08060'}}]}]});
+
+// c6 - Region rank
+var c6=E.init(document.getElementById('c6'));
+c6.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{left:62,right:24,top:4,bottom:10},xAxis:[{type:'value',...darkAxis()}],yAxis:[{type:'category',data:['西陵区','伍家岗区','点军区','猇亭区','夷陵区'],axisLabel:{color:'#b0cce0',fontSize:10},axisLine:{lineStyle:{color:'#1a3a5e'}}}],series:[{type:'bar',data:[{value:356,itemStyle:{color:'#ff4d4f'}},{value:298,itemStyle:{color:'#ff8c42'}},{value:215,itemStyle:{color:'#ffd54f'}},{value:178,itemStyle:{color:'#50d0a0'}},{value:200,itemStyle:{color:'#ffd54f'}}],barWidth:13,label:{show:true,position:'right',color:'#b0cce0',fontSize:10}}]});
+
+// cMap - Center map
+var cMap=E.init(document.getElementById('cMap'));
+var wLines=[[[35,65],[55,60],[75,55],[90,50]],[[28,45],[48,40],[68,36],[84,30]]];
+var gLines=[[[32,60],[52,55],[72,50],[88,45]],[[25,40],[44,38],[64,34],[80,28]]];
+var facs=[{v:[52,63],n:'一水厂'},{v:[72,57],n:'二水厂'},{v:[86,53],n:'三水厂'},{v:[42,45],n:'伍家岗燃气门站'},{v:[64,38],n:'点军门站'},{v:[50,54],n:'中心泵站'},{v:[76,42],n:'猇亭调压站'}];
+var sers=[];
+wLines.forEach(function(p){sers.push({type:'lines',coordinateSystem:'cartesian2d',polyline:false,data:[{coords:p}],lineStyle:{color:'#3c90ff',width:2,opacity:.8},effect:{show:true,period:6,trailLength:.2,symbolSize:4},zlevel:1})});
+gLines.forEach(function(p){sers.push({type:'lines',coordinateSystem:'cartesian2d',polyline:false,data:[{coords:p}],lineStyle:{color:'#ff8c42',width:2,opacity:.8},effect:{show:true,period:6,trailLength:.2,symbolSize:4},zlevel:1})});
+sers.push({type:'scatter',coordinateSystem:'cartesian2d',data:facs.map(function(f){return{value:f.v,name:f.n}}),symbolSize:14,itemStyle:{color:'#ffd54f',borderColor:'#fff',borderWidth:1},label:{show:true,position:'right',color:'#b0cce0',fontSize:9,distance:5},zlevel:2,emphasis:{scale:1.5}});
+var hps=[];for(var i=0;i<100;i++){hps.push([18+Math.random()*78,18+Math.random()*55,Math.random()*50])}
+sers.push({type:'scatter',coordinateSystem:'cartesian2d',data:hps,symbolSize:function(v){return v[2]*.4+2},itemStyle:{color:'rgba(255,80,50,0.45)'},zlevel:0});
+cMap.setOption({tooltip:{trigger:'item',formatter:function(p){return p.name||''}},grid:{left:0,right:0,top:0,bottom:0},xAxis:{show:false,min:8,max:96},yAxis:{show:false,min:14,max:82},series:sers});
+
+// ==================== 窗口缩放适配 ====================
+var resizeCharts = debounce(function(){
+  setScale();
+  c1.resize();c2.resize();c3.resize();c4.resize();c5.resize();c6.resize();cMap.resize();
+}, 200);
+window.addEventListener('resize', resizeCharts);
+
+// Auto refresh KPI
+setInterval(function(){
+document.getElementById('v1').textContent=(1200+Math.floor(Math.random()*100)).toLocaleString();
+document.getElementById('v2').textContent=(650+Math.floor(Math.random()*60)).toLocaleString();
+document.getElementById('v3').textContent=(530+Math.floor(Math.random()*60)).toLocaleString();
+document.getElementById('v4').textContent=(25+Math.floor(Math.random()*10)).toLocaleString();
+document.getElementById('v5').textContent=(12+Math.floor(Math.random()*8)).toLocaleString();
+},5000);
+
+// Bottom nav
+var ADMIN_BASE='http://localhost:5173';var navRoutes={'诉求汇聚':'/complaints','数据分析':'/analysis','敏感交办':'/dispatch','企业管理':'/companies','网格管理':'/grids','停供管理':'/shutdowns','系统管理':'/system/users'};document.querySelectorAll('.nav-item').forEach(function(el){el.style.cursor='pointer';el.addEventListener('click',function(){document.querySelectorAll('.nav-item').forEach(function(e){e.classList.remove('active')});this.classList.add('active');var r=navRoutes[this.textContent.trim()];if(r)window.open(ADMIN_BASE+r,'_blank')})});
+})();
+</script>
+</body>
+</html>
