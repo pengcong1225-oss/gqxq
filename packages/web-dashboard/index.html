@@ -11,17 +11,30 @@
 html,body{width:100%;height:100%;overflow:hidden;font-family:'Microsoft YaHei','PingFang SC',sans-serif;background:#000}
 #scale-wrapper{width:1920px;height:1080px;transform-origin:left top;position:absolute;left:0;top:0;overflow:hidden}
 #app{width:100%;height:100%;display:flex;flex-direction:column;padding:8px 14px;min-height:0;background:#0a1628}
-.header{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;padding:8px 20px 4px}
-.header-title{font-size:26px;font-weight:700;color:#d0e8ff;letter-spacing:2px;text-shadow:0 0 20px rgba(60,144,255,0.5)}
-.header-time{color:#7eb8ff;font-size:13px}
+.header{display:grid;grid-template-columns:400px 1fr 400px;align-items:center;flex-shrink:0;padding:10px 30px 6px;position:relative;background:linear-gradient(180deg,rgba(15,40,80,0.5) 0%,rgba(8,20,40,0.3) 100%)}
+.header::after{content:'';position:absolute;bottom:0;left:30px;right:30px;height:1px;background:linear-gradient(90deg,transparent,rgba(60,144,255,0.4),rgba(60,144,255,0.8),rgba(60,144,255,0.4),transparent)}
+.header-left{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.header-dept{color:#5a8ab5;font-size:11px;letter-spacing:1px}
+.header-date{color:#7eb8ff;font-size:12px}
+.header-center{display:flex;align-items:center;justify-content:center;gap:14px}
+.header-deco-left,.header-deco-right{display:inline-block;width:80px;height:1px;position:relative}
+.header-deco-left{background:linear-gradient(90deg,transparent,#3c90ff)}
+.header-deco-right{background:linear-gradient(90deg,#3c90ff,transparent)}
+.header-deco-left::after,.header-deco-right::before{content:'';position:absolute;top:-3px;width:8px;height:8px;border-radius:50%;background:#3c90ff;box-shadow:0 0 8px #3c90ff}
+.header-deco-left::after{right:0}
+.header-deco-right::before{left:0}
+.header-title{font-size:26px;font-weight:700;color:#d0e8ff;letter-spacing:2px;text-shadow:0 0 20px rgba(60,144,255,0.5);white-space:nowrap}
+.header-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.header-clock{color:#ffd54f;font-size:18px;font-weight:600;font-family:'DIN','Arial',monospace}
+.header-week{color:#5a8ab5;font-size:11px}
 .indicators{display:flex;justify-content:center;gap:16px;flex-shrink:0;padding:6px 0}
 .ind-card{flex:1;max-width:200px;background:linear-gradient(180deg,rgba(20,60,130,0.55) 0%,rgba(10,30,70,0.75) 100%);border:1px solid rgba(60,140,255,0.25);border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 8px;position:relative;overflow:hidden}
 .ind-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#3c90ff,transparent)}
 .ind-label{font-size:12px;color:#8ab4e0;margin-bottom:4px}
 .ind-value{font-size:30px;font-weight:700;color:#ffd54f;font-family:'DIN','Arial',monospace;line-height:1}
 .ind-sub{font-size:10px;color:#5a8ab5;margin-top:3px}
-.main-content{flex:1;display:flex;gap:10px;min-height:0}
-.left-panel,.right-panel{width:310px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.main-content{flex:1;display:grid;grid-template-columns:400px 1fr 400px;gap:10px;min-height:0}
+.left-panel,.right-panel{min-width:0;display:flex;flex-direction:column;gap:8px;min-height:0}
 .panel-block{background:rgba(10,30,60,0.7);border:1px solid rgba(60,140,255,0.2);border-radius:5px;padding:8px 10px;position:relative;display:flex;flex-direction:column;min-height:0}
 .panel-block::before{content:'';position:absolute;top:0;left:10px;right:10px;height:1px;background:linear-gradient(90deg,transparent,rgba(60,140,255,0.5),transparent)}
 .panel-title{font-size:13px;font-weight:600;color:#b0d4ff;margin-bottom:6px;padding-left:10px;border-left:3px solid #3c90ff;flex-shrink:0}
@@ -43,8 +56,19 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Microsoft YaHei','
 <body>
 <div id="scale-wrapper"><div id="app">
 <div class="header">
+<div class="header-left">
+<span class="header-dept">宜昌市住房和城市更新局</span>
+<span class="header-date" id="headerDate"></span>
+</div>
+<div class="header-center">
+<span class="header-deco-left"></span>
 <span class="header-title">宜昌市城镇供水、燃气行业态势大屏</span>
-<span class="header-time" id="headerTime"></span>
+<span class="header-deco-right"></span>
+</div>
+<div class="header-right">
+<span class="header-clock" id="headerTime"></span>
+<span class="header-week" id="headerWeek"></span>
+</div>
 </div>
 <div class="indicators">
 <div class="ind-card"><span class="ind-label">今日诉求总量</span><span class="ind-value" id="v1">1,247</span><span class="ind-sub">较昨日 ↑12.3%</span></div>
@@ -131,8 +155,10 @@ function setScale() {
 setScale();
 
 // Time
-function tick(){var n=new Date();document.getElementById('headerTime').textContent=n.getFullYear()+'年'+(n.getMonth()+1)+'月'+n.getDate()+'日 '+String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0')}
-tick();setInterval(tick,1000);
+var WEEK=['日','一','二','三','四','五','六'];
+function tickDate(){var n=new Date();document.getElementById('headerDate').textContent=n.getFullYear()+'年'+(n.getMonth()+1)+'月'+n.getDate()+'日'}
+function tickTime(){var n=new Date();document.getElementById('headerTime').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');document.getElementById('headerWeek').textContent='星期'+WEEK[n.getDay()]}
+tickDate();tickTime();setInterval(tickTime,1000);
 
 function darkAxis(){return{axisLabel:{color:'#5a8ab5',fontSize:10},axisLine:{lineStyle:{color:'#1a3a5e'}},splitLine:{lineStyle:{color:'#1a3050'}}}}
 
