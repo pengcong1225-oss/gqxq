@@ -83,28 +83,30 @@ jobs:
       # ---------- 打包部署包 ----------
       - name: Prepare deploy package
         run: |
-          rm -rf /tmp/deploy && mkdir -p /tmp/deploy
+          rm -rf deploy-artifacts && mkdir -p deploy-artifacts
           # 后端构建产物
-          [ -f backend/target/*.jar ] && cp backend/target/*.jar /tmp/deploy/ 2>/dev/null || true
-          [ -f target/*.jar ] && cp target/*.jar /tmp/deploy/ 2>/dev/null || true
+          [ -f backend/target/*.jar ] && cp backend/target/*.jar deploy-artifacts/ 2>/dev/null || true
+          [ -f target/*.jar ] && cp target/*.jar deploy-artifacts/ 2>/dev/null || true
           # 后端源码（node/python，排除依赖目录）
           if [ -d "server" ] && [ ! -f backend/pom.xml ]; then
-            (cd server && tar czf /tmp/deploy/server-src.tar.gz --exclude=node_modules --exclude=.git .)
+            (cd server && tar czf ../deploy-artifacts/server-src.tar.gz --exclude=node_modules --exclude=.git .)
           fi
           if [ -d "backend" ] && [ ! -f backend/pom.xml ] && [ -f backend/requirements.txt ]; then
-            (cd backend && tar czf /tmp/deploy/backend-src.tar.gz --exclude=venv --exclude=.venv --exclude=node_modules --exclude=.git .)
+            (cd backend && tar czf ../deploy-artifacts/backend-src.tar.gz --exclude=venv --exclude=.venv --exclude=node_modules --exclude=.git .)
           fi
           # 前端产物
-          [ -d frontend/dist ] && mkdir -p /tmp/deploy/frontend && cp -r frontend/dist/* /tmp/deploy/frontend/ 2>/dev/null || true
-          [ -d dist ] && mkdir -p /tmp/deploy/frontend && cp -r dist/* /tmp/deploy/frontend/ 2>/dev/null || true
+          [ -d frontend/dist ] && mkdir -p deploy-artifacts/frontend && cp -r frontend/dist/* deploy-artifacts/frontend/ 2>/dev/null || true
+          [ -d dist ] && mkdir -p deploy-artifacts/frontend && cp -r dist/* deploy-artifacts/frontend/ 2>/dev/null || true
           for pkg in packages/*/; do
             name=$(basename "$pkg")
-            [ -d "$pkg/dist" ] && mkdir -p /tmp/deploy/frontend-$name && cp -r "$pkg/dist"/* /tmp/deploy/frontend-$name/ 2>/dev/null || true
+            [ -d "$pkg/dist" ] && mkdir -p deploy-artifacts/frontend-$name && cp -r "$pkg/dist"/* deploy-artifacts/frontend-$name/ 2>/dev/null || true
           done
-          # 打包
-          tar czf /tmp/deploy-package.tar.gz -C /tmp/deploy .
+          # 打包（放 workspace 内，scp-action 容器才能访问）
+          tar czf deploy-package.tar.gz -C deploy-artifacts .
           echo "=== 部署包内容 ==="
-          tar tzf /tmp/deploy-package.tar.gz
+          tar tzf deploy-package.tar.gz
+          pwd
+          ls -la deploy-package.tar.gz
 
       # ---------- 上传 + 部署 ----------
       - name: Upload to Aliyun
@@ -114,7 +116,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
           port: 22
-          source: "/tmp/deploy-package.tar.gz"
+          source: "deploy-package.tar.gz"
           target: "/tmp/ci-upload"
 
       - name: Deploy on Aliyun
