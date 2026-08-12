@@ -1,0 +1,132 @@
+name: Deploy to Aliyun
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------- 自动检测技术栈并安装对应运行时 ----------
+      - name: Detect & Setup Java (if Maven project)
+        if: hashFiles('backend/pom.xml', 'pom.xml') != ''
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Node 22 (if frontend exists)
+        if: hashFiles('frontend/package.json', 'packages/**/package.json', 'server/package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Python 3.11 (if backend is python)
+        if: hashFiles('backend/requirements.txt', 'requirements.txt') != ''
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # ---------- 构建后端 ----------
+      - name: Build Java backend (Maven)
+        if: hashFiles('backend/pom.xml', 'pom.xml') != ''
+        run: |
+          cd $(dirname $(find . -maxdepth 2 -name pom.xml | head -1))
+          mvn -B clean package -DskipTests
+        env:
+          MAVEN_OPTS: "-Dmaven.repo.local=${{ runner.temp }}/m2"
+
+      - name: Build Node server (if server/package.json)
+        if: hashFiles('server/package.json') != ''
+        run: |
+          cd server
+          npm ci --prefer-offline || npm install
+
+      - name: Install Python backend deps
+        if: hashFiles('backend/requirements.txt', 'requirements.txt') != ''
+        run: |
+          cd $(dirname $(find . -maxdepth 2 -name requirements.txt | head -1))
+          pip install -r requirements.txt
+
+      # ---------- 构建前端 ----------
+      - name: Build frontend (root or frontend/)
+        if: hashFiles('frontend/package.json', 'package.json') != ''
+        run: |
+          DIR="."
+          [ -f frontend/package.json ] && DIR="frontend"
+          cd $DIR
+          npm ci --prefer-offline || npm install
+          npm run build || echo "no build script, skip"
+        env:
+          CI: false
+
+      - name: Build frontend packages (monorepo packages/*/)
+        if: hashFiles('packages/**/package.json') != ''
+        run: |
+          for pkg in packages/*/; do
+            if [ -f "$pkg/package.json" ]; then
+              echo "--- Building $pkg"
+              cd "$pkg"
+              npm ci --prefer-offline || npm install
+              npm run build 2>/dev/null || echo "no build script, skip"
+              cd ../../
+            fi
+          done
+        env:
+          CI: false
+
+      # ---------- 打包部署包 ----------
+      - name: Prepare deploy package
+        run: |
+          rm -rf /tmp/deploy && mkdir -p /tmp/deploy
+          # 后端构建产物
+          [ -f backend/target/*.jar ] && cp backend/target/*.jar /tmp/deploy/ 2>/dev/null || true
+          [ -f target/*.jar ] && cp target/*.jar /tmp/deploy/ 2>/dev/null || true
+          # 后端源码（node/python，排除依赖目录）
+          if [ -d "server" ] && [ ! -f backend/pom.xml ]; then
+            (cd server && tar czf /tmp/deploy/server-src.tar.gz --exclude=node_modules --exclude=.git .)
+          fi
+          if [ -d "backend" ] && [ ! -f backend/pom.xml ] && [ -f backend/requirements.txt ]; then
+            (cd backend && tar czf /tmp/deploy/backend-src.tar.gz --exclude=venv --exclude=.venv --exclude=node_modules --exclude=.git .)
+          fi
+          # 前端产物
+          [ -d frontend/dist ] && mkdir -p /tmp/deploy/frontend && cp -r frontend/dist/* /tmp/deploy/frontend/ 2>/dev/null || true
+          [ -d dist ] && mkdir -p /tmp/deploy/frontend && cp -r dist/* /tmp/deploy/frontend/ 2>/dev/null || true
+          for pkg in packages/*/; do
+            name=$(basename "$pkg")
+            [ -d "$pkg/dist" ] && mkdir -p /tmp/deploy/frontend-$name && cp -r "$pkg/dist"/* /tmp/deploy/frontend-$name/ 2>/dev/null || true
+          done
+          # 打包
+          tar czf /tmp/deploy-package.tar.gz -C /tmp/deploy .
+          echo "=== 部署包内容 ==="
+          tar tzf /tmp/deploy-package.tar.gz
+
+      # ---------- 上传 + 部署 ----------
+      - name: Upload to Aliyun
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 22
+          source: "/tmp/deploy-package.tar.gz"
+          target: "/tmp/ci-upload"
+
+      - name: Deploy on Aliyun
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 22
+          script: |
+            set -e
+            PROJECT="${{ secrets.DEPLOY_PROJECT }}"
+            mkdir -p /tmp/ci-deploy/$PROJECT
+            tar xzf /tmp/ci-upload/deploy-package.tar.gz -C /tmp/ci-deploy/$PROJECT
+            sudo bash /usr/local/bin/ci/deploy.sh $PROJECT ${{ secrets.DEPLOY_SERVICE }}
