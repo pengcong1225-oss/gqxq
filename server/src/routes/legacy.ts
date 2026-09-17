@@ -21,7 +21,7 @@ legacyRouter.post('/external/tianbao/status-callback', stub('G4', '填报系统�
 //   分析总览     /analysis/overview     -> GET /analysis/records           （G5）
 //   拉取填报反馈 /dispatch/orders/:id/sync    -> 由 G4 的主动回传取代，不需要轮询
 
-legacyRouter.get('/complaints/:id/sync', stub('G6', '宜接就办状态同步'));
+// 宜接就办状态同步：现为 POST /complaints/:idOrNo/source-sync（G6，适配器默认关闭）
 
 // 以下页面的真实数据在 gqxq_service 里已有表，但不在已交付批次范围内，显式 501 而不是给假数据
 legacyRouter.get('/grids', stub('G2 之后', '网格管理'));

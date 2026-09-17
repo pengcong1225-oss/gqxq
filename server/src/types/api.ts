@@ -215,6 +215,33 @@ export interface IntakeResponse {
 /** 交办列表项 */
 /* ==================== 企业主数据（G2 补：总账分配与交办需要从真实列表选，而不是手抄编码） ==================== */
 
+/* ==================== G6 来源对接 ==================== */
+
+/** 来源适配器的对外状态。/source-status 返回它，UI 据此如实显示「未接入」。 */
+export interface SourceAdapterState {
+  adapter: string;
+  enabled: boolean;
+  batch: string | null;
+  message: string;
+  /** 配置里写了非 disabled 但真实接口未提供时为 true */
+  misconfigured: boolean;
+}
+
+export interface SourceSyncResult {
+  complaintId: string;
+  /** 是否真的同步并更新了来源状态 */
+  synced: boolean;
+  adapterEnabled: boolean;
+  /** 来源系统给的原始状态，原样返回便于核对 */
+  rawStatus: string | null;
+  /** 映射后的状态；无法映射或未更新时为 null */
+  sourceEventStatusCode: string | null;
+  sourceEventStatusName: string | null;
+  updated: boolean;
+  message: string | null;
+  syncedAt: string | null;
+}
+
 /* ==================== G5 回传后流程 ==================== */
 
 export type CorrectionItemStatus = 'pending' | 'confirmed' | 'rejected';

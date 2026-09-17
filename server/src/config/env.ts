@@ -46,6 +46,13 @@ export const env = {
     secret: optRaw('GQXQ_PU_SECRET'),
     timeoutMs: Number(opt('GQXQ_PU_TIMEOUT_MS', '15000')),
   },
+  /** G6 来源对接：aimed 只读状态适配器。目前只有 disabled 一种有效形态。 */
+  yijiejieban: {
+    adapter: opt('GQXQ_YJJB_ADAPTER', 'disabled'),
+    baseUrl: opt('GQXQ_YJJB_BASE_URL', ''),
+    token: optRaw('GQXQ_YJJB_TOKEN'),
+    timeoutMs: Number(opt('GQXQ_YJJB_TIMEOUT_MS', '10000')),
+  },
   /** G4 入站：校验 public-utility 回调签名与 ACK 响应体 */
   callback: {
     keyId: optRaw('GQXQ_CALLBACK_KEY_ID'),

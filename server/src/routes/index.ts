@@ -13,6 +13,7 @@ import { approvalTraceRouter } from './approvalTrace';
 import { correctionsRouter } from './corrections';
 import { analysisRouter } from './analysis';
 import { dispatchArchiveRouter } from './dispatchArchive';
+import { sourceRouter } from './source';
 import { complaintActionsRouter } from './complaintActions';
 import { enterprisesRouter } from './enterprises';
 import { requireAuth } from '../middleware/requireAuth';
@@ -40,6 +41,7 @@ export function buildRouter(): Router {
   root.use(correctionsRouter);
   root.use(analysisRouter);
   root.use(dispatchArchiveRouter);
+  root.use(sourceRouter);
   root.use(legacyRouter);
 
   return root;
