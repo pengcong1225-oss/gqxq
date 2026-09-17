@@ -1,5 +1,6 @@
 import request from './request';
 import type {
+  ApprovalTraceItem,
   CreateDispatchRequest,
   CreateDispatchResult,
   Csv,
@@ -7,8 +8,16 @@ import type {
   DispatchOrderListItem,
   DispatchOrderParams,
   DispatchOrderStatus,
+  DispatchRequestLogItem,
   Paged,
+  PushDispatchResult,
 } from '../types/api';
+
+/** { content, total } 形状的列表响应（推送日志 / 审批轨迹共用） */
+export interface ListResult<T> {
+  content: T[];
+  total: number;
+}
 
 /** 协议要求多值参数为「逗号分隔字符串」；此处同时接受数组，统一在 api 层序列化。 */
 function toCsv<T extends string>(value: Csv<T> | undefined): string | undefined {
@@ -66,10 +75,8 @@ export async function createDispatch(body: CreateDispatchRequest): Promise<Creat
  *
  * POST /dispatch/orders/:assignmentId/cancel
  *
- * 注意：后端 DTO 里**没有**为 cancel 单独定义响应类型（server/src/types/api.ts 未冻结该项）。
- * 这里按最可能的形状声明为 DispatchOrderDetail，但**调用方一律忽略响应体、改以重新拉取为准**，
- * 因此即使后端返回别的形状（例如 {cancelled, order}）也不会影响页面正确性。
- * 该项属于待与后端线确认的契约缺口。
+ * 响应形状已由后端线确认：返回 DispatchOrderDetail。
+ * 但调用方仍以**重新拉取**为准（忽略响应体），这样即使未来形状变化也不影响页面正确性。
  */
 export async function cancelDispatch(
   assignmentId: string,
@@ -78,6 +85,58 @@ export async function cancelDispatch(
   return request.post<never, DispatchOrderDetail>(
     '/dispatch/orders/' + encode(assignmentId) + '/cancel',
     { reason }
+  );
+}
+
+/**
+ * 推送交办：向 public-utility 创建填报任务（批次 G3）。
+ *
+ * 幂等与重试语义（落地计划 §3.1，由后端保证）：
+ *  - requestId = 交办唯一请求号。超时/网络错误后重试必须**复用同一 requestId 与同一报文**、只换新 nonce，
+ *    绝不新建交办；后端已用 uk_dispatch_request 与 uk_active_dispatch 兜住。
+ *  - 返回体里的 result 是错误码处置表的分类，retryable 指示是否建议自动重试：
+ *      replay / timeout / network_error                            -> 可重试（换新 nonce 或同请求号重推）
+ *      conflict / auth_failed / payload_too_large / validation_failed -> **不可自动重试**
+ *
+ * POST /dispatch/orders/:assignmentId/push
+ */
+export async function pushDispatch(assignmentId: string): Promise<PushDispatchResult> {
+  return request.post<never, PushDispatchResult>(
+    '/dispatch/orders/' + encode(assignmentId) + '/push'
+  );
+}
+
+/**
+ * 重推交办：同一 requestId、同一报文、**新 nonce + 新时间戳**。
+ * 适用于 result 为 timeout / network_error / replay，或状态为 pushed / returned 的场景。
+ *
+ * POST /dispatch/orders/:assignmentId/repush
+ */
+export async function repushDispatch(assignmentId: string): Promise<PushDispatchResult> {
+  return request.post<never, PushDispatchResult>(
+    '/dispatch/orders/' + encode(assignmentId) + '/repush'
+  );
+}
+
+/**
+ * 推送尝试日志（每次尝试一行，含 nonce / httpStatus / errorCode / taskId）。
+ *
+ * GET /dispatch/orders/:assignmentId/push-logs
+ */
+export async function getPushLogs(assignmentId: string): Promise<ListResult<DispatchRequestLogItem>> {
+  return request.get<never, ListResult<DispatchRequestLogItem>>(
+    '/dispatch/orders/' + encode(assignmentId) + '/push-logs'
+  );
+}
+
+/**
+ * 审批轨迹（签收 / 提交 / 退回 / 最终审批，批次 G4）。
+ *
+ * GET /dispatch/orders/:assignmentId/approval-trace
+ */
+export async function getApprovalTrace(assignmentId: string): Promise<ListResult<ApprovalTraceItem>> {
+  return request.get<never, ListResult<ApprovalTraceItem>>(
+    '/dispatch/orders/' + encode(assignmentId) + '/approval-trace'
   );
 }
 

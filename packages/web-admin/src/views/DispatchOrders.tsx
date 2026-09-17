@@ -13,6 +13,7 @@ import {
   Space,
   Table,
   Tag,
+  Timeline,
   Tooltip,
   Typography,
   message,
@@ -20,21 +21,35 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import {
   EyeOutlined,
+  RedoOutlined,
   ReloadOutlined,
   SearchOutlined,
+  SendOutlined,
   StopOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { cancelDispatch, getDispatchOrder, listDispatchOrders } from '../api/dispatch';
+import {
+  cancelDispatch,
+  getApprovalTrace,
+  getDispatchOrder,
+  getPushLogs,
+  listDispatchOrders,
+  pushDispatch,
+  repushDispatch,
+} from '../api/dispatch';
 import { getDictItems } from '../api/dicts';
 import type {
   ApiError,
+  ApprovalTraceItem,
   DictItem,
   DispatchOrderDetail,
   DispatchOrderListItem,
   DispatchOrderParams,
   DispatchOrderStatus,
+  DispatchRequestLogItem,
+  FieldError,
   Paged,
+  PushDispatchResult,
 } from '../types/api';
 
 /**
@@ -43,7 +58,8 @@ import type {
  * 设计纪律：
  *  - 删除页面内本地 25 条 Mock 交办数组与所有假成功提示。
  *  - 列表来自 GET /dispatch/orders 真查表，不是按敏感诉求现场生成。
- *  - 推送 / 重推 / 同步 / 归档属 G3/G4/G5：disabled + Tooltip 说明批次，不弹假成功。
+ *  - 推送 / 重推 已接入真实接口（G3）；审批轨迹与推送记录在详情内展示（G4）。
+ *  - 归档仍属 G5：disabled + Tooltip 说明批次，不弹假成功。
  *  - **不提供第二次新建交办**：交办一律在诉求总账发起（设计文档第 2 节）。
  */
 
@@ -80,6 +96,119 @@ const TERMINAL_DISPATCH_STATUSES = new Set<string>([
   'archived',
   'cancelled',
 ]);
+
+/** 推送日志里 result 的配色（分类来自后端错误码处置表） */
+const PUSH_RESULT_COLOR: Record<string, string> = {
+  success: 'success',
+  replay: 'warning',
+  conflict: 'error',
+  auth_failed: 'error',
+  payload_too_large: 'error',
+  validation_failed: 'error',
+  timeout: 'warning',
+  network_error: 'warning',
+};
+
+/**
+ * G4 事件类型的中文名。
+ * 注意：枚举只有这四个，**无法表达「企业签收」**（落地计划 §3.2 已标注的契约缺口），
+ * 因此不要在这里补造第五种事件或签收文案。
+ */
+const EVENT_TYPE_LABEL: Record<string, string> = {
+  task_submitted: '企业已提交',
+  task_returned: '退回补正',
+  task_approved: '最终通过',
+  task_rejected: '审批不同意',
+};
+
+const TIMELINE_COLOR: Record<string, string> = {
+  task_submitted: 'blue',
+  task_returned: 'orange',
+  task_approved: 'green',
+  task_rejected: 'red',
+};
+
+const CONCLUSION_LABEL: Record<string, string> = {
+  agreed: '同意',
+  disagreed: '不同意',
+  returned: '退回',
+};
+
+interface PushFeedback {
+  level: 'success' | 'info' | 'warning' | 'error';
+  title: string;
+  description: string;
+}
+
+/**
+ * 推送结果分类 -> 界面文案。逐条对应落地计划 §3.1 的错误码处置表。
+ * 是否给「重推」按钮由后端返回的 retryable 决定（不在这里自己判断），
+ * 因为"能不能重试"是对方的语义，前端不该猜。
+ */
+function pushFeedback(r: PushDispatchResult): PushFeedback {
+  switch (r.result) {
+    case 'success':
+      // 注意 created 的语义：它描述的是**场景**，不是「本次是否新建」。
+      //   契约（落地计划 §3.1）：sceneCode=GQXQ_SENSITIVE_DISPATCH -> created=true 且返回 task；
+      //                            sceneCode=GQXQ_ORDINARY_ARCHIVE  -> created=false 且没有 task。
+      //   gqxq 只会发敏感交办场景，所以正常路径恒为 created=true。
+      //   「是否幂等命中」不能从这里判断——要看任务号是否与既有相同、以及日志里的 attempt。
+      return r.created
+        ? {
+            level: 'success',
+            title: r.attempt > 1 ? '重推成功（第 ' + r.attempt + ' 次尝试）' : '推送成功',
+            description: '对方已受理为敏感交办任务，任务号已回填。同一请求号重复推送不会新建任务。',
+          }
+        : {
+            level: 'warning',
+            title: '对方按「仅归档」处理，未创建任务',
+            description:
+              '返回 created=false。按契约这表示对方把该场景判为普通归档（sceneCode 非敏感交办）；gqxq 只发送敏感交办场景，出现该结果说明场景编码或对方登记有误，请核对。',
+          };
+    case 'replay':
+      return {
+        level: 'warning',
+        title: '对方检测到 nonce 重放（409 REPLAY）',
+        description: '已换新 nonce 与时间戳重试。若仍失败可重推——请求号与报文保持不变。',
+      };
+    case 'conflict':
+      return {
+        level: 'error',
+        title: '同请求号但报文不同（409 CONFLICT）',
+        description:
+          '不可自动重试。需人工核对该请求号下两系统的报文差异，确认后再决定；盲目重试只会继续冲突。',
+      };
+    case 'auth_failed':
+      return {
+        level: 'error',
+        title: '鉴权失败（401）',
+        description:
+          '凭证、路径或时钟不符（时间戳容差 ±300 秒）。请检查 keyId/secret 与本机时钟，勿盲目重试。',
+      };
+    case 'payload_too_large':
+      return {
+        level: 'error',
+        title: '报文超过 1 MiB（413）',
+        description: '请精简 prefilledData / metadata 后重推，请求号不变。',
+      };
+    case 'validation_failed':
+      return {
+        level: 'error',
+        title: '对方校验失败（422）',
+        description:
+          '请按下方字段错误修正后重推。注意：不要发送 organizationCode——它在对方验签白名单之外，发了必被 422。',
+      };
+    case 'timeout':
+    case 'network_error':
+      return {
+        level: 'warning',
+        title: '结果未知（超时 / 网络错误）',
+        description: '将用同一请求号、同一报文重试，换新 nonce，不会新建交办。',
+      };
+    default:
+      return { level: 'error', title: '推送失败：' + r.result, description: r.message ?? '' };
+  }
+}
 
 const DASH = <span style={{ color: '#bfbfbf' }}>—</span>;
 
@@ -123,6 +252,28 @@ const DispatchOrders: React.FC = () => {
   const [cancelForm] = Form.useForm<{ reason: string }>();
   const [cancelling, setCancelling] = useState(false);
 
+  /* ---------- G3 推送 ---------- */
+  /** 正在推送的交办 id（用于按钮 loading，避免重复点击） */
+  const [pushBusyId, setPushBusyId] = useState<string | null>(null);
+  /**
+   * 上一次推送的结果。两种来源都要能展示：
+   *   kind='result' -> 后端按错误码处置表返回了分类；
+   *   kind='error'  -> 请求本身失败（网络/401/501/409 等），此时必须显示错误态而不是假装成功。
+   */
+  const [pushOutcome, setPushOutcome] = useState<
+    | { kind: 'result'; order: DispatchOrderListItem; result: PushDispatchResult }
+    | { kind: 'error'; order: DispatchOrderListItem; message: string; fieldErrors?: FieldError[] }
+    | null
+  >(null);
+
+  /* ---------- G3/G4 详情内的推送记录与审批轨迹 ---------- */
+  const [pushLogs, setPushLogs] = useState<DispatchRequestLogItem[] | null>(null);
+  const [pushLogsLoading, setPushLogsLoading] = useState(false);
+  const [pushLogsError, setPushLogsError] = useState<string | null>(null);
+  const [traces, setTraces] = useState<ApprovalTraceItem[] | null>(null);
+  const [tracesLoading, setTracesLoading] = useState(false);
+  const [tracesError, setTracesError] = useState<string | null>(null);
+
   useEffect(() => {
     let alive = true;
     setDictError(null);
@@ -163,21 +314,59 @@ const DispatchOrders: React.FC = () => {
     void load(params);
   }, [params, load]);
 
-  /* ---------- 详情：打开时按 assignmentId 拉真实记录 ---------- */
-  const openDetail = useCallback(async (assignmentId: string) => {
-    setDetailId(assignmentId);
-    setDetail(null);
-    setDetailError(null);
-    setDetailLoading(true);
+  /**
+   * 详情内的两块附属数据：推送记录（G3）与审批轨迹（G4）。
+   * 与主详情**分开** try/catch：附属数据失败只在那块卡片内提示，不把整页打成错误态，
+   * 也绝不因此伪造数据。
+   */
+  const loadSubLists = useCallback(async (assignmentId: string) => {
+    setPushLogsLoading(true);
+    setPushLogsError(null);
+    setTracesLoading(true);
+    setTracesError(null);
     try {
-      const d = await getDispatchOrder(assignmentId);
-      setDetail(d);
+      const logs = await getPushLogs(assignmentId);
+      setPushLogs(logs.content);
     } catch (err) {
-      setDetailError((err as ApiError)?.message ?? '交办详情加载失败');
+      setPushLogs(null);
+      setPushLogsError((err as ApiError)?.message ?? '推送记录加载失败');
     } finally {
-      setDetailLoading(false);
+      setPushLogsLoading(false);
+    }
+    try {
+      const tr = await getApprovalTrace(assignmentId);
+      setTraces(tr.content);
+    } catch (err) {
+      setTraces(null);
+      setTracesError((err as ApiError)?.message ?? '审批轨迹加载失败');
+    } finally {
+      setTracesLoading(false);
     }
   }, []);
+
+  /* ---------- 详情：打开时按 assignmentId 拉真实记录 ---------- */
+  const openDetail = useCallback(
+    async (assignmentId: string) => {
+      setDetailId(assignmentId);
+      setDetail(null);
+      setDetailError(null);
+      setDetailLoading(true);
+      setPushLogs(null);
+      setPushLogsError(null);
+      setTraces(null);
+      setTracesError(null);
+      void loadSubLists(assignmentId);
+      try {
+        const d = await getDispatchOrder(assignmentId);
+        setDetail(d);
+      } catch (err) {
+        setDetailError((err as ApiError)?.message ?? '交办详情加载失败');
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [loadSubLists]
+  );
 
   const closeDetail = useCallback(() => {
     setDetailId(null);
@@ -222,6 +411,38 @@ const DispatchOrders: React.FC = () => {
       setCancelling(false);
     }
   }, [cancelTarget, cancelForm, detailId, openDetail, load, params]);
+
+  /**
+   * 推送 / 重推。re=true 走 repush（同一 requestId、同一报文、新 nonce）。
+   * 无论成功失败都刷新详情与列表——因为"结果未知"的超时也可能已经在对方建了任务，必须以服务端状态为准。
+   */
+  const handlePush = useCallback(
+    async (order: DispatchOrderListItem, re: boolean) => {
+      setPushBusyId(order.assignmentId);
+      try {
+        const res = re
+          ? await repushDispatch(order.assignmentId)
+          : await pushDispatch(order.assignmentId);
+        setPushOutcome({ kind: 'result', order, result: res });
+        if (res.result === 'success') {
+          message.success(res.created ? '推送成功' : '对方按仅归档处理，未创建任务');
+        }
+      } catch (err) {
+        const e = err as ApiError;
+        setPushOutcome({
+          kind: 'error',
+          order,
+          message: e?.message ?? '推送请求失败',
+          fieldErrors: e?.fieldErrors,
+        });
+      } finally {
+        setPushBusyId(null);
+        if (detailId === order.assignmentId) void openDetail(order.assignmentId);
+        void load(params);
+      }
+    },
+    [detailId, openDetail, load, params]
+  );
 
   const statusFilterOptions = useMemo(
     () =>
@@ -318,7 +539,7 @@ const DispatchOrders: React.FC = () => {
       },
       {
         title: '操作',
-        width: 240,
+        width: 330,
         fixed: 'right',
         render: (_: unknown, r) => {
           const terminal = TERMINAL_DISPATCH_STATUSES.has(r.status);
@@ -332,14 +553,47 @@ const DispatchOrders: React.FC = () => {
               >
                 详情
               </Button>
-              <Tooltip title="功能未实现（批次 G3）">
-                <span>
-                  <Button type="link" size="small" disabled>
-                    推送
-                  </Button>
-                </span>
-              </Tooltip>
-              <Tooltip title="功能未实现（批次 G4）">
+              {r.status === 'pending' ? (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<SendOutlined />}
+                  loading={pushBusyId === r.assignmentId}
+                  onClick={() => void handlePush(r, false)}
+                >
+                  推送
+                </Button>
+              ) : (
+                <Tooltip
+                  title={'当前状态为「' + r.statusName + '」，不能首次推送；如需重试请用「重推」'}
+                >
+                  <span>
+                    <Button type="link" size="small" disabled icon={<SendOutlined />}>
+                      推送
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
+              {r.status === 'pushed' || r.status === 'returned' ? (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<RedoOutlined />}
+                  loading={pushBusyId === r.assignmentId}
+                  onClick={() => void handlePush(r, true)}
+                >
+                  重推
+                </Button>
+              ) : (
+                <Tooltip title="仅「已推送」或「退回补正」可重推；重推使用同一请求号、同一报文、新 nonce，不会新建交办">
+                  <span>
+                    <Button type="link" size="small" disabled icon={<RedoOutlined />}>
+                      重推
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
+              <Tooltip title="无需手动同步：结果事件由 public-utility 主动回传（批次 G4），已在详情内展示审批轨迹">
                 <span>
                   <Button type="link" size="small" disabled>
                     同步
@@ -380,8 +634,99 @@ const DispatchOrders: React.FC = () => {
         },
       },
     ],
-    [navigate, openDetail, cancelForm]
+    [navigate, openDetail, cancelForm, handlePush, pushBusyId]
   );
+
+  /** G3 推送记录列（一次尝试一行） */
+  const pushLogColumns: ColumnsType<DispatchRequestLogItem> = useMemo(
+    () => [
+      { title: '尝试', dataIndex: 'attempt', width: 60 },
+      {
+        title: '结果',
+        dataIndex: 'result',
+        width: 140,
+        render: (v: string) => <Tag color={PUSH_RESULT_COLOR[v] ?? 'default'}>{v}</Tag>,
+      },
+      {
+        title: 'HTTP',
+        dataIndex: 'httpStatus',
+        width: 70,
+        render: (v: number | null) => (v == null ? DASH : v),
+      },
+      {
+        title: '错误码',
+        dataIndex: 'errorCode',
+        width: 180,
+        ellipsis: true,
+        render: (v: string | null) => (v ? <Tooltip title={v}>{v}</Tooltip> : DASH),
+      },
+      {
+        title: 'nonce',
+        dataIndex: 'nonce',
+        width: 190,
+        ellipsis: true,
+        render: (v: string | null) => (v ? <Tooltip title={v}>{v}</Tooltip> : DASH),
+      },
+      {
+        title: '任务号',
+        dataIndex: 'taskId',
+        width: 150,
+        ellipsis: true,
+        render: (v: string | null) => (v ? <Tooltip title={v}>{v}</Tooltip> : DASH),
+      },
+      {
+        title: '耗时',
+        width: 90,
+        render: (_: unknown, r) => {
+          if (!r.startedAt || !r.finishedAt) return DASH;
+          const ms = new Date(r.finishedAt).getTime() - new Date(r.startedAt).getTime();
+          return Number.isFinite(ms) ? ms + ' ms' : DASH;
+        },
+      },
+      {
+        title: '时间',
+        dataIndex: 'createdAt',
+        width: 160,
+        render: (v: string | null) => fmtDateTime(v),
+      },
+    ],
+    []
+  );
+
+  /** G4 审批轨迹，按 occurredAt 升序 */
+  const timelineItems = useMemo(
+    () =>
+      (traces ?? [])
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.occurredAt ?? 0).getTime() - new Date(b.occurredAt ?? 0).getTime()
+        )
+        .map((t) => ({
+          key: t.traceId,
+          color: TIMELINE_COLOR[t.eventType] ?? 'blue',
+          children: (
+            <div>
+              <div style={{ fontWeight: 500 }}>
+                {EVENT_TYPE_LABEL[t.eventType] ?? t.eventType}
+                {t.approvalConclusion
+                  ? ' · ' + (CONCLUSION_LABEL[t.approvalConclusion] ?? t.approvalConclusion)
+                  : ''}
+              </div>
+              <div style={{ color: '#999', fontSize: 12 }}>
+                {fmtDateTime(t.occurredAt)}
+                {t.actorName ? ' · ' + t.actorName : ''}
+                {t.submissionVersion != null ? ' · 提交版本 v' + t.submissionVersion : ''}
+              </div>
+              <div>{t.summary ?? ''}</div>
+            </div>
+          ),
+        })),
+    [traces]
+  );
+
+  const pushFeedbackView =
+    pushOutcome?.kind === 'result' ? pushFeedback(pushOutcome.result) : null;
 
   const firstLoading = loading && data === null;
 
@@ -501,7 +846,7 @@ const DispatchOrders: React.FC = () => {
             </Button>
           </Space>
         }
-        width={720}
+        width={900}
       >
         {detailLoading && <Typography.Text type="secondary">加载中…</Typography.Text>}
 
@@ -520,7 +865,8 @@ const DispatchOrders: React.FC = () => {
         )}
 
         {!detailLoading && !detailError && detail && (
-          <Descriptions bordered size="small" column={2}>
+          <>
+            <Descriptions bordered size="small" column={2}>
             <Descriptions.Item label="交办单号">{detail.orderNo}</Descriptions.Item>
             <Descriptions.Item label="状态">
               <Tag color={STATUS_COLOR[detail.status] ?? 'default'}>{detail.statusName}</Tag>
@@ -593,7 +939,160 @@ const DispatchOrders: React.FC = () => {
             <Descriptions.Item label="最后更新" span={2}>
               {fmtDateTime(detail.updatedAt)}
             </Descriptions.Item>
-          </Descriptions>
+            </Descriptions>
+
+            {/* G3 推送记录 */}
+            <Typography.Title level={5} style={{ marginTop: 20 }}>
+              推送记录
+            </Typography.Title>
+            {pushLogsError ? (
+              <Alert
+                type="error"
+                showIcon
+                message="推送记录加载失败"
+                description={pushLogsError}
+                action={
+                  <Button size="small" onClick={() => detailId && void loadSubLists(detailId)}>
+                    重试
+                  </Button>
+                }
+              />
+            ) : (
+              <Table<DispatchRequestLogItem>
+                rowKey="requestLogId"
+                size="small"
+                loading={pushLogsLoading}
+                dataSource={pushLogs ?? []}
+                columns={pushLogColumns}
+                pagination={false}
+                scroll={{ x: 1040 }}
+                locale={{ emptyText: <Empty description="尚未推送" /> }}
+              />
+            )}
+
+            {/* G4 审批轨迹 */}
+            <Typography.Title level={5} style={{ marginTop: 20 }}>
+              审批轨迹
+            </Typography.Title>
+            {tracesError ? (
+              <Alert
+                type="error"
+                showIcon
+                message="审批轨迹加载失败"
+                description={tracesError}
+                action={
+                  <Button size="small" onClick={() => detailId && void loadSubLists(detailId)}>
+                    重试
+                  </Button>
+                }
+              />
+            ) : tracesLoading ? (
+              <Typography.Text type="secondary">加载中…</Typography.Text>
+            ) : timelineItems.length === 0 ? (
+              <Empty description="暂无审批轨迹" />
+            ) : (
+              <Timeline items={timelineItems} />
+            )}
+
+            <Alert
+              style={{ marginTop: 12 }}
+              type="info"
+              showIcon
+              message="签收不在回传事件里"
+              description="对方的结果事件只有 提交/退回/通过/不同意 四类，无法表达「企业签收」，因此本轨迹不会出现签收节点（落地计划 §3.2 已标注的契约缺口）。"
+            />
+          </>
+        )}
+      </Modal>
+
+      {/* ---------- G3 推送结果 ---------- */}
+      <Modal
+        title="推送结果"
+        open={pushOutcome !== null}
+        onCancel={() => setPushOutcome(null)}
+        footer={
+          <Space>
+            <Button onClick={() => setPushOutcome(null)}>关闭</Button>
+            {pushOutcome?.kind === 'error' && (
+              <Button
+                type="primary"
+                loading={pushBusyId === pushOutcome.order.assignmentId}
+                onClick={() => void handlePush(pushOutcome.order, true)}
+              >
+                重试（同一请求号、同一报文、新 nonce）
+              </Button>
+            )}
+            {pushOutcome?.kind === 'result' && pushOutcome.result.retryable && (
+              <Button
+                type="primary"
+                loading={pushBusyId === pushOutcome.order.assignmentId}
+                onClick={() => void handlePush(pushOutcome.order, true)}
+              >
+                重推（同一请求号、同一报文、新 nonce）
+              </Button>
+            )}
+          </Space>
+        }
+        width={660}
+      >
+        {pushOutcome?.kind === 'error' && (
+          <>
+            <Alert type="error" showIcon message="推送请求失败" description={pushOutcome.message} />
+            {pushOutcome.fieldErrors && pushOutcome.fieldErrors.length > 0 && (
+              <ul style={{ marginTop: 12, paddingLeft: 20 }}>
+                {pushOutcome.fieldErrors.map((f) => (
+                  <li key={f.field}>
+                    <Typography.Text code>{f.field}</Typography.Text>：{f.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+
+        {pushOutcome?.kind === 'result' && pushFeedbackView && (
+          <>
+            <Alert
+              type={pushFeedbackView.level}
+              showIcon
+              message={pushFeedbackView.title}
+              description={pushFeedbackView.description}
+            />
+            <Descriptions bordered size="small" column={1} style={{ marginTop: 12 }}>
+              <Descriptions.Item label="交办单号">{pushOutcome.order.orderNo}</Descriptions.Item>
+              <Descriptions.Item label="请求号">{pushOutcome.result.requestId}</Descriptions.Item>
+              <Descriptions.Item label="尝试次数">{pushOutcome.result.attempt}</Descriptions.Item>
+              <Descriptions.Item label="结果分类">
+                <Tag color={PUSH_RESULT_COLOR[pushOutcome.result.result] ?? 'default'}>
+                  {pushOutcome.result.result}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="HTTP 状态">
+                {pushOutcome.result.httpStatus ?? DASH}
+              </Descriptions.Item>
+              <Descriptions.Item label="对方错误码">
+                {pushOutcome.result.errorCode ?? DASH}
+              </Descriptions.Item>
+              <Descriptions.Item label="填报任务号">
+                {pushOutcome.result.taskId ?? DASH}
+              </Descriptions.Item>
+              <Descriptions.Item label="可自动重试">
+                {pushOutcome.result.retryable ? '是' : '否'}
+              </Descriptions.Item>
+              {pushOutcome.result.message && (
+                <Descriptions.Item label="对方消息">{pushOutcome.result.message}</Descriptions.Item>
+              )}
+            </Descriptions>
+            {!pushOutcome.result.retryable && (
+              <Alert
+                style={{ marginTop: 12 }}
+                type="warning"
+                showIcon
+                message="该结果不可自动重试"
+                description="请先人工核对（凭证与时钟、同请求号的报文差异、或字段错误），确认后再手动重推。"
+              />
+            )}
+          </>
         )}
       </Modal>
 

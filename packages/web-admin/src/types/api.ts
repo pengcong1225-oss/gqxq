@@ -366,6 +366,64 @@ export type DispatchOrderStatus =
 
 /* ==================== 企业主数据（与 server/src/types/api.ts 对齐） ==================== */
 
+/* ==================== G3/G4（与 server/src/types/api.ts 对齐） ==================== */
+
+export type PushResultKind =
+  | 'success' | 'replay' | 'conflict' | 'auth_failed'
+  | 'payload_too_large' | 'validation_failed' | 'timeout' | 'network_error';
+
+export interface PushDispatchResult {
+  assignmentId: string;
+  requestId: string;
+  /** 本次推送被对方接受（HTTP 200）。**不表示是否首次创建** */
+  accepted: boolean;
+  /**
+   * 由**场景**决定，不是"本次是否新建"：
+   *   GQXQ_SENSITIVE_DISPATCH -> true 且返回 task；
+   *   GQXQ_ORDINARY_ARCHIVE   -> false 且没有 task。
+   * gqxq 只发敏感交办场景，所以正常路径恒为 true。
+   * **不要用 created 判断"是否幂等命中"**——那要靠 taskId 是否与既有相同 + 推送日志里的 attempt。
+   */
+  created: boolean;
+  taskId: string | null;
+  attempt: number;
+  result: PushResultKind;
+  httpStatus: number | null;
+  errorCode: string | null;
+  message: string | null;
+  retryable: boolean;
+}
+
+export interface DispatchRequestLogItem {
+  id: number;
+  requestLogId: string;
+  assignmentId: string;
+  requestId: string;
+  attempt: number;
+  nonce: string | null;
+  httpStatus: number | null;
+  result: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+  taskId: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string | null;
+}
+
+export interface ApprovalTraceItem {
+  id: number;
+  traceId: string;
+  taskId: string;
+  eventId: string;
+  eventType: string;
+  approvalConclusion: string | null;
+  submissionVersion: number | null;
+  actorName: string | null;
+  occurredAt: string | null;
+  summary: string | null;
+}
+
 export interface EnterpriseListItem {
   id: number;
   enterpriseCode: string;
