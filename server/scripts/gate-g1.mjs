@@ -136,6 +136,8 @@ const UPPER_ALLOW = new Set([
   // 本仓库的错误码常量（http/errors.ts 的 ERROR_STATUS 键），不是业务枚举
   'FORBIDDEN', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'NOT_FOUND', 'DUPLICATE_CONFLICT',
   'INVALID_STATE_TRANSITION', 'PAYLOAD_TOO_LARGE', 'INTERNAL_ERROR', 'NOT_IMPLEMENTED',
+  // public-utility 契约里的审批结论与通用冲突码（外部协议固定大写，见落地计划 §3.2）
+  'AGREED', 'DISAGREED', 'RETURNED', 'CONFLICT',
   // Node 进程信号
   'SIGINT', 'SIGTERM', 'SIGHUP', 'SIGKILL', 'SIGQUIT',
   // 本仓库已知编号前缀（非枚举）。AREQ 是 G2 交办幂等请求号（allocateBizNo 的 prefix 参数）。
@@ -182,6 +184,11 @@ function extractUpperEnumLiterals(line) {
     if (UPPER_ALLOW.has(value)) continue;
     if (ENV_PREFIX_RE.test(value)) continue;
     if (/^ER_/.test(value)) continue;              // MySQL 错误码（ER_DUP_ENTRY 等）
+    // public-utility 跨系统契约**本身就用大写**：错误码、回调码、事件类型。
+    // 这些是外部协议的固定字符串，不是我们数据模型里的业务枚举（我们的业务枚举一律小写）。
+    if (/^INTEGRATION_/.test(value)) continue;     // INTEGRATION_REPLAY / INTEGRATION_AUTHENTICATION_FAILED
+    if (/^CALLBACK_/.test(value)) continue;        // CALLBACK_ACK_INVALID 等
+    if (/^TASK_/.test(value)) continue;            // TASK_SUBMITTED / TASK_APPROVED / TASK_RETURNED / TASK_REJECTED
     // operation_audit_log.action 是自由文本的动作名（LOGIN / INTAKE_CREATE），
     // 不是数据模型里的枚举列，不纳入"枚举一律小写"的范围
     if (new RegExp("action\\s*:\\s*['\"]" + value + "['\"]").test(line)) continue;
