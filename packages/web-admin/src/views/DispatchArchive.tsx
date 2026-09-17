@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card, Descriptions, Drawer, Space, Table, Tag, Button } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
+import DemoDataNotice from '../components/DemoDataNotice';
 
 const archiveRows = Array.from({ length: 10 }, (_, i) => ({
   key: i + 1,
@@ -18,6 +19,7 @@ const DispatchArchive: React.FC = () => {
 
   return (
     <div>
+      <DemoDataNotice batch="G5" />
       <h2 style={{ marginBottom: 16 }}>交办归档</h2>
       <Card>
         <Table

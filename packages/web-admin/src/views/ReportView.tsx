@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Table, Tag, Space, Button, Card, Row, Col, Statistic, Select, DatePicker, message, Modal, Form, Input, Radio } from 'antd';
+import { Table, Tag, Space, Button, Card, Row, Col, Statistic, Select, DatePicker, Modal, Form, Input, Radio, Tooltip } from 'antd';
 import { FilePdfOutlined, FileWordOutlined, FileExcelOutlined, DownloadOutlined, EyeOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import DemoDataNotice from '../components/DemoDataNotice';
 
 const initialReports = [
   { key: 1, title: '2026年5月28日诉求日报', type: 'daily', date: '2026-05-28', period: '2026-05-28', status: 'completed', generatedBy: '系统自动', size: '256KB', complaints: 1247 },
@@ -34,18 +35,11 @@ const ReportView: React.FC = () => {
       };
       setReports([newReport, ...reports]);
       setFormVisible(false); form.resetFields();
-      message.success('报告已加入生成队列，请稍候...');
-      // Simulate generation completion after 3s
+      // 本批次不落库：报告生成接口与持久化属批次 G5，“生成报告”按钮已禁用（见 DemoDataNotice）
       setTimeout(() => {
         setReports(prev => prev.map(r => r.key === newKey ? { ...r, status: 'completed', size: (Math.random() * 3 + 0.5).toFixed(1) + 'MB' } : r));
-        message.success(`报告 "${title}" 生成完成！`);
       }, 3000);
     });
-  };
-
-  const handleDownload = (r: any, format: string) => {
-    message.success(`正在下载 ${r.title} (${format}格式)...`);
-    setTimeout(() => message.info('下载完成（Demo模拟）'), 1500);
   };
 
   const columns = [
@@ -63,13 +57,14 @@ const ReportView: React.FC = () => {
     { title: '操作', width: 220, fixed: 'right' as const,
       render: (_: any, r: any) => <Space>
         <Button type="link" size="small" icon={<EyeOutlined />} disabled={r.status !== 'completed'} onClick={() => { setPreviewReport(r); setPreviewVisible(true); }}>预览</Button>
-        <Button type="link" size="small" icon={<FileWordOutlined />} disabled={r.status !== 'completed'} onClick={() => handleDownload(r, 'Word')}>Word</Button>
-        <Button type="link" size="small" icon={<FileExcelOutlined />} disabled={r.status !== 'completed'} onClick={() => handleDownload(r, 'Excel')}>Excel</Button>
+        <Tooltip title="功能未实现（批次 G5）"><span><Button type="link" size="small" icon={<FileWordOutlined />} disabled>Word</Button></span></Tooltip>
+        <Tooltip title="功能未实现（批次 G5）"><span><Button type="link" size="small" icon={<FileExcelOutlined />} disabled>Excel</Button></span></Tooltip>
       </Space> },
   ];
 
   return (
     <div>
+      <DemoDataNotice batch="G5" />
       <h2 style={{ marginBottom: 16 }}>分析报告</h2>
       <Row gutter={12} style={{ marginBottom: 16 }}>
         <Col span={4}><Card size="small"><Statistic title="报告总数" value={reports.length} prefix={<FilePdfOutlined />} /></Card></Col>
@@ -83,8 +78,8 @@ const ReportView: React.FC = () => {
         <Space style={{ marginBottom: 16 }} wrap>
           <Select defaultValue="all" style={{ width: 100 }} options={[{value:'all',label:'全部类型'},{value:'daily',label:'日报'},{value:'weekly',label:'周报'},{value:'monthly',label:'月报'},{value:'custom',label:'自定义'}]} />
           <DatePicker.RangePicker />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setFormVisible(true); }}>生成报告</Button>
-          <Button icon={<ReloadOutlined />} onClick={() => message.info('刷新成功')}>刷新</Button>
+          <Tooltip title="功能未实现（批次 G5）"><span><Button type="primary" icon={<PlusOutlined />} disabled>生成报告</Button></span></Tooltip>
+          <Tooltip title="功能未实现（批次 G5）"><span><Button icon={<ReloadOutlined />} disabled>刷新</Button></span></Tooltip>
         </Space>
         <Table columns={columns} dataSource={reports} size="middle" scroll={{ x: 1300 }} pagination={{ defaultPageSize: 10 }} />
       </Card>

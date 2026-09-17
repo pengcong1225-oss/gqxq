@@ -1,81 +1,364 @@
-import React from 'react';
-import { Card, Statistic, Row, Col, Table, Tag, Button } from 'antd';
-import { ArrowUpOutlined, FileTextOutlined, WarningOutlined, ClockCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Alert, Button, Card, Col, Empty, Result, Row, Skeleton, Space, Statistic, Table, Tag, Tooltip, Typography,
+} from 'antd';
+import {
+  CheckCircleOutlined, ClockCircleOutlined, DatabaseOutlined, FileTextOutlined,
+  ReloadOutlined, WarningOutlined,
+} from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import ReactECharts from 'echarts-for-react';
+import { getDashboardOverview } from '../api/dashboard';
+import type { ComplaintListItem, DashboardMetrics, DashboardOverview } from '../types/api';
+
+/** 服务端返回 null 表示"该指标当前不可计算"，一律渲染成这个符号，绝不回落成 0 */
+const NOT_AVAILABLE = '—';
+
+/** 服务端未给出原因时的兜底提示（只影响提示文案，不影响数值展示） */
+const REASON_FALLBACK = '该指标当前不可计算';
+
+/** 标签配色只由前端决定；**中文名一律用服务端返回的 *Name 字段**，前端不自建翻译表 */
+const URGENCY_COLOR: Record<string, string> = {
+  normal: 'blue',
+  urgent: 'orange',
+  critical: 'red',
+};
+
+const SUPERVISION_COLOR: Record<string, string> = {
+  none: 'default',
+  pending_match: 'warning',
+  pending: 'processing',
+  pushed: 'processing',
+  accepted: 'processing',
+  processing: 'processing',
+  returned: 'warning',
+  completed: 'success',
+  rejected: 'error',
+  archived: 'default',
+  cancelled: 'default',
+};
+
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return NOT_AVAILABLE;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return NOT_AVAILABLE;
+  return d.toLocaleString('zh-CN');
+}
+
+interface MetricCardProps {
+  title: string;
+  /** null 表示服务端明确表示不可计算 */
+  value: number | null;
+  icon?: React.ReactNode;
+  valueStyle?: React.CSSProperties;
+  onClick?: () => void;
+  /** value 为 null 时的原因（取自 unavailable[]），用于 Tooltip */
+  unavailableReason?: string;
+}
+
+/** 指标卡：null -> "—" + 原因提示；0 -> 真实的 0 */
+const MetricCard: React.FC<MetricCardProps> = ({
+  title, value, icon, valueStyle, onClick, unavailableReason,
+}) => {
+  const notAvailable = value === null || value === undefined;
+  const card = (
+    <Card hoverable={Boolean(onClick)} onClick={onClick}>
+      <Statistic
+        title={title}
+        value={notAvailable ? NOT_AVAILABLE : value}
+        prefix={icon}
+        valueStyle={notAvailable ? { color: '#bfbfbf', ...valueStyle } : valueStyle}
+      />
+    </Card>
+  );
+  if (!notAvailable) return card;
+  return <Tooltip title={unavailableReason || REASON_FALLBACK}>{card}</Tooltip>;
+};
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const [overview, setOverview] = useState<DashboardOverview | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  // 请求序号：丢弃过期响应，避免快速重试时旧结果覆盖新结果
+  const requestSeq = useRef<number>(0);
+
+  const load = useCallback(async () => {
+    const seq = requestSeq.current + 1;
+    requestSeq.current = seq;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getDashboardOverview();
+      if (seq !== requestSeq.current) return;
+      setOverview(data);
+    } catch (err) {
+      if (seq !== requestSeq.current) return;
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (seq === requestSeq.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (loading && !overview) {
+    return (
+      <div>
+        <Row gutter={[16, 16]}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Col span={4} key={i}>
+              <Card>
+                <Skeleton active title={false} paragraph={{ rows: 1 }} />
+              </Card>
+            </Col>
+          ))}
+        </Row>
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col span={14}>
+            <Card>
+              <Skeleton active paragraph={{ rows: 6 }} />
+            </Card>
+          </Col>
+          <Col span={10}>
+            <Card>
+              <Skeleton active paragraph={{ rows: 6 }} />
+            </Card>
+          </Col>
+        </Row>
+      </div>
+    );
+  }
+
+  if (error && !overview) {
+    return (
+      <Result
+        status="error"
+        title="仪表盘数据加载失败"
+        subTitle={error}
+        extra={
+          <Button type="primary" icon={<ReloadOutlined />} onClick={() => void load()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
+
+  if (!overview) return null;
+
+  const metrics: DashboardMetrics = overview.metrics;
+  const reasonOf = (key: keyof DashboardMetrics): string => {
+    const hit = overview.unavailable.find((u) => u.key === key);
+    return hit ? hit.reason : REASON_FALLBACK;
+  };
 
   const trendOption = {
     tooltip: { trigger: 'axis' },
     legend: { data: ['供水诉求', '燃气诉求'] },
     grid: { left: 50, right: 20, top: 40, bottom: 30 },
-    xAxis: { type: 'category', data: ['5/22','5/23','5/24','5/25','5/26','5/27','5/28'] },
+    xAxis: { type: 'category', data: overview.trend.dates },
     yAxis: { type: 'value' },
     series: [
-      { name: '供水诉求', type: 'line', smooth: true, data: [620, 580, 650, 720, 680, 710, 683], itemStyle: { color: '#1677ff' } },
-      { name: '燃气诉求', type: 'line', smooth: true, data: [520, 490, 540, 590, 560, 580, 564], itemStyle: { color: '#fa8c16' } }
-    ]
+      { name: '供水诉求', type: 'line', smooth: true, data: overview.trend.water, itemStyle: { color: '#1677ff' } },
+      { name: '燃气诉求', type: 'line', smooth: true, data: overview.trend.gas, itemStyle: { color: '#fa8c16' } },
+    ],
   };
 
+  const distribution = overview.complaintTypeDistribution;
   const pieOption = {
     tooltip: { trigger: 'item' },
     legend: { orient: 'vertical', right: 10, top: 'center' },
     series: [{
-      type: 'pie', radius: ['40%', '65%'], center: ['40%', '50%'],
-      data: [
-        { value: 443, name: '水压/气压不足' }, { value: 342, name: '管道问题' },
-        { value: 218, name: '水质/用气安全' }, { value: 154, name: '表具故障' }, { value: 90, name: '其他' }
-      ]
-    }]
+      type: 'pie',
+      radius: ['40%', '65%'],
+      center: ['40%', '50%'],
+      data: distribution.map((item) => ({ value: item.value, name: item.name })),
+    }],
   };
 
-  const recentCols = [
-    { title: '诉求编号', dataIndex: 'complaintNo', key: 'no', width: 150, render: (v: string) => <a onClick={() => navigate('/complaints/1')}>{v}</a> },
-    { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
-    { title: '来源', dataIndex: 'source', key: 'source', width: 100 },
-    { title: '类型', dataIndex: 'complaintType', key: 'type', width: 80, render: (t: string) => <Tag>{t}</Tag> },
-    { title: '紧急程度', dataIndex: 'urgencyLevel', key: 'urgency', width: 100, render: (t: string) => <Tag color={t === '特急' ? 'red' : t === '紧急' ? 'orange' : 'blue'}>{t}</Tag> },
-    { title: '状态', dataIndex: 'status', key: 'status', width: 80, render: (s: string) => <Tag color={s === 'resolved' ? 'green' : 'processing'}>{s === 'resolved' ? '已办结' : '处理中'}</Tag> },
-    { title: '时间', dataIndex: 'createdAt', key: 'time', width: 120, render: (t: string) => new Date(t).toLocaleDateString('zh-CN') },
-  ];
+  // ECharts 的类目轴自下而上，反转后最大值排在最上面
+  const regionRank = overview.regionRank.slice().reverse();
+  const regionOption = {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: 90, right: 40, top: 10, bottom: 20 },
+    xAxis: { type: 'value' },
+    yAxis: { type: 'category', data: regionRank.map((r) => r.districtName || '未知区域') },
+    series: [{
+      type: 'bar',
+      data: regionRank.map((r) => r.value),
+      itemStyle: { color: '#1677ff' },
+      label: { show: true, position: 'right', color: '#666' },
+    }],
+  };
 
-  const recentData = [
-    { key: 1, complaintNo: 'CS202605280001', title: '西陵区水管爆裂导致大面积停水', source: '12345热线', complaintType: '投诉', urgencyLevel: '特急', status: 'processing', createdAt: '2026-05-28T08:30:00' },
-    { key: 2, complaintNo: 'CS202605280002', title: '伍家岗区燃气气压不足影响做饭', source: '市民之家', complaintType: '投诉', urgencyLevel: '紧急', status: 'resolved', createdAt: '2026-05-28T09:15:00' },
-    { key: 3, complaintNo: 'CS202605280003', title: '点军区自来水质浑浊有异味', source: '移动端', complaintType: '投诉', urgencyLevel: '紧急', status: 'processing', createdAt: '2026-05-28T10:00:00' },
-    { key: 4, complaintNo: 'CS202605280004', title: '咨询天然气报装流程及费用', source: '网页端', complaintType: '咨询', urgencyLevel: '一般', status: 'resolved', createdAt: '2026-05-28T10:45:00' },
-    { key: 5, complaintNo: 'CS202605280005', title: '夷陵区液化气配送时间过长建议', source: '移动端', complaintType: '建议', urgencyLevel: '一般', status: 'resolved', createdAt: '2026-05-28T11:30:00' },
+  const columns = [
+    {
+      title: '诉求编号',
+      dataIndex: 'complaintNo',
+      key: 'complaintNo',
+      width: 150,
+      render: (v: string, r: ComplaintListItem) => (
+        <a onClick={() => navigate('/complaints/' + r.id)}>{v}</a>
+      ),
+    },
+    { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
+    {
+      title: '来源系统',
+      dataIndex: 'sourceSystem',
+      key: 'sourceSystem',
+      width: 110,
+      render: (v: string | null) => v || NOT_AVAILABLE,
+    },
+    {
+      title: '诉求类型',
+      dataIndex: 'complaintTypeName',
+      key: 'complaintTypeName',
+      width: 90,
+      render: (v: string) => <Tag>{v}</Tag>,
+    },
+    {
+      title: '紧急程度',
+      dataIndex: 'urgencyLevelName',
+      key: 'urgencyLevelName',
+      width: 95,
+      render: (v: string, r: ComplaintListItem) => <Tag color={URGENCY_COLOR[r.urgencyLevelCode]}>{v}</Tag>,
+    },
+    {
+      title: '督办状态',
+      dataIndex: 'supervisionStatusName',
+      key: 'supervisionStatusName',
+      width: 110,
+      render: (v: string, r: ComplaintListItem) => (
+        <Tag color={SUPERVISION_COLOR[r.supervisionStatusCode]}>{v}</Tag>
+      ),
+    },
+    {
+      title: '来源状态',
+      dataIndex: 'sourceEventStatusName',
+      key: 'sourceEventStatusName',
+      width: 100,
+      // 宜接就办接口尚未对接（批次 G6），服务端返回「未接入」，必须原样展示
+      render: (v: string, r: ComplaintListItem) => (
+        r.sourceEventStatusCode === 'unknown'
+          ? <Tooltip title="宜接就办接口尚未对接（批次 G6），此处不代表任何处置进度"><Tag>{v}</Tag></Tooltip>
+          : <Tag color="geekblue">{v}</Tag>
+      ),
+    },
+    {
+      title: '接收时间',
+      dataIndex: 'receivedAt',
+      key: 'receivedAt',
+      width: 170,
+      render: (v: string | null) => formatDateTime(v),
+    },
   ];
 
   return (
     <div>
+      {error ? (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="刷新失败，以下为上一次成功加载的数据"
+          description={error}
+          action={<Button size="small" onClick={() => void load()}>重试</Button>}
+        />
+      ) : null}
+
+      <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
+        <Col>
+          <Space size={16}>
+            <Typography.Text type="secondary">
+              <DatabaseOutlined /> 数据来源：{overview.source === 'database' ? '数据库' : overview.source}
+            </Typography.Text>
+            <Typography.Text type="secondary">生成时间：{formatDateTime(overview.generatedAt)}</Typography.Text>
+            <Typography.Text type="secondary">
+              统计口径：{overview.period.today}（{overview.period.timezone}）
+            </Typography.Text>
+          </Space>
+        </Col>
+        <Col>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>刷新</Button>
+        </Col>
+      </Row>
+
       <Row gutter={[16, 16]}>
-        <Col span={4}><Card hoverable onClick={() => navigate('/complaints')}><Statistic title="今日诉求" value={1247} prefix={<FileTextOutlined />} suffix={<span style={{fontSize:14,color:'#52c41a'}}><ArrowUpOutlined /> 12.3%</span>} /></Card></Col>
-        <Col span={4}><Card hoverable onClick={() => navigate('/complaints')}><Statistic title="供水诉求" value={683} valueStyle={{color:'#1677ff'}} /></Card></Col>
-        <Col span={4}><Card hoverable onClick={() => navigate('/complaints')}><Statistic title="燃气诉求" value={564} valueStyle={{color:'#fa8c16'}} /></Card></Col>
-        <Col span={4}><Card hoverable onClick={() => navigate('/dispatch')}><Statistic title="敏感诉求" value={28} prefix={<WarningOutlined />} valueStyle={{color:'#ff4d4f'}} /></Card></Col>
-        <Col span={4}><Card hoverable onClick={() => navigate('/dispatch')}><Statistic title="超时未办结" value={15} prefix={<ClockCircleOutlined />} valueStyle={{color:'#faad14'}} /></Card></Col>
-        <Col span={4}><Card hoverable onClick={() => navigate('/analysis')}><Statistic title="已办结率" value={78.5} suffix="%" prefix={<CheckCircleOutlined />} valueStyle={{color:'#52c41a'}} /></Card></Col>
+        <Col span={4}>
+          <MetricCard title="今日诉求" value={metrics.todayReceived} icon={<FileTextOutlined />} onClick={() => navigate('/complaints')} />
+        </Col>
+        <Col span={4}>
+          <MetricCard title="供水诉求" value={metrics.waterReceived} valueStyle={{ color: '#1677ff' }} onClick={() => navigate('/complaints')} />
+        </Col>
+        <Col span={4}>
+          <MetricCard title="燃气诉求" value={metrics.gasReceived} valueStyle={{ color: '#fa8c16' }} onClick={() => navigate('/complaints')} />
+        </Col>
+        <Col span={4}>
+          <MetricCard title="敏感诉求" value={metrics.sensitiveTotal} icon={<WarningOutlined />} valueStyle={{ color: '#ff4d4f' }} onClick={() => navigate('/dispatch')} />
+        </Col>
+        <Col span={4}>
+          <MetricCard
+            title="超时未办结"
+            value={metrics.overtimeActive}
+            icon={<ClockCircleOutlined />}
+            valueStyle={{ color: '#faad14' }}
+            onClick={() => navigate('/dispatch')}
+            unavailableReason={reasonOf('overtimeActive')}
+          />
+        </Col>
+        <Col span={4}>
+          <MetricCard
+            title="本系统办结"
+            value={metrics.closedInSystem}
+            icon={<CheckCircleOutlined />}
+            valueStyle={{ color: '#52c41a' }}
+          />
+        </Col>
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col span={14}>
-          <Card title="诉求趋势 (近7天)" extra={<Button type="link" size="small" onClick={() => navigate('/analysis')}>查看更多 →</Button>}>
-            <ReactECharts option={trendOption} style={{ height: 280 }} />
+          <Card title="诉求趋势（近 7 天）">
+            {overview.trend.dates.length === 0
+              ? <Empty description="暂无趋势数据" />
+              : <ReactECharts option={trendOption} style={{ height: 280 }} />}
           </Card>
         </Col>
         <Col span={10}>
-          <Card title="诉求分类分布">
-            <ReactECharts option={pieOption} style={{ height: 280 }} />
+          <Card title="诉求类型分布">
+            {distribution.length === 0
+              ? <Empty description="暂无分类数据" />
+              : <ReactECharts option={pieOption} style={{ height: 280 }} />}
           </Card>
         </Col>
       </Row>
 
-      <Card title="最新诉求" style={{ marginTop: 16 }}
-        extra={<Button type="link" onClick={() => navigate('/complaints')}>查看全部诉求 →</Button>}>
-        <Table columns={recentCols} dataSource={recentData} pagination={false} size="small" />
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col span={24}>
+          <Card title="区域诉求排名">
+            {regionRank.length === 0
+              ? <Empty description="暂无区域数据" />
+              : <ReactECharts option={regionOption} style={{ height: 260 }} />}
+          </Card>
+        </Col>
+      </Row>
+
+      <Card
+        title="最新诉求"
+        style={{ marginTop: 16 }}
+        extra={<Button type="link" onClick={() => navigate('/complaints')}>查看全部诉求 →</Button>}
+      >
+        <Table<ComplaintListItem>
+          columns={columns}
+          dataSource={overview.latestComplaints}
+          rowKey="id"
+          pagination={false}
+          size="small"
+          locale={{ emptyText: <Empty description="暂无诉求数据" /> }}
+        />
       </Card>
     </div>
   );

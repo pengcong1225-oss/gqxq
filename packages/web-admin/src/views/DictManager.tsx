@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Tabs, Table, Tag, Space, Button, Input, Modal, Form, message, Popconfirm } from 'antd';
+import { Tabs, Table, Tag, Space, Button, Input, Modal, Form, Tooltip } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
+import DemoDataNotice from '../components/DemoDataNotice';
 
 const dictData: Record<string, { key: number; label: string; value: string; sort: number; status: number }[]> = {
   complaint_type: [
@@ -74,12 +75,8 @@ const DictManager: React.FC = () => {
       render: (s: number) => <Tag color={s === 1 ? 'success' : 'error'}>{s === 1 ? '启用' : '禁用'}</Tag> },
     { title: '操作', width: 120,
       render: (_: any, r: any) => <Space>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue(r); setModalVisible(true); }}>编辑</Button>
-        <Popconfirm title="确认删除？" onConfirm={() => {
-          const newData = [...localData[activeTab].filter(d => d.key !== r.key)];
-          setLocalData({ ...localData, [activeTab]: newData });
-          message.success('已删除');
-        }}><Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
+        <Tooltip title="功能未实现（批次 G1）"><span><Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue(r); setModalVisible(true); }} disabled>编辑</Button></span></Tooltip>
+        <Tooltip title="功能未实现（批次 G1）"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
       </Space> },
   ];
 
@@ -95,17 +92,17 @@ const DictManager: React.FC = () => {
       setModalVisible(false);
       setEditingItem(null);
       form.resetFields();
-      message.success('保存成功');
     });
   };
 
   return (
     <div>
+      <DemoDataNotice batch="G1" />
       <h2 style={{ marginBottom: 16 }}>字典管理</h2>
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={dictTabs.map(t => ({ key: t.key, label: t.label }))} />
       <Space style={{ marginBottom: 16 }}>
         <Input placeholder="搜索字典项" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 220 }} allowClear />
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setModalVisible(true); }}>新增字典项</Button>
+        <Tooltip title="功能未实现（批次 G1）"><span><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setModalVisible(true); }} disabled>新增字典项</Button></span></Tooltip>
         <Tag>共 {filtered.length} 条</Tag>
       </Space>
       <Table columns={columns} dataSource={filtered} size="middle" pagination={false} />

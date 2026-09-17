@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Table, Tag, Space, Input, Select, Button, Card, Row, Col, Statistic, Progress, Modal, Form, DatePicker, InputNumber, message, Popconfirm } from 'antd';
+import { Table, Tag, Space, Input, Select, Button, Card, Row, Col, Statistic, Progress, Modal, Form, DatePicker, InputNumber, Tooltip } from 'antd';
 import { SearchOutlined, ToolOutlined, CheckCircleOutlined, ClockCircleOutlined, EnvironmentOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import DemoDataNotice from '../components/DemoDataNotice';
 import dayjs from 'dayjs';
 
 const initialProjects = [
@@ -35,19 +36,12 @@ const PipelineList: React.FC = () => {
       const data = { ...vals, startDate: vals.startDate?.format('YYYY-MM-DD'), plannedEndDate: vals.plannedEndDate?.format('YYYY-MM-DD') };
       if (editingItem) {
         setProjects(projects.map(p => p.key === editingItem.key ? { ...p, ...data } : p));
-        message.success('项目已更新');
       } else {
         const newKey = Math.max(...projects.map(p => p.key), 0) + 1;
         setProjects([...projects, { key: newKey, projectNo: 'PJ2026' + String(newKey).padStart(3,'0'), ...data, progress: 0, status: 'pending' }]);
-        message.success('项目已创建');
       }
       setFormVisible(false); setEditingItem(null); form.resetFields();
     });
-  };
-
-  const handleDelete = (r: any) => {
-    setProjects(projects.filter(p => p.key !== r.key));
-    message.success('已删除项目：' + r.projectName);
   };
 
   const columns = [
@@ -68,13 +62,14 @@ const PipelineList: React.FC = () => {
       } },
     { title: '操作', width: 120,
       render: (_: any, r: any) => <Space>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue({...r, startDate: dayjs(r.startDate), plannedEndDate: dayjs(r.plannedEndDate)}); setFormVisible(true); }}>编辑</Button>
-        <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r)}><Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
+        <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue({...r, startDate: dayjs(r.startDate), plannedEndDate: dayjs(r.plannedEndDate)}); setFormVisible(true); }} disabled>编辑</Button></span></Tooltip>
+        <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
       </Space> },
   ];
 
   return (
     <div>
+      <DemoDataNotice batch="另立批次" />
       <h2 style={{ marginBottom: 16 }}>管道施工改造</h2>
       <Row gutter={12} style={{ marginBottom: 16 }}>
         <Col span={4}><Card size="small"><Statistic title="项目总数" value={projects.length} prefix={<ToolOutlined />} /></Card></Col>
@@ -88,7 +83,7 @@ const PipelineList: React.FC = () => {
         <Space style={{ marginBottom: 16 }} wrap>
           <Input placeholder="搜索项目名称/编号/企业" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 280 }} allowClear />
           <Select placeholder="状态筛选" allowClear style={{ width: 120 }} onChange={setFilterStatus} options={[{value:'pending',label:'待开工'},{value:'in_progress',label:'施工中'},{value:'completed',label:'已完工'},{value:'suspended',label:'暂停'}]} />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setFormVisible(true); }}>新增项目</Button>
+          <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setFormVisible(true); }} disabled>新增项目</Button></span></Tooltip>
         </Space>
         <Table columns={columns} dataSource={filtered} size="middle" scroll={{ x: 1500 }} pagination={{ defaultPageSize: 10 }} />
       </Card>

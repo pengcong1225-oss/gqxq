@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Button, Card, Col, Descriptions, Form, Input, message, Row, Space, Table, Tag } from 'antd';
+import { Button, Card, Col, Descriptions, Form, Input, Row, Space, Table, Tag, Tooltip } from 'antd';
 import { EnvironmentOutlined, SaveOutlined } from '@ant-design/icons';
+import DemoDataNotice from '../components/DemoDataNotice';
 
 const initialRows = Array.from({ length: 12 }, (_, i) => ({
   key: i + 1,
@@ -10,7 +11,10 @@ const initialRows = Array.from({ length: 12 }, (_, i) => ({
   confidence: [0.42, 0.58, 0.63, 0.31][i % 4],
   businessType: i % 2 === 0 ? 'water' : 'gas',
   sourceSystem: '宜接就办',
-  status: 'pending'
+  status: 'pending',
+  correctedAddress: '',
+  lng: 111.28 + (i % 7) * 0.03,
+  lat: 30.68 + (i % 5) * 0.02
 }));
 
 const AddressCorrection: React.FC = () => {
@@ -22,12 +26,12 @@ const AddressCorrection: React.FC = () => {
     form.validateFields().then((values) => {
       setRows(rows.map((row) => row.key === selected.key ? { ...row, ...values, status: 'corrected', confidence: 0.92 } : row));
       setSelected({ ...selected, ...values, status: 'corrected', confidence: 0.92 });
-      message.success('纠偏结果已提交，已写入诉求流转记录');
     });
   };
 
   return (
     <div>
+      <DemoDataNotice batch="G5" />
       <h2 style={{ marginBottom: 16 }}>地址纠偏工作台</h2>
       <Row gutter={16}>
         <Col span={14}>
@@ -73,7 +77,7 @@ const AddressCorrection: React.FC = () => {
                       <Input placeholder="30.708" />
                     </Form.Item>
                   </Space>
-                  <Button type="primary" icon={<SaveOutlined />} onClick={submit}>提交纠偏</Button>
+                  <Tooltip title="功能未实现（批次 G5）"><span><Button type="primary" icon={<SaveOutlined />} onClick={submit} disabled>提交纠偏</Button></span></Tooltip>
                 </Form>
               </>
             )}

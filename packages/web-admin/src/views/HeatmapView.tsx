@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card, Row, Col, Select, DatePicker, Space, Table, Tag, Statistic, Slider } from 'antd';
 import { FireOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
+import DemoDataNotice from '../components/DemoDataNotice';
 
 const heatData = Array.from({ length: 120 }, () => [111.2 + Math.random() * 0.5, 30.6 + Math.random() * 0.4, Math.floor(Math.random() * 80)]);
 const facilities = [
@@ -39,6 +40,7 @@ const HeatmapView: React.FC = () => {
 
   return (
     <div>
+      <DemoDataNotice batch="G6 之后" />
       <h2 style={{ marginBottom: 16 }}>热力图管理</h2>
       <Row gutter={12} style={{ marginBottom: 16 }}>
         <Col span={4}><Card size="small"><Statistic title="热区总数" value={6} prefix={<FireOutlined />} /></Card></Col>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Table, Tag, Space, Input, Select, Button, Card, Row, Col, Statistic, Modal, Form, DatePicker, message, Popconfirm } from 'antd';
+import { Table, Tag, Space, Input, Select, Button, Card, Row, Col, Statistic, Modal, Form, DatePicker, Tooltip } from 'antd';
 import { SearchOutlined, PauseCircleOutlined, ClockCircleOutlined, CheckCircleOutlined, WarningOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import DemoDataNotice from '../components/DemoDataNotice';
 import dayjs from 'dayjs';
 
 const initialShutdowns = Array.from({ length: 18 }, (_, i) => {
@@ -45,19 +46,12 @@ const ShutdownList: React.FC = () => {
       const data = { ...vals, plannedStartTime: vals.plannedStartTime?.format('YYYY-MM-DD'), plannedEndTime: vals.plannedEndTime?.format('YYYY-MM-DD') };
       if (editingItem) {
         setShutdowns(shutdowns.map(s => s.key === editingItem.key ? { ...s, ...data } : s));
-        message.success('停供申请已更新');
       } else {
         const newKey = Math.max(...shutdowns.map(s => s.key), 0) + 1;
         setShutdowns([...shutdowns, { key: newKey, appNo: 'SD202605' + String(newKey).padStart(3,'0'), ...data, isOvertime: false, status: 'draft', actualEndTime: null, submitter: '当前用户' }]);
-        message.success('停供申请已创建');
       }
       setFormVisible(false); setEditingItem(null); form.resetFields();
     });
-  };
-
-  const handleDelete = (r: any) => {
-    setShutdowns(shutdowns.filter(s => s.key !== r.key));
-    message.success('已删除申请：' + r.appNo);
   };
 
   const columns = [
@@ -75,13 +69,14 @@ const ShutdownList: React.FC = () => {
     { title: '状态', dataIndex: 'status', width: 80, render: (s: string) => <Tag color={statusMap[s]?.color}>{statusMap[s]?.text}</Tag> },
     { title: '操作', width: 120,
       render: (_: any, r: any) => <Space>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue({...r, plannedStartTime: dayjs(r.plannedStartTime), plannedEndTime: dayjs(r.plannedEndTime)}); setFormVisible(true); }}>编辑</Button>
-        <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r)}><Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
+        <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue({...r, plannedStartTime: dayjs(r.plannedStartTime), plannedEndTime: dayjs(r.plannedEndTime)}); setFormVisible(true); }} disabled>编辑</Button></span></Tooltip>
+        <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
       </Space> },
   ];
 
   return (
     <div>
+      <DemoDataNotice batch="另立批次" />
       <h2 style={{ marginBottom: 16 }}>停供管理</h2>
       <Row gutter={12} style={{ marginBottom: 16 }}>
         <Col span={4}><Card size="small"><Statistic title="总申请" value={shutdowns.length} prefix={<PauseCircleOutlined />} /></Card></Col>
@@ -95,7 +90,7 @@ const ShutdownList: React.FC = () => {
         <Space style={{ marginBottom: 16 }} wrap>
           <Input placeholder="搜索编号/企业/区域" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 260 }} allowClear />
           <Select placeholder="状态筛选" allowClear style={{ width: 120 }} onChange={setFilterStatus} options={Object.entries(statusMap).map(([k,v]) => ({value:k, label:v.text}))} />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setFormVisible(true); }}>新建申请</Button>
+          <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setFormVisible(true); }} disabled>新建申请</Button></span></Tooltip>
         </Space>
         <Table columns={columns} dataSource={filtered} size="middle" scroll={{ x: 1600 }} pagination={{ defaultPageSize: 12 }} />
       </Card>

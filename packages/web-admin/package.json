@@ -6,7 +6,8 @@
   "description": "宜昌市城镇供水燃气行业诉求分析平台 - 管理后台",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Tabs, Table, Tag, Space, Button, Input, Select, Card, Row, Col, Statistic, Modal, Form, message, Switch, Popconfirm, Tree } from 'antd';
+import { Tabs, Table, Tag, Space, Button, Input, Select, Card, Row, Col, Statistic, Modal, Form, Switch, Tree, Tooltip } from 'antd';
 import { SearchOutlined, UserOutlined, TeamOutlined, SafetyCertificateOutlined, FileTextOutlined, PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
+import DemoDataNotice from '../components/DemoDataNotice';
 
 const users = [
   { key: 1, username: 'admin', realName: '系统管理员', phone: '13800000001', email: 'admin@yichang.gov.cn', deptName: '水燃中心', roles: ['超级管理员'], status: 1, lastLoginTime: '2026-05-28 08:30:00', lastLoginIp: '10.18.33.100' },
@@ -63,11 +64,8 @@ const UserManager: React.FC = () => {
     { title: '最后登录', dataIndex: 'lastLoginTime', width: 150 },
     { title: '操作', width: 140, fixed: 'right' as const,
       render: (_: any, r: any) => <Space>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingUser(r); form.setFieldsValue(r); setModalVisible(true); }}>编辑</Button>
-        <Popconfirm title="确认删除？" onConfirm={() => {
-          setLocalUsers(localUsers.filter(u => u.key !== r.key));
-          message.success('已删除');
-        }}><Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
+        <Tooltip title="功能未实现（批次 G1.6 之后）"><span><Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingUser(r); form.setFieldsValue(r); setModalVisible(true); }} disabled>编辑</Button></span></Tooltip>
+        <Tooltip title="功能未实现（批次 G1.6 之后）"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
       </Space> },
   ];
 
@@ -79,8 +77,8 @@ const UserManager: React.FC = () => {
     { title: '状态', dataIndex: 'status', width: 70, render: (s: number) => <Tag color={s ? 'success' : 'error'}>{s ? '启用' : '禁用'}</Tag> },
     { title: '操作', width: 120,
       render: () => <Space>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => setRoleModalVisible(true)}>权限</Button>
-        <Button type="link" size="small" icon={<DeleteOutlined />} danger>删除</Button>
+        <Tooltip title="功能未实现（批次 G1.6 之后）"><span><Button type="link" size="small" icon={<EditOutlined />} onClick={() => setRoleModalVisible(true)} disabled>权限</Button></span></Tooltip>
+        <Tooltip title="功能未实现（批次 G1.6 之后）"><span><Button type="link" size="small" icon={<DeleteOutlined />} danger disabled>删除</Button></span></Tooltip>
       </Space> },
   ];
 
@@ -103,7 +101,6 @@ const UserManager: React.FC = () => {
         setLocalUsers([...localUsers, { key: Math.max(...localUsers.map(u => u.key)) + 1, ...vals, status: 1, lastLoginTime: '-', lastLoginIp: '-' }]);
       }
       setModalVisible(false); setEditingUser(null); form.resetFields();
-      message.success('保存成功');
     });
   };
 
@@ -117,7 +114,7 @@ const UserManager: React.FC = () => {
           <Col span={4}><Card size="small"><Statistic title="启用" value={localUsers.filter(u=>u.status===1).length} valueStyle={{color:'#52c41a'}} /></Card></Col>
           <Col span={4}><Card size="small"><Statistic title="禁用" value={localUsers.filter(u=>u.status===0).length} valueStyle={{color:'#ff4d4f'}} /></Card></Col>
           <Col span={4}><Card size="small"><Statistic title="今日在线" value={5} prefix={<Tag color="green">●</Tag>} /></Card></Col>
-          <Col span={8}><Space style={{marginTop:8}}><Input placeholder="搜索用户" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 200 }} allowClear /><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingUser(null); form.resetFields(); setModalVisible(true); }}>新增用户</Button></Space></Col>
+          <Col span={8}><Space style={{marginTop:8}}><Input placeholder="搜索用户" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 200 }} allowClear /><Tooltip title="功能未实现（批次 G1.6 之后）"><span><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingUser(null); form.resetFields(); setModalVisible(true); }} disabled>新增用户</Button></span></Tooltip></Space></Col>
         </Row>
         <Table columns={userColumns} dataSource={filteredUsers} size="middle" scroll={{ x: 1100 }} pagination={{ defaultPageSize: 10 }} />
       </div>
@@ -127,7 +124,7 @@ const UserManager: React.FC = () => {
         <Row gutter={12} style={{ marginBottom: 16 }}>
           <Col span={4}><Card size="small"><Statistic title="角色总数" value={roles.length} prefix={<TeamOutlined />} /></Card></Col>
           <Col span={4}><Card size="small"><Statistic title="启用" value={roles.filter(r=>r.status).length} valueStyle={{color:'#52c41a'}} /></Card></Col>
-          <Col span={16}><Space style={{marginTop:8}}><Button type="primary" icon={<PlusOutlined />}>新增角色</Button></Space></Col>
+          <Col span={16}><Space style={{marginTop:8}}><Tooltip title="功能未实现（批次 G1.6 之后）"><span><Button type="primary" icon={<PlusOutlined />} disabled>新增角色</Button></span></Tooltip></Space></Col>
         </Row>
         <Table columns={roleColumns} dataSource={roles} size="middle" pagination={false} />
       </div>
@@ -146,6 +143,7 @@ const UserManager: React.FC = () => {
 
   return (
     <div>
+      <DemoDataNotice batch="G1.6 之后" />
       <h2 style={{ marginBottom: 16 }}>系统管理</h2>
       <Tabs items={tabItems} />
 
@@ -161,7 +159,7 @@ const UserManager: React.FC = () => {
         </Form>
       </Modal>
 
-      <Modal title="权限分配" open={roleModalVisible} onCancel={() => setRoleModalVisible(false)} onOk={() => { setRoleModalVisible(false); message.success('权限已更新'); }} width={500}>
+      <Modal title="权限分配" open={roleModalVisible} onCancel={() => setRoleModalVisible(false)} onOk={() => { setRoleModalVisible(false); }} width={500}>
         <Tree checkable defaultExpandAll treeData={roleMenus} />
       </Modal>
     </div>

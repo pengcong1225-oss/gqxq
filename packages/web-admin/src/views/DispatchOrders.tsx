@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Table, Tag, Space, Input, Select, Button, Card, Row, Col, Statistic, Modal, Timeline, Form, message, Badge, Popconfirm } from 'antd';
+import { Table, Tag, Space, Input, Select, Button, Card, Row, Col, Statistic, Modal, Timeline, Form, Tooltip, Badge } from 'antd';
 import { SearchOutlined, WarningOutlined, CheckCircleOutlined, ClockCircleOutlined, SendOutlined, EyeOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import DemoDataNotice from '../components/DemoDataNotice';
 
 const initialOrders = Array.from({ length: 25 }, (_, i) => {
   const statuses = ['pending', 'processing', 'completed', 'rejected'];
@@ -39,11 +40,6 @@ const DispatchOrders: React.FC = () => {
 
   const stats = { total: orders.length, pending: orders.filter(o => o.status === 'pending').length, processing: orders.filter(o => o.status === 'processing').length, completed: orders.filter(o => o.status === 'completed').length };
 
-  const handleDelete = (r: any) => {
-    setOrders(orders.filter(o => o.key !== r.key));
-    message.success('已删除交办单：' + r.orderNo);
-  };
-
   const handleCreateDispatch = () => {
     form.validateFields().then(vals => {
       const newKey = Math.max(...orders.map(o => o.key), 0) + 1;
@@ -56,7 +52,6 @@ const DispatchOrders: React.FC = () => {
         status: 'pending', syncStatus: 'not_synced', externalStatus: 'pending', dispatcher: '当前用户', createdAt: new Date().toISOString(),
       }]);
       setFormVisible(false); form.resetFields();
-      message.success('交办单已创建并推送至目标企业');
     });
   };
 
@@ -81,14 +76,15 @@ const DispatchOrders: React.FC = () => {
     { title: '操作', width: 220, fixed: 'right' as const,
       render: (_: any, r: any) => <Space>
         <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => { setSelectedOrder(r); setDetailVisible(true); }}>详情</Button>
-        <Button type="link" size="small" icon={<SendOutlined />} onClick={() => message.success('已通过填报适配器推送交办单：' + r.orderNo)}>推送</Button>
-        <Button type="link" size="small" onClick={() => message.success('已拉取填报反馈并记录 SyncLog')}>同步</Button>
-        <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r)}><Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
+        <Tooltip title="功能未实现（批次 G2/G3）"><span><Button type="link" size="small" icon={<SendOutlined />} disabled>推送</Button></span></Tooltip>
+        <Tooltip title="功能未实现（批次 G2/G3）"><span><Button type="link" size="small" disabled>同步</Button></span></Tooltip>
+        <Tooltip title="功能未实现（批次 G2/G3）"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
       </Space> },
   ];
 
   return (
     <div>
+      <DemoDataNotice batch="G2/G3" />
       <h2 style={{ marginBottom: 16 }}>敏感诉求交办</h2>
       <Row gutter={12} style={{ marginBottom: 16 }}>
         <Col span={4}><Card size="small"><Statistic title="交办总数" value={stats.total} prefix={<SendOutlined />} /></Card></Col>
@@ -101,7 +97,7 @@ const DispatchOrders: React.FC = () => {
         <Space style={{ marginBottom: 16 }} wrap>
           <Input placeholder="搜索编号/诉求标题" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 260 }} allowClear />
           <Select placeholder="状态筛选" allowClear style={{ width: 120 }} onChange={setFilterStatus} options={[{value:'pending',label:'待签收'},{value:'processing',label:'处理中'},{value:'completed',label:'已完成'},{value:'rejected',label:'已退回'}]} />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setFormVisible(true); }}>手动交办</Button>
+          <Tooltip title="功能未实现（批次 G2/G3）"><span><Button type="primary" icon={<PlusOutlined />} disabled>手动交办</Button></span></Tooltip>
         </Space>
         <Table columns={columns} dataSource={filtered} size="middle" scroll={{ x: 1200 }} pagination={{ defaultPageSize: 12, showTotal: t => `共 ${t} 条交办单` }} />
       </Card>

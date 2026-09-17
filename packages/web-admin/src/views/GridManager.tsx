@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Table, Tag, Space, Input, Button, Card, Row, Col, Statistic, Progress, Modal, Form, Select, message, Popconfirm } from 'antd';
+import { Table, Tag, Space, Input, Button, Card, Row, Col, Statistic, Progress, Modal, Form, Select, message, Tooltip } from 'antd';
 import { SearchOutlined, AppstoreOutlined, EnvironmentOutlined, CheckCircleOutlined, WarningOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import DemoDataNotice from '../components/DemoDataNotice';
 
 const initialGrids = [
   { key: 1, gridCode: 'GRID001', gridName: '西陵区中心网格', districtName: '西陵区', businessType: 'both', companyName: '宜昌市供水总公司', managerName: '赵伟', managerPhone: '13800001001', totalComplaints: 356, resolvedComplaints: 298, overtime: 12, status: 1 },
@@ -30,19 +31,12 @@ const GridManager: React.FC = () => {
     form.validateFields().then(vals => {
       if (editingGrid) {
         setGrids(grids.map(g => g.key === editingGrid.key ? { ...g, ...vals } : g));
-        message.success('网格已更新');
       } else {
         const newKey = Math.max(...grids.map(g => g.key), 0) + 1;
         setGrids([...grids, { key: newKey, gridCode: 'GRID' + String(newKey).padStart(3,'0'), ...vals, totalComplaints: 0, resolvedComplaints: 0, overtime: 0, status: 1 }]);
-        message.success('网格已添加');
       }
       setFormVisible(false); setEditingGrid(null); form.resetFields();
     });
-  };
-
-  const handleDelete = (r: any) => {
-    setGrids(grids.filter(g => g.key !== r.key));
-    message.success('已删除网格：' + r.gridName);
   };
 
   const columns = [
@@ -59,13 +53,14 @@ const GridManager: React.FC = () => {
     { title: '超时', dataIndex: 'overtime', width: 60, render: (v: number) => v > 0 ? <Tag color="red">{v}</Tag> : <Tag color="green">0</Tag> },
     { title: '操作', width: 120, fixed: 'right' as const,
       render: (_: any, r: any) => <Space>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingGrid(r); form.setFieldsValue(r); setFormVisible(true); }}>编辑</Button>
-        <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r)}><Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
+        <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingGrid(r); form.setFieldsValue(r); setFormVisible(true); }} disabled>编辑</Button></span></Tooltip>
+        <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
       </Space> },
   ];
 
   return (
     <div>
+      <DemoDataNotice batch="G2 之后" />
       <h2 style={{ marginBottom: 16 }}>网格管理</h2>
       <Row gutter={12} style={{ marginBottom: 16 }}>
         <Col span={4}><Card size="small"><Statistic title="网格总数" value={grids.length} prefix={<AppstoreOutlined />} /></Card></Col>
@@ -77,8 +72,8 @@ const GridManager: React.FC = () => {
       <Card>
         <Space style={{ marginBottom: 16 }} wrap>
           <Input placeholder="搜索网格/区域/企业" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 260 }} allowClear />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingGrid(null); form.resetFields(); setFormVisible(true); }}>新增网格</Button>
-          <Button icon={<EnvironmentOutlined />} onClick={() => message.info('GIS边界绘制功能 - 需要集成天地图API，当前为Demo演示')}>GIS边界绘制</Button>
+          <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingGrid(null); form.resetFields(); setFormVisible(true); }} disabled>新增网格</Button></span></Tooltip>
+          <Tooltip title="功能未实现（批次 G2 之后）"><span><Button icon={<EnvironmentOutlined />} onClick={() => message.info('GIS边界绘制功能 - 需要集成天地图API，当前为Demo演示')} disabled>GIS边界绘制</Button></span></Tooltip>
         </Space>
         <Table columns={columns} dataSource={filtered} size="middle" scroll={{ x: 1400 }} pagination={false} />
       </Card>

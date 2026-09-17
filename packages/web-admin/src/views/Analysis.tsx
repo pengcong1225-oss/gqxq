@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Row, Col, Statistic, Table, Tag, Select, DatePicker, Space } from 'antd';
 import { ArrowUpOutlined, FileTextOutlined, CheckCircleOutlined, ClockCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
+import DemoDataNotice from '../components/DemoDataNotice';
 
 const trendOption = {
   tooltip: { trigger: 'axis' },
@@ -54,6 +55,7 @@ const hotTopics = [
 
 const Analysis: React.FC = () => (
   <div>
+    <DemoDataNotice batch="G5/G6" />
     <h2 style={{ marginBottom: 16 }}>数据分析</h2>
     <Row gutter={12} style={{ marginBottom: 16 }}>
       <Col span={4}><Card size="small"><Statistic title="本月诉求总量" value={1247} prefix={<FileTextOutlined />} suffix={<span style={{fontSize:13,color:'#ff4d4f'}}><ArrowUpOutlined /> 12.3%</span>} /></Card></Col>

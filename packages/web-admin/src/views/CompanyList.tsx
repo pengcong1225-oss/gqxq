@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Table, Tag, Space, Input, Select, Button, Card, Row, Col, Statistic, Modal, Descriptions, Badge, Form, message, Popconfirm } from 'antd';
+import { Table, Tag, Space, Input, Select, Button, Card, Row, Col, Statistic, Modal, Descriptions, Badge, Form, Tooltip } from 'antd';
 import { SearchOutlined, TeamOutlined, SafetyCertificateOutlined, StarOutlined, PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import DemoDataNotice from '../components/DemoDataNotice';
 
 const qualifications = [
   { certName: '城市供水经营许可证', certNo: 'GS-2022-001', issueDate: '2022-06-15', expiryDate: '2027-06-14' },
@@ -41,19 +42,12 @@ const CompanyList: React.FC = () => {
     form.validateFields().then(vals => {
       if (editingCompany) {
         setCompanies(companies.map(c => c.key === editingCompany.key ? { ...c, ...vals } : c));
-        message.success('企业信息已更新');
       } else {
         const newKey = Math.max(...companies.map(c => c.key), 0) + 1;
         setCompanies([...companies, { key: newKey, ...vals, status: 1, annualScore: 80, certCount: 0 }]);
-        message.success('企业已添加');
       }
       setFormVisible(false); setEditingCompany(null); form.resetFields();
     });
-  };
-
-  const handleDelete = (record: any) => {
-    setCompanies(companies.filter(c => c.key !== record.key));
-    message.success('已删除企业：' + record.name);
   };
 
   const columns = [
@@ -70,14 +64,15 @@ const CompanyList: React.FC = () => {
     { title: '操作', width: 180, fixed: 'right' as const,
       render: (_: any, r: any) => <Space>
         <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => { setSelectedCompany(r); setDetailVisible(true); }}>详情</Button>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingCompany(r); form.setFieldsValue(r); setFormVisible(true); }}>编辑</Button>
+        <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="link" size="small" icon={<EditOutlined />} disabled>编辑</Button></span></Tooltip>
         <Button type="link" size="small" icon={<SafetyCertificateOutlined />} onClick={() => { setSelectedCompany(r); setCertVisible(true); }}>资质</Button>
-        <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r)}><Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
+        <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
       </Space> },
   ];
 
   return (
     <div>
+      <DemoDataNotice batch="G2 之后" />
       <h2 style={{ marginBottom: 16 }}>企业管理</h2>
       <Row gutter={12} style={{ marginBottom: 16 }}>
         <Col span={4}><Card size="small"><Statistic title="企业总数" value={companies.length} prefix={<TeamOutlined />} /></Card></Col>
@@ -91,7 +86,7 @@ const CompanyList: React.FC = () => {
         <Space style={{ marginBottom: 16 }} wrap>
           <Input placeholder="搜索企业名称" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 240 }} allowClear />
           <Select placeholder="业务类型" allowClear style={{ width: 120 }} onChange={setFilterType} options={[{value:'water',label:'供水'},{value:'gas',label:'燃气'},{value:'lpg',label:'液化气'}]} />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingCompany(null); form.resetFields(); setFormVisible(true); }}>新增企业</Button>
+          <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="primary" icon={<PlusOutlined />} disabled>新增企业</Button></span></Tooltip>
         </Space>
         <Table columns={columns} dataSource={filtered} size="middle" scroll={{ x: 1500 }} pagination={false} />
       </Card>
