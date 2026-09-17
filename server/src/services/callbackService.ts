@@ -13,6 +13,7 @@
 // 因此 dispatch_order.status='accepted' 不经由回调到达。这里不自行造事件类型。
 import { env } from '../config/env';
 import { withTransaction } from '../db/tx';
+import { generateCorrectionsInTx } from './correctionService';
 import { pool } from '../db/pool';
 import type { FieldError } from '../http/errors';
 import type { ApprovalConclusion, BusinessEventType, CallbackAcceptedResult } from '../types/api';
@@ -784,6 +785,22 @@ export async function handleCallback(input: CallbackRequestInput): Promise<Callb
           [plan.toReportingStatus, plan.toSupervisionStatus, now, ref.complaintId]
         );
         processedResult = 'applied';
+
+        // ---------- G5：最终审批通过后自动生成纠偏待办 ----------
+        // 放在**同一事务内**的理由：要么"审批通过 + 纠偏清单已生成"一起成立，
+        // 要么一起回滚、由对方按同一 eventId 重投。若放到事务外，
+        // 一旦生成失败的窗口期出事，就会留下"已批准却永远没有纠偏待办"的中间态——
+        // 那会让人以为督办链路走完了，实际上分析库永远不会入库。
+        // generateCorrectionsInTx 内部幂等：重复触发只返回既有清单，不会重复插入。
+        if (plan.toDispatchStatus === 'completed') {
+          await generateCorrectionsInTx(tx, {
+            complaintId: ref.complaintId,
+            assignmentId: ref.assignmentId,
+            operatorId: null,
+            operatorName: null,
+            now,
+          });
+        }
       }
       await updateEventProcessing(tx, eventId, processedResult, plan.reason ?? plan.summary);
 

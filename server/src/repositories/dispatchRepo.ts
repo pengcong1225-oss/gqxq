@@ -86,6 +86,7 @@ export function rowToDispatchListItem(r: ComplaintRow): DispatchOrderListItem {
     externalStatus: toStr(r.external_status),
     createdAt: toIso(r.created_at),
     updatedAt: toIso(r.updated_at),
+    archivedAt: toIso(r.archived_at),
   };
 }
 
