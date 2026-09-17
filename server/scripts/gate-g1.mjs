@@ -79,7 +79,9 @@ const RULES = [
     desc: '大写枚举字面量（G1 起枚举一律小写）' },
 ];
 
-const VIEW_WHITELIST = new Set(['ComplaintList', 'ComplaintDetail', 'Dashboard', 'Login']);
+// 已接入真实接口、因而不需要「演示数据」横幅的页面。
+// 加入白名单的前提是该页确实不再展示本地示例数据（G2 起 DispatchOrders 已改为真查 /dispatch/orders）。
+const VIEW_WHITELIST = new Set(['ComplaintList', 'ComplaintDetail', 'Dashboard', 'Login', 'DispatchOrders']);
 const DEMO_MARKER = 'DemoDataNotice';
 
 /**
@@ -136,8 +138,8 @@ const UPPER_ALLOW = new Set([
   'INVALID_STATE_TRANSITION', 'PAYLOAD_TOO_LARGE', 'INTERNAL_ERROR', 'NOT_IMPLEMENTED',
   // Node 进程信号
   'SIGINT', 'SIGTERM', 'SIGHUP', 'SIGKILL', 'SIGQUIT',
-  // 本仓库已知编号前缀（非枚举）
-  'GRID', 'CPL', 'ASGN', 'YJJB', 'SZRX', 'WLYQ', 'WG', 'JB', 'CS', 'SD', 'PJ',
+  // 本仓库已知编号前缀（非枚举）。AREQ 是 G2 交办幂等请求号（allocateBizNo 的 prefix 参数）。
+  'GRID', 'CPL', 'ASGN', 'YJJB', 'SZRX', 'WLYQ', 'WG', 'JB', 'CS', 'SD', 'PJ', 'AREQ',
   // 常见环境变量名（不是枚举）
   'PORT', 'HOST', 'HOSTNAME', 'TZ', 'PATH', 'HOME', 'USER', 'SHELL', 'LANG', 'LOG_LEVEL',
 ]);
