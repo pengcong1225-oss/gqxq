@@ -38,6 +38,23 @@ export const env = {
   jwtTtlSeconds: Number(opt('GQXQ_JWT_TTL_SECONDS', '28800')),
   bootstrapAdminUsername: opt('GQXQ_BOOTSTRAP_ADMIN_USERNAME', 'admin'),
   bootstrapAdminPassword: optRaw('GQXQ_BOOTSTRAP_ADMIN_PASSWORD'),
+  /** G3 出站：向 public-utility 创建填报任务时的凭证与地址 */
+  pu: {
+    baseUrl: opt('GQXQ_PU_BASE_URL', 'http://localhost:8080'),
+    appCode: opt('GQXQ_PU_APP_CODE', 'gqxq'),
+    keyId: optRaw('GQXQ_PU_KEY_ID'),
+    secret: optRaw('GQXQ_PU_SECRET'),
+    timeoutMs: Number(opt('GQXQ_PU_TIMEOUT_MS', '15000')),
+  },
+  /** G4 入站：校验 public-utility 回调签名与 ACK 响应体 */
+  callback: {
+    keyId: optRaw('GQXQ_CALLBACK_KEY_ID'),
+    keyVersion: opt('GQXQ_CALLBACK_KEY_VERSION', 'v1'),
+    secret: optRaw('GQXQ_CALLBACK_SECRET'),
+    /** NONE | BODY；BODY 时响应体必须逐字节等于 ackValue */
+    ackMode: opt('GQXQ_CALLBACK_ACK_MODE', 'NONE').toUpperCase(),
+    ackValue: optRaw('GQXQ_CALLBACK_ACK_VALUE'),
+  },
 } as const;
 
 if (missing.length > 0) {

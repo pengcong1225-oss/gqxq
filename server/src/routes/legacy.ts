@@ -10,9 +10,8 @@ function stub(batch: string, what: string): RequestHandler {
 
 export const legacyRouter = Router();
 
-// /dispatch/orders 的 GET/POST 已由 routes/dispatch.ts 实现（G2）
-legacyRouter.post('/dispatch/orders/:id/push', stub('G3', '推送交办'));
-legacyRouter.post('/dispatch/orders/:id/repush', stub('G3', '重推交办'));
+// /dispatch/orders 的 GET/POST 已由 routes/dispatch.ts 实现（G2）；
+// push/repush 由 G3 在同一 router 内实现（routes/dispatch.ts）。
 legacyRouter.get('/dispatch/orders/:id/sync', stub('G4', '拉取填报反馈'));
 legacyRouter.post('/dispatch/orders/:id/archive', stub('G5', '交办归档'));
 legacyRouter.post('/external/tianbao/status-callback', stub('G4', '填报系统状态回调'));

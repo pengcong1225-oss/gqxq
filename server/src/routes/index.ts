@@ -5,8 +5,11 @@ import { dashboardRouter } from './dashboard';
 import { dictsRouter } from './dicts';
 import { authRouter } from './auth';
 import { externalRouter } from './externalYijiejieban';
+import { publicUtilityCallbackRouter } from './publicUtilityCallback';
 import { legacyRouter } from './legacy';
 import { dispatchRouter } from './dispatch';
+import { dispatchPushRouter } from './dispatchPush';
+import { approvalTraceRouter } from './approvalTrace';
 import { complaintActionsRouter } from './complaintActions';
 import { enterprisesRouter } from './enterprises';
 import { requireAuth } from '../middleware/requireAuth';
@@ -19,6 +22,8 @@ export function buildRouter(): Router {
   root.use(healthRouter);
   root.use(authRouter);
   root.use('/external', externalRouter);
+  // 回调靠签名鉴权，必须挂在 requireAuth 之前
+  root.use('/external/public-utility', publicUtilityCallbackRouter);
 
   root.use(requireAuth);
   root.use(complaintsRouter);
@@ -27,6 +32,8 @@ export function buildRouter(): Router {
   root.use(dashboardRouter);
   root.use(dictsRouter);
   root.use(dispatchRouter);
+  root.use(dispatchPushRouter);
+  root.use(approvalTraceRouter);
   root.use(legacyRouter);
 
   return root;
