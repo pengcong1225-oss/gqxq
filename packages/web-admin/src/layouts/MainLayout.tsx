@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Button, Avatar, Dropdown, theme } from 'antd';
+import { useAppStore } from '../stores/appStore';
 import {
   DashboardOutlined, FileTextOutlined, BarChartOutlined, WarningOutlined,
   TeamOutlined, AppstoreOutlined, FireOutlined, PauseCircleOutlined,
@@ -33,6 +34,8 @@ const MainLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { token } = theme.useToken();
+  const logout = useAppStore((s) => s.logout);
+  const userInfo = useAppStore((s) => s.userInfo);
 
   const selectedKey = '/' + location.pathname.split('/').filter(Boolean).slice(0, 2).join('/');
 
@@ -58,10 +61,21 @@ const MainLayout: React.FC = () => {
           justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0', height: 64 }}>
           <Button type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)} style={{ fontSize: 16 }} />
-          <Dropdown menu={{ items: userMenuItems }}>
+          <Dropdown
+            menu={{
+              items: userMenuItems,
+              onClick: ({ key }) => {
+                if (key === 'logout') {
+                  logout();
+                  navigate('/login', { replace: true });
+                }
+              },
+            }}
+          >
             <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Avatar icon={<UserOutlined />} style={{ backgroundColor: token.colorPrimary }} />
-              <span>系统管理员</span>
+              {/* 显示真实登录用户，不再写死"系统管理员" */}
+              <span>{userInfo !== null && userInfo !== undefined ? userInfo.realName : '未登录'}</span>
             </div>
           </Dropdown>
         </Header>
