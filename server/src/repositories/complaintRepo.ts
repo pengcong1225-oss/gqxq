@@ -27,6 +27,18 @@ const NOT_DELETED = 'coalesce(c.deleted, 0) = 0';
 const DETAIL_EXTRA_COLUMNS = ', c.source_payload_hash, c.deleted';
 
 /**
+ * 进行中交办的关联（G2）。
+ * active_complaint_id 是生成列且带唯一键 uk_active_dispatch，因此 LEFT JOIN **至多命中一行**，
+ * 不会让列表行数翻倍、也不会让统计数字虚增。
+ * mapper 的 rowToListItem 会读 active_dispatch_id / active_dispatch_status 两个别名列。
+ * 未关联（该诉求无进行中交办）时为 NULL，表示"可以创建交办"。
+ */
+export const ACTIVE_DISPATCH_JOIN =
+  ' left join dispatch_order ad on ad.active_complaint_id = c.complaint_id';
+export const ACTIVE_DISPATCH_COLUMNS =
+  ', ad.assignment_id as active_dispatch_id, ad.status as active_dispatch_status';
+
+/**
  * 统一选列清单 = 冻结的共享列清单，不做任何替换。
  *
  * 历史：本文件曾把 c.correction_confidence 替换为 "null as correction_confidence"，
@@ -131,7 +143,10 @@ export async function findPage(
   const [rows] = await pool.query<Row[]>(
     'select ' +
       COMPLAINT_SELECT_COLUMNS +
-      ' from complaint c where ' +
+      ACTIVE_DISPATCH_COLUMNS +
+      ' from complaint c' +
+      ACTIVE_DISPATCH_JOIN +
+      ' where ' +
       where.text +
       ' order by ' +
       orderBy +
@@ -174,7 +189,15 @@ export async function findByIdOrNo(idOrNo: string): Promise<ComplaintRow | null>
   const where = numeric ? 'c.id = ?' : '(c.complaint_id = ? or c.complaint_no = ?)';
   const params: unknown[] = numeric ? [Number(idOrNo)] : [idOrNo, idOrNo];
   const [rows] = await pool.query<Row[]>(
-    'select ' + COMPLAINT_SELECT_COLUMNS + DETAIL_EXTRA_COLUMNS + ' from complaint c where ' + where + ' limit 1',
+    'select ' +
+      COMPLAINT_SELECT_COLUMNS +
+      DETAIL_EXTRA_COLUMNS +
+      ACTIVE_DISPATCH_COLUMNS +
+      ' from complaint c' +
+      ACTIVE_DISPATCH_JOIN +
+      ' where ' +
+      where +
+      ' limit 1',
     params
   );
   return (rows[0] as unknown as ComplaintRow | undefined) ?? null;

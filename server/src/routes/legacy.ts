@@ -10,8 +10,7 @@ function stub(batch: string, what: string): RequestHandler {
 
 export const legacyRouter = Router();
 
-legacyRouter.get('/dispatch/orders', stub('G2', '敏感交办列表'));
-legacyRouter.post('/dispatch/orders', stub('G2', '新建交办'));
+// /dispatch/orders 的 GET/POST 已由 routes/dispatch.ts 实现（G2）
 legacyRouter.post('/dispatch/orders/:id/push', stub('G3', '推送交办'));
 legacyRouter.post('/dispatch/orders/:id/repush', stub('G3', '重推交办'));
 legacyRouter.get('/dispatch/orders/:id/sync', stub('G4', '拉取填报反馈'));

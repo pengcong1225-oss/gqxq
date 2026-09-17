@@ -48,6 +48,9 @@ export const DICT = {
     approved: '最终同意',
     rejected: '审批不同意',
   },
+  /** 交办类型与触发类型：此前只有码没有中文名，前端只能显示 auto/sensitive_word */
+  dispatch_type: { auto: '自动交办', manual: '人工交办' },
+  trigger_type: { sensitive_word: '敏感词命中', manual_flag: '人工标记' },
   intake_result: {
     created: '已接收',
     duplicate_same: '重复投递',

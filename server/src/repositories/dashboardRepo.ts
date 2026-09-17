@@ -17,7 +17,7 @@ import type { DistributionItem, RegionRankItem } from '../types/api';
 import { labelOf } from '../domain/enums';
 import { shanghaiDate } from '../db/sequence';
 import { toNum, type ComplaintRow } from './complaintMapper';
-import { COMPLAINT_SELECT_COLUMNS } from './complaintRepo';
+import { ACTIVE_DISPATCH_COLUMNS, ACTIVE_DISPATCH_JOIN, COMPLAINT_SELECT_COLUMNS } from './complaintRepo';
 
 const NOT_DELETED = 'coalesce(c.deleted, 0) = 0';
 
@@ -147,7 +147,10 @@ export async function findLatest(limit: number): Promise<ComplaintRow[]> {
   const [rows] = await pool.query<Row[]>(
     'select ' +
       COMPLAINT_SELECT_COLUMNS +
-      ' from complaint c where ' +
+      ACTIVE_DISPATCH_COLUMNS +
+      ' from complaint c' +
+      ACTIVE_DISPATCH_JOIN +
+      ' where ' +
       NOT_DELETED +
       ' order by c.received_at desc, c.id desc limit ?',
     [limit]

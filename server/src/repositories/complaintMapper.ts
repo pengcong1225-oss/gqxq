@@ -202,6 +202,12 @@ export function rowToListItem(r: ComplaintRow): ComplaintListItem {
     reportingStatusCode,
     reportingStatusName: labelOf('reporting_status', reportingStatusCode),
     closedInSystem: toBool(r.closed_in_system),
+    // LEFT JOIN dispatch_order 出来的别名列；未 join 或该诉求无进行中交办时为 null
+    activeDispatchId: toStr(r.active_dispatch_id),
+    activeDispatchStatusCode: toStr(r.active_dispatch_status),
+    activeDispatchStatusName: r.active_dispatch_status
+      ? labelOf('supervision_status', String(r.active_dispatch_status))
+      : null,
     legacyStatus: String(r.status ?? ''),
     sourceReportedAt: toIso(r.source_reported_at),
     receivedAt: toIso(r.received_at),

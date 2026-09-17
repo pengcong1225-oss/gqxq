@@ -18,6 +18,7 @@ import { canonicalJson } from '../repositories/canonicalJson';
 import { insertSourceLog, type Queryable, type IntakeResultCode } from '../repositories/complaintSourceLogRepo';
 import { insertFieldVersions, toFieldText, type FieldVersionEntry } from '../repositories/complaintFieldVersionRepo';
 import { insertAudit } from '../repositories/auditLogRepo';
+import { recordSensitiveHits } from '../repositories/sensitiveHitRepo';
 import { buildRuleText, classify, CLASSIFY_RULE_VERSION, type Classification } from './rules/classify';
 import { detectSensitive, type SensitiveResult } from './rules/sensitive';
 import type { IntakeResponse } from '../types/api';
@@ -265,6 +266,11 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
     warnings.push('报文包含受保护字段，新建时不写入：' + attempted.map((a) => a.column).join(', '));
   }
 
+  // G2 业务规则：敏感命中但责任单位为空 -> pending_match（留在总账待匹配，不展示为已交办）。
+  // 入站报文的 companyName 只是来源提示，不写 enterprise_code（那是人工受保护字段，见 PROTECTED_REQUEST_KEYS），
+  // 因此新建诉求的责任单位必为空：敏感命中即进入待匹配，否则就是未交办。
+  const initialSupervisionStatus = sensitive.isSensitive ? 'pending_match' : 'none';
+
   const values: Record<string, unknown> = {
     complaint_id: complaintId,
     complaint_no: complaintNo,
@@ -291,7 +297,7 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
     source_updated_at: null,
     received_at: receivedAt,
     source_event_status: 'unknown',
-    supervision_status: 'none',
+    supervision_status: initialSupervisionStatus,
     reporting_status: 'not_started',
     closed_in_system: 0,
     analysis_included: 0,
@@ -334,6 +340,20 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
     requestId: cmd.requestId,
     receivedAt,
   });
+
+  // G2：把本次命中逐条落 sensitive_hit（证据粒度到字段；词表为空时不写空行）。
+  // 不改响应 warnings —— 那是异常上报通道，正常记录证据不该污染它。
+  await recordSensitiveHits(tx, {
+    complaintId,
+    ruleVersion,
+    matchedAt: receivedAt,
+    fields: [
+      { field: 'title', text: cmd.title },
+      { field: 'content', text: cmd.content },
+      { field: 'address', text: cmd.address },
+    ],
+  });
+
   await insertAudit(tx, {
     userId: null,
     appCode: GQXQ_APP_CODE,
@@ -504,6 +524,21 @@ async function applyRedelivery(
   }
 
   const insertedVersions = await insertFieldVersions(tx, fieldVersions);
+
+  // G2：仅当关键词集合确实变化时补记命中证据。
+  // sensitive_hit 没有唯一键，无关变化也写会让追加表被重复行淹没。
+  if (changedColumns.includes('sensitive_keywords')) {
+    await recordSensitiveHits(tx, {
+      complaintId,
+      ruleVersion,
+      matchedAt: receivedAt,
+      fields: [
+        { field: 'title', text: cmd.title },
+        { field: 'content', text: cmd.content },
+        { field: 'address', text: cmd.address },
+      ],
+    });
+  }
 
   const message = buildMessage([
     changedColumns.length > 0 ? '变化字段：' + changedColumns.join(', ') : '白名单字段无实际变化',

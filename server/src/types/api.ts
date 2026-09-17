@@ -54,6 +54,10 @@ export interface ComplaintListItem {
   reportingStatusName: string;
 
   closedInSystem: boolean;
+  /** 进行中的交办（数据库唯一约束保证同诉求最多一条）；为 null 表示可创建交办 */
+  activeDispatchId: string | null;
+  activeDispatchStatusCode: string | null;
+  activeDispatchStatusName: string | null;
   legacyStatus: string;
 
   sourceReportedAt: string | null;
@@ -205,3 +209,136 @@ export interface IntakeResponse {
   changedFields: string[];
   warnings: string[];
 }
+
+/* ==================== G2 分配与分流 ==================== */
+
+/** 交办列表项 */
+/* ==================== 企业主数据（G2 补：总账分配与交办需要从真实列表选，而不是手抄编码） ==================== */
+
+export interface EnterpriseListItem {
+  id: number;
+  enterpriseCode: string;
+  enterpriseName: string;
+  businessType: string;
+  businessTypeName: string;
+  uscc: string | null;
+  contactPerson: string | null;
+  contactPhone: string | null;
+  serviceArea: string | null;
+  status: string;
+}
+
+export interface EnterpriseDetail extends EnterpriseListItem {
+  legalPerson: string | null;
+  annualScore: number | null;
+}
+
+export interface EnterpriseFilter {
+  keyword?: string;
+  businessType?: string;
+  status?: string;
+}
+
+export interface DispatchOrderListItem {
+  id: number;
+  assignmentId: string;
+  orderNo: string;
+  complaintId: string;
+  complaintNo: string | null;
+  complaintTitle: string | null;
+  dispatchType: string | null;
+  dispatchTypeName: string;
+  triggerType: string | null;
+  triggerTypeName: string;
+
+  sensitiveWords: string[];
+  targetEnterpriseCode: string | null;
+  targetEnterpriseName: string | null;
+  status: string;
+  statusName: string;
+  reason: string | null;
+  requirement: string | null;
+  deadline: string | null;
+  requestId: string | null;
+  reportingTaskId: string | null;
+  syncStatus: string | null;
+  externalStatus: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface DispatchOrderDetail extends DispatchOrderListItem {
+  pushedAt: string | null;
+  completedAt: string | null;
+  archivedAt: string | null;
+  resultContent: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  templateCode: string | null;
+  templateVersion: number | null;
+  approvalDefinitionCode: string | null;
+  approvalDefinitionVersion: number | null;
+}
+
+export interface DispatchOrderFilter {
+  keyword?: string;
+  status?: string[];
+  complaintId?: string;
+  targetEnterpriseCode?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+/** 创建交办：幂等。已有有效交办时 created=false 且返回既有记录 */
+export interface CreateDispatchRequest {
+  complaintId: string;
+  targetEnterpriseCode: string;
+  targetEnterpriseName: string;
+  reason?: string;
+  requirement?: string;
+  /** 带时区偏移的 ISO-8601 */
+  deadline?: string;
+  dispatchType?: 'auto' | 'manual';
+  triggerType?: 'sensitive_word' | 'manual_flag';
+}
+
+export interface CreateDispatchResult {
+  created: boolean;
+  order: DispatchOrderDetail;
+}
+
+/** 匹配/调整责任单位 */
+export interface AssignEnterpriseRequest {
+  enterpriseCode: string;
+  enterpriseName: string;
+  reason?: string;
+}
+
+export interface AssignEnterpriseResult {
+  complaintId: string;
+  assignmentLogId: string;
+  beforeEnterpriseCode: string | null;
+  beforeEnterpriseName: string | null;
+  afterEnterpriseCode: string | null;
+  afterEnterpriseName: string | null;
+  supervisionStatus: string;
+}
+
+/** 归库：无需交办 / 误报归库 */
+export type DispositionKind = 'no_dispatch_needed' | 'false_positive';
+
+export interface DispositionRequest {
+  disposition: DispositionKind;
+  reason?: string;
+}
+
+export interface DispositionResult {
+  complaintId: string;
+  dispositionId: string;
+  disposition: DispositionKind;
+  isSensitive: boolean;
+  supervisionStatus: string;
+}
+

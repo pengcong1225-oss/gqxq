@@ -6,6 +6,9 @@ import { dictsRouter } from './dicts';
 import { authRouter } from './auth';
 import { externalRouter } from './externalYijiejieban';
 import { legacyRouter } from './legacy';
+import { dispatchRouter } from './dispatch';
+import { complaintActionsRouter } from './complaintActions';
+import { enterprisesRouter } from './enterprises';
 import { requireAuth } from '../middleware/requireAuth';
 
 // 路由表由主线独占维护；各并行线只填充自己的 router 文件。
@@ -19,8 +22,11 @@ export function buildRouter(): Router {
 
   root.use(requireAuth);
   root.use(complaintsRouter);
+  root.use(complaintActionsRouter);
+  root.use(enterprisesRouter);
   root.use(dashboardRouter);
   root.use(dictsRouter);
+  root.use(dispatchRouter);
   root.use(legacyRouter);
 
   return root;
