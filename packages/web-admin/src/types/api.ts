@@ -6,7 +6,7 @@
  *  2. docs/2026-09-17-gqxq_service现状核对与G1迁移设计.md 第 3 / 5 节（最新修订）
  *
  * 关键约定（以第 2 份文档为准）：
- *  - 枚举一律【小写】：water/gas/lpg、complaint/consult/suggest/report、normal/urgent/critical…
+ *  - 枚举一律【小写】：water/gas/lpg、complaint/consult/suggest/report/help/other/praise、normal/urgent/critical…
  *  - 对外主键用 varchar 业务键 complaintId（形如 CPL202606240001），不是数值 id；
  *    列表项同时保留数值 id 与 business key complaintId。
  *  - 诉求编号为 CS + yyyyMMdd + 4 位（如 CS202606240001）。
@@ -61,7 +61,14 @@ export interface Paged<T> {
 
 export type BusinessType = 'water' | 'gas' | 'lpg';
 
-export type ComplaintType = 'complaint' | 'consult' | 'suggest' | 'report';
+export type ComplaintType =
+  | 'complaint'
+  | 'consult'
+  | 'suggest'
+  | 'report'
+  | 'help'
+  | 'other'
+  | 'praise';
 
 export type UrgencyLevel = 'normal' | 'urgent' | 'critical';
 

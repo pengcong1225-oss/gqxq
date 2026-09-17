@@ -5,11 +5,16 @@
 
 export const DICT = {
   business_type: { water: '供水', gas: '燃气', lpg: '液化气' },
+  // help/other/praise 由 M10 补入：真实来源（宜接就办导出）确有「求助类/其他类/表扬类」，
+  // 如实落库，不把它们硬塞进 suggest 或 report。
   complaint_type: {
     complaint: '投诉',
     consult: '咨询',
     suggest: '建议',
     report: '举报',
+    help: '求助',
+    other: '其他',
+    praise: '表扬',
   },
   urgency_level: { normal: '一般', urgent: '紧急', critical: '特急' },
   correction_status: {

@@ -9,6 +9,9 @@ const dictData: Record<string, { key: number; label: string; value: string; sort
     { key: 2, label: '咨询', value: 'consult', sort: 2, status: 1 },
     { key: 3, label: '建议', value: 'suggest', sort: 3, status: 1 },
     { key: 4, label: '举报', value: 'report', sort: 4, status: 1 },
+    { key: 5, label: '求助', value: 'help', sort: 5, status: 1 },
+    { key: 6, label: '其他', value: 'other', sort: 6, status: 1 },
+    { key: 7, label: '表扬', value: 'praise', sort: 7, status: 1 },
   ],
   business_type: [
     { key: 1, label: '供水', value: 'water', sort: 1, status: 1 },
