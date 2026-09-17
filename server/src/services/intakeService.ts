@@ -648,6 +648,9 @@ export const KNOWN_REQUEST_KEYS = [
   'longitude',
   'latitude',
   'createdAt',
+  // 来源原值残留：不映射任何列，但随整包原样落 complaint.source_payload。
+  // 登记在此是为了让 complaint_source_log 不再把它记成「未知字段已忽略」——它确实被存下来了。
+  'metadata',
 ] as const;
 
 export type { IntakeResultCode, Classification, SensitiveResult, Queryable };

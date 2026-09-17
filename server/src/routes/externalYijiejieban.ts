@@ -43,6 +43,9 @@ const BodySchema = z.object({
   longitude: z.number().finite().nullish(),
   latitude: z.number().finite().nullish(),
   createdAt: z.string().max(64).nullish(),
+  // 来源原值残留（导出表里的「督办状态」「诉求类型」原文、二级单位、处理结果等）：
+  // 平台没有对应列，但**不丢**——随整包落 complaint.source_payload，可追溯、可回放。
+  metadata: z.record(z.unknown()).nullish(),
 });
 
 /** 宜昌辖区大致范围；超范围**不拒单**，置 null 并写告警 */
