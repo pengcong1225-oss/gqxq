@@ -1,0 +1,12 @@
+{
+  "name": "gqxq",
+  "private": true,
+  "version": "1.0.0",
+  "description": "宜昌市城镇供水燃气行业诉求分析平台（原地升级：同一仓库、同一数据库，非新建工程）",
+  "scripts": {
+    "typecheck": "npm --prefix server run typecheck && npm --prefix packages/web-admin run typecheck",
+    "gate": "node server/scripts/gate-g1.mjs",
+    "verify": "npm run typecheck && npm run gate",
+    "migrate:latest": "npm --prefix server run migrate:latest"
+  }
+}

@@ -81,7 +81,18 @@ const RULES = [
 
 // 已接入真实接口、因而不需要「演示数据」横幅的页面。
 // 加入白名单的前提是该页确实不再展示本地示例数据（G2 起 DispatchOrders 已改为真查 /dispatch/orders）。
-const VIEW_WHITELIST = new Set(['ComplaintList', 'ComplaintDetail', 'Dashboard', 'Login', 'DispatchOrders']);
+const VIEW_WHITELIST = new Set([
+  'ComplaintList',
+  'ComplaintDetail',
+  'Dashboard',
+  'Login',
+  'DispatchOrders',
+  // G5：以下四页已改为真实接口驱动，并移除了「演示数据」横幅
+  'AddressCorrection',
+  'DispatchArchive',
+  'ReportView',
+  'Analysis',
+]);
 const DEMO_MARKER = 'DemoDataNotice';
 
 /**
