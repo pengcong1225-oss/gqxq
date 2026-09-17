@@ -1,21 +1,27 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Alert,
   Button,
   Card,
   Col,
+  DatePicker,
   Descriptions,
   Divider,
   Empty,
+  Form,
+  Input,
+  Modal,
   Result,
   Row,
+  Select,
   Skeleton,
   Space,
   Tag,
   Timeline,
   Tooltip,
   Typography,
+  message,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -25,10 +31,15 @@ import {
   SendOutlined,
 } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
+import type { Dayjs } from 'dayjs';
 import { getComplaint, getComplaintTimeline } from '../api/complaints';
+import { createDispatch, getDispatchOrder } from '../api/dispatch';
+import { listEnterprises } from '../api/enterprises';
 import type {
   ApiError,
   ComplaintDetail as ComplaintDetailModel,
+  DispatchOrderDetail,
+  EnterpriseListItem,
   TimelineCategory,
   TimelineItem,
 } from '../types/api';
@@ -100,6 +111,128 @@ const ComplaintDetail: React.FC = () => {
   const [notFound, setNotFound] = useState(false);
   const [timelineError, setTimelineError] = useState<string | null>(null);
 
+  /* ---------- G2：该诉求的真实交办（进行中的那条） ---------- */
+  const [dispatch, setDispatch] = useState<DispatchOrderDetail | null>(null);
+  const [dispatchLoading, setDispatchLoading] = useState(false);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [dispatchOpen, setDispatchOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [dispatchForm] = Form.useForm<{
+    targetEnterpriseCode: string;
+    targetEnterpriseName: string;
+    deadline?: Dayjs;
+    requirement?: string;
+    reason?: string;
+  }>();
+
+  /* ---------- 企业主数据：追加交办时的企业选择 ---------- */
+  // 清单来自服务端 GET /enterprises，不做本地兜底：手抄编码与登记值不一致会导致交办匹配不到同一主体。
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
+  const [enterpriseLoading, setEnterpriseLoading] = useState(false);
+  const [enterpriseError, setEnterpriseError] = useState<string | null>(null);
+  const enterpriseSearchTimer = useRef<number | null>(null);
+  const enterpriseFetchSeq = useRef(0);
+
+  const fetchEnterprises = useCallback(async (keyword?: string) => {
+    const seq = ++enterpriseFetchSeq.current;
+    setEnterpriseLoading(true);
+    try {
+      const res = await listEnterprises({
+        keyword: keyword && keyword.trim() !== '' ? keyword.trim() : undefined,
+        size: 50,
+      });
+      if (seq !== enterpriseFetchSeq.current) return; // 丢弃过期响应
+      setEnterpriseOptions(res.content);
+      setEnterpriseError(null);
+    } catch (err) {
+      if (seq !== enterpriseFetchSeq.current) return;
+      setEnterpriseOptions([]); // 失败就是空，绝不回落到本地硬编码企业清单
+      setEnterpriseError((err as ApiError)?.message ?? '企业列表加载失败');
+    } finally {
+      if (seq === enterpriseFetchSeq.current) setEnterpriseLoading(false);
+    }
+  }, []);
+
+  /** 输入即远程搜索，300ms 防抖 */
+  const handleEnterpriseSearch = useCallback(
+    (keyword: string) => {
+      if (enterpriseSearchTimer.current !== null) window.clearTimeout(enterpriseSearchTimer.current);
+      enterpriseSearchTimer.current = window.setTimeout(() => {
+        void fetchEnterprises(keyword);
+      }, 300);
+    },
+    [fetchEnterprises]
+  );
+
+  useEffect(
+    () => () => {
+      if (enterpriseSearchTimer.current !== null) window.clearTimeout(enterpriseSearchTimer.current);
+    },
+    []
+  );
+
+  const clearEnterpriseError = useCallback(() => setEnterpriseError(null), []);
+
+  const toEnterpriseOptions = useCallback(
+    (list: EnterpriseListItem[]) =>
+      list.map((e) => ({
+        value: e.enterpriseCode,
+        label:
+          e.enterpriseName +
+          '（' + e.enterpriseCode + '）' +
+          (e.businessTypeName ? ' · ' + e.businessTypeName : ''),
+      })),
+    []
+  );
+
+  /** 服务端结果里若没有该诉求已登记的企业，补在首位以便回显（值来自该诉求自身，不是前端常量） */
+  const withCurrentEnterprise = useCallback(
+    (list: EnterpriseListItem[], code?: string | null, name?: string | null): EnterpriseListItem[] => {
+      if (!code || list.some((e) => e.enterpriseCode === code)) return list;
+      const current: EnterpriseListItem = {
+        id: -1,
+        enterpriseCode: code,
+        enterpriseName: name ?? code,
+        businessType: '',
+        businessTypeName: '',
+        uscc: null,
+        contactPerson: null,
+        contactPhone: null,
+        serviceArea: null,
+        status: 'enabled',
+      };
+      return [current, ...list];
+    },
+    []
+  );
+
+  const loadDispatch = useCallback(async (assignmentId: string) => {
+    setDispatchLoading(true);
+    setDispatchError(null);
+    try {
+      const d = await getDispatchOrder(assignmentId);
+      setDispatch(d);
+    } catch (err) {
+      setDispatchError((err as ApiError)?.message ?? '交办信息加载失败');
+    } finally {
+      setDispatchLoading(false);
+    }
+  }, []);
+
+  /**
+   * 交办信息单独取、单独失败：交办接口不可用不应把整页打成错误态，
+   * 但必须在该卡片内显式告知并给重试，绝不编造交办单号或截止时间。
+   */
+  useEffect(() => {
+    const id = detail?.activeDispatchId;
+    if (id) {
+      void loadDispatch(id);
+    } else {
+      setDispatch(null);
+      setDispatchError(null);
+    }
+  }, [detail?.activeDispatchId, loadDispatch]);
+
   const load = useCallback(async () => {
     if (!id) {
       setNotFound(true);
@@ -137,6 +270,49 @@ const ComplaintDetail: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const handleCreateDispatch = useCallback(async () => {
+    if (!detail) return;
+    let values: {
+      targetEnterpriseCode: string;
+      targetEnterpriseName: string;
+      deadline?: Dayjs;
+      requirement?: string;
+      reason?: string;
+    };
+    try {
+      values = await dispatchForm.validateFields();
+    } catch {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await createDispatch({
+        complaintId: detail.complaintId,
+        targetEnterpriseCode: values.targetEnterpriseCode.trim(),
+        targetEnterpriseName: values.targetEnterpriseName.trim(),
+        requirement: values.requirement?.trim() || undefined,
+        reason: values.reason?.trim() || undefined,
+        // 契约要求带时区偏移的 ISO-8601，例如 2026-09-20T18:00:00+08:00
+        deadline: values.deadline ? values.deadline.format('YYYY-MM-DDTHH:mm:ssZ') : undefined,
+        dispatchType: 'manual',
+        triggerType: 'manual_flag',
+      });
+      if (!res.created) {
+        // 并发下已有交办：后端返回既有记录，不再建第二条
+        message.warning('该诉求已有交办（' + res.order.orderNo + '），未创建新交办');
+      } else {
+        message.success('已创建交办 ' + res.order.orderNo);
+      }
+      setDispatchOpen(false);
+      dispatchForm.resetFields();
+      void load();
+    } catch (err) {
+      message.error('创建交办失败：' + ((err as ApiError)?.message ?? '未知错误'));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [detail, dispatchForm, load]);
 
   /* ---------- 时效统计：只算有真实数据支撑的项 ---------- */
   const timing = useMemo(() => {
@@ -235,6 +411,9 @@ const ComplaintDetail: React.FC = () => {
       </div>
     );
   }
+
+  // 进行中的交办（唯一；为 null 表示尚无交办，可发起）
+  const activeDispatchId = detail.activeDispatchId;
 
   return (
     <div>
@@ -411,8 +590,53 @@ const ComplaintDetail: React.FC = () => {
                 {detail.analysisIncluded ? '已入库' : '未入库'}
               </Descriptions.Item>
             </Descriptions>
+
+            <Divider orientation="left" plain>
+              交办信息
+            </Divider>
+
+            {activeDispatchId === null ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该诉求尚无交办记录" />
+            ) : dispatchLoading ? (
+              <Typography.Text type="secondary">交办信息加载中…</Typography.Text>
+            ) : dispatchError ? (
+              <Alert
+                type="error"
+                showIcon
+                message="交办信息加载失败"
+                description={dispatchError}
+                action={
+                  <Button size="small" onClick={() => void loadDispatch(activeDispatchId)}>
+                    重试
+                  </Button>
+                }
+              />
+            ) : dispatch ? (
+              <Descriptions size="small" column={1} bordered>
+                <Descriptions.Item label="交办单号">{dispatch.orderNo}</Descriptions.Item>
+                <Descriptions.Item label="交办状态">
+                  <Tag color={SUPERVISION_COLOR[dispatch.status] ?? 'default'}>
+                    {dispatch.statusName}
+                  </Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="目标企业">
+                  {dispatch.targetEnterpriseName ?? '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="截止时间">{fmtDateTime(dispatch.deadline)}</Descriptions.Item>
+                <Descriptions.Item label="交办要求">{dispatch.requirement ?? '—'}</Descriptions.Item>
+                <Descriptions.Item label="请求号">{dispatch.requestId ?? '—'}</Descriptions.Item>
+                <Descriptions.Item label="填报任务号">
+                  {dispatch.reportingTaskId ?? (
+                    <Tooltip title="填报任务号由批次 G3 推送成功后回填">
+                      <span>—</span>
+                    </Tooltip>
+                  )}
+                </Descriptions.Item>
+              </Descriptions>
+            ) : null}
+
             <Divider />
-            <Space>
+            <Space wrap>
               <Tooltip title="本系统办结属批次 G5，未实现">
                 <span>
                   <Button type="primary" size="small" icon={<CheckCircleOutlined />} disabled>
@@ -420,13 +644,42 @@ const ComplaintDetail: React.FC = () => {
                   </Button>
                 </span>
               </Tooltip>
-              <Tooltip title="请在诉求总账创建交办（批次 G2）">
-                <span>
-                  <Button size="small" disabled>
-                    追加交办
-                  </Button>
-                </span>
-              </Tooltip>
+              {activeDispatchId !== null ? (
+                <Tooltip title="已有进行中交办；同一诉求同一轮只能有一条有效交办">
+                  <span>
+                    <Button size="small" disabled>
+                      追加交办
+                    </Button>
+                  </span>
+                </Tooltip>
+              ) : (
+                <Button
+                  size="small"
+                  onClick={() => {
+                    dispatchForm.resetFields();
+                    dispatchForm.setFieldsValue({
+                      targetEnterpriseCode: detail.enterpriseCode ?? '',
+                      targetEnterpriseName: detail.enterpriseName ?? '',
+                    });
+                    clearEnterpriseError();
+                    void fetchEnterprises();
+                    setDispatchOpen(true);
+                  }}
+                >
+                  追加交办
+                </Button>
+              )}
+              {activeDispatchId !== null && (
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() =>
+                    navigate('/dispatch?assignmentId=' + encodeURIComponent(activeDispatchId))
+                  }
+                >
+                  在敏感交办中查看
+                </Button>
+              )}
             </Space>
           </Card>
 
@@ -488,6 +741,92 @@ const ComplaintDetail: React.FC = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* ---------- G2：追加交办（该诉求尚无进行中交办时才可发起） ---------- */}
+      <Modal
+        title={'追加交办 - ' + detail.complaintNo}
+        open={dispatchOpen}
+        onCancel={() => {
+          setDispatchOpen(false);
+          dispatchForm.resetFields();
+        }}
+        onOk={() => void handleCreateDispatch()}
+        confirmLoading={submitting}
+        okText="创建交办"
+        width={560}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="同一诉求同一轮只能有一条有效交办"
+          description="该约束由数据库唯一键保证，不依赖前端判断。若并发下已存在交办，后端返回 created=false，此处会提示「该诉求已有交办」并刷新，不会产生第二条。"
+        />
+        {enterpriseError && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={'企业列表加载失败：' + enterpriseError}
+            description="下拉将为空，不会被本地示例企业替代。"
+            action={
+              <Button size="small" onClick={() => void fetchEnterprises()}>
+                重试
+              </Button>
+            }
+          />
+        )}
+        <Form form={dispatchForm} layout="vertical">
+          <Form.Item
+            name="targetEnterpriseCode"
+            label="交办企业"
+            rules={[{ required: true, message: '请选择交办企业' }]}
+          >
+            <Select
+              showSearch
+              allowClear
+              filterOption={false}
+              loading={enterpriseLoading}
+              placeholder="输入企业名称或编码搜索"
+              onSearch={handleEnterpriseSearch}
+              options={toEnterpriseOptions(
+                withCurrentEnterprise(
+                  enterpriseOptions,
+                  detail.enterpriseCode,
+                  detail.enterpriseName
+                )
+              )}
+              onChange={(code: string | undefined) => {
+                const list = withCurrentEnterprise(
+                  enterpriseOptions,
+                  detail.enterpriseCode,
+                  detail.enterpriseName
+                );
+                const hit = list.find((e) => e.enterpriseCode === code);
+                dispatchForm.setFieldsValue({
+                  targetEnterpriseName: hit ? hit.enterpriseName : undefined,
+                });
+              }}
+            />
+          </Form.Item>
+          <Form.Item
+            name="targetEnterpriseName"
+            label="交办企业名称（由所选企业自动带出）"
+            rules={[{ required: true, message: '请先选择交办企业' }]}
+          >
+            <Input disabled placeholder="选择交办企业后自动带出" />
+          </Form.Item>
+          <Form.Item name="deadline" label="截止时间">
+            <DatePicker showTime style={{ width: '100%' }} placeholder="可选" />
+          </Form.Item>
+          <Form.Item name="requirement" label="交办要求">
+            <Input.TextArea rows={2} placeholder="可选，例如：请核实情况并填报企业处置结果。" />
+          </Form.Item>
+          <Form.Item name="reason" label="交办原因">
+            <Input.TextArea rows={2} placeholder="可选" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

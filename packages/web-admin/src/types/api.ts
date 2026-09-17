@@ -155,6 +155,10 @@ export interface ComplaintListItem {
   reportingStatusName: string;
 
   closedInSystem: boolean;
+  /** 进行中的交办（数据库唯一约束保证同诉求最多一条）；为 null 表示可创建交办 */
+  activeDispatchId: string | null;
+  activeDispatchStatusCode: string | null;
+  activeDispatchStatusName: string | null;
   /** 兼容列：平台侧仍在读写 complaint.status，G1 起由 gqxq 服务按派生规则维护 */
   legacyStatus: string;
 
@@ -353,6 +357,142 @@ export interface DictItem {
 }
 
 /** 服务端已支持（未知名 404）；如后端新增字典类型，在此扩展即可 */
+
+/* ==================== G2 分配与分流（与 server/src/types/api.ts 对齐） ==================== */
+
+export type DispatchOrderStatus =
+  | 'pending' | 'pushed' | 'accepted' | 'processing' | 'returned'
+  | 'completed' | 'rejected' | 'archived' | 'cancelled';
+
+/* ==================== 企业主数据（与 server/src/types/api.ts 对齐） ==================== */
+
+export interface EnterpriseListItem {
+  id: number;
+  enterpriseCode: string;
+  enterpriseName: string;
+  businessType: string;
+  businessTypeName: string;
+  uscc: string | null;
+  contactPerson: string | null;
+  contactPhone: string | null;
+  serviceArea: string | null;
+  status: string;
+}
+
+export interface EnterpriseDetail extends EnterpriseListItem {
+  legalPerson: string | null;
+  annualScore: number | null;
+}
+
+export interface EnterpriseParams {
+  page?: number;
+  size?: number;
+  keyword?: string;
+  businessType?: Csv<BusinessType>;
+  status?: string;
+}
+
+export interface DispatchOrderListItem {
+  id: number;
+  assignmentId: string;
+  orderNo: string;
+  complaintId: string;
+  complaintNo: string | null;
+  complaintTitle: string | null;
+  dispatchType: string | null;
+  dispatchTypeName: string;
+  triggerType: string | null;
+  triggerTypeName: string;
+
+  sensitiveWords: string[];
+  targetEnterpriseCode: string | null;
+  targetEnterpriseName: string | null;
+  status: string;
+  statusName: string;
+  reason: string | null;
+  requirement: string | null;
+  deadline: string | null;
+  requestId: string | null;
+  reportingTaskId: string | null;
+  syncStatus: string | null;
+  externalStatus: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface DispatchOrderDetail extends DispatchOrderListItem {
+  pushedAt: string | null;
+  completedAt: string | null;
+  archivedAt: string | null;
+  resultContent: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  templateCode: string | null;
+  templateVersion: number | null;
+  approvalDefinitionCode: string | null;
+  approvalDefinitionVersion: number | null;
+}
+
+export interface DispatchOrderParams {
+  page?: number;
+  size?: number;
+  keyword?: string;
+  status?: Csv<DispatchOrderStatus>;
+  complaintId?: string;
+  targetEnterpriseCode?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface CreateDispatchRequest {
+  complaintId: string;
+  targetEnterpriseCode: string;
+  targetEnterpriseName: string;
+  reason?: string;
+  requirement?: string;
+  deadline?: string;
+  dispatchType?: 'auto' | 'manual';
+  triggerType?: 'sensitive_word' | 'manual_flag';
+}
+
+export interface CreateDispatchResult {
+  created: boolean;
+  order: DispatchOrderDetail;
+}
+
+export interface AssignEnterpriseRequest {
+  enterpriseCode: string;
+  enterpriseName: string;
+  reason?: string;
+}
+
+export interface AssignEnterpriseResult {
+  complaintId: string;
+  assignmentLogId: string;
+  beforeEnterpriseCode: string | null;
+  beforeEnterpriseName: string | null;
+  afterEnterpriseCode: string | null;
+  afterEnterpriseName: string | null;
+  supervisionStatus: string;
+}
+
+export type DispositionKind = 'no_dispatch_needed' | 'false_positive';
+
+export interface DispositionRequest {
+  disposition: DispositionKind;
+  reason?: string;
+}
+
+export interface DispositionResult {
+  complaintId: string;
+  dispositionId: string;
+  disposition: DispositionKind;
+  isSensitive: boolean;
+  supervisionStatus: string;
+}
+
 export type DictCode =
   | 'business_type'
   | 'complaint_type'
