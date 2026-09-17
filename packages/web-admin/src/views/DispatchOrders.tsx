@@ -15,6 +15,8 @@ const initialOrders = Array.from({ length: 25 }, (_, i) => {
     targetCompany: ['宜昌市供水总公司','宜昌中燃','点军区供水有限公司','华润燃气','宜昌蓝天气体'][i % 5],
     deadline: new Date(Date.now() + (i % 5 + 1) * 86400000).toISOString(),
     status: statuses[i % 4],
+    syncStatus: ['not_synced', 'success', 'failed', 'syncing'][i % 4],
+    externalStatus: ['pending', 'accepted', 'processing', 'completed', 'overtime'][i % 5],
     dispatcher: '管理员' + (i % 3 + 1),
     createdAt: new Date(Date.now() - i * 86400000).toISOString(),
   };
@@ -51,7 +53,7 @@ const DispatchOrders: React.FC = () => {
         sensitiveWords: vals.sensitiveWords || '人工标记',
         urgencyLevel: vals.urgencyLevel, targetCompany: vals.targetCompany,
         deadline: vals.deadline?.toISOString() || new Date(Date.now() + 3 * 86400000).toISOString(),
-        status: 'pending', dispatcher: '当前用户', createdAt: new Date().toISOString(),
+        status: 'pending', syncStatus: 'not_synced', externalStatus: 'pending', dispatcher: '当前用户', createdAt: new Date().toISOString(),
       }]);
       setFormVisible(false); form.resetFields();
       message.success('交办单已创建并推送至目标企业');
@@ -71,9 +73,16 @@ const DispatchOrders: React.FC = () => {
         const m: Record<string,{color:string;text:string}> = { pending:{color:'default',text:'待签收'}, processing:{color:'processing',text:'处理中'}, completed:{color:'success',text:'已完成'}, rejected:{color:'error',text:'已退回'} };
         return <Tag color={m[s]?.color}>{m[s]?.text}</Tag>;
       } },
-    { title: '操作', width: 120, fixed: 'right' as const,
+    { title: '同步状态', dataIndex: 'syncStatus', width: 90, render: (s: string) => {
+      const m: Record<string,{color:string;text:string}> = { not_synced:{color:'default',text:'未推送'}, success:{color:'success',text:'成功'}, failed:{color:'error',text:'失败'}, syncing:{color:'processing',text:'同步中'} };
+      return <Tag color={m[s]?.color}>{m[s]?.text}</Tag>;
+    } },
+    { title: '填报状态', dataIndex: 'externalStatus', width: 90, render: (s: string) => <Tag>{s}</Tag> },
+    { title: '操作', width: 220, fixed: 'right' as const,
       render: (_: any, r: any) => <Space>
         <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => { setSelectedOrder(r); setDetailVisible(true); }}>详情</Button>
+        <Button type="link" size="small" icon={<SendOutlined />} onClick={() => message.success('已通过填报适配器推送交办单：' + r.orderNo)}>推送</Button>
+        <Button type="link" size="small" onClick={() => message.success('已拉取填报反馈并记录 SyncLog')}>同步</Button>
         <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r)}><Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
       </Space> },
   ];

@@ -10,6 +10,8 @@ const mockComplaints = Array.from({ length: 86 }, (_, i) => {
   const types = ['投诉', '咨询', '建议', '举报'];
   const urgencies = ['一般', '紧急', '特急'];
   const statuses = ['pending', 'processing', 'resolved', 'closed'];
+  const correctionStatuses = ['none', 'pending', 'corrected', 'failed'];
+  const syncStatuses = ['not_synced', 'syncing', 'success', 'failed'];
   const bizTypes = ['water', 'gas'];
   const biz = bizTypes[i % 2];
   const district = ['西陵区','伍家岗区','点军区','猇亭区','夷陵区','宜都市','枝江市'][i % 7];
@@ -21,6 +23,12 @@ const mockComplaints = Array.from({ length: 86 }, (_, i) => {
     complaintNo: 'CS202605' + String(i + 1).padStart(4, '0'),
     title: titles[i % 7],
     source: sources[i % 4],
+    sourceSystem: i % 3 === 0 ? '宜接就办' : '本系统',
+    sourceId: 'YJJB' + String(2026060000 + i + 1),
+    correctionStatus: correctionStatuses[i % 4],
+    correctionConfidence: [0.92, 0.43, 0.81, 0.66][i % 4],
+    syncStatus: syncStatuses[i % 4],
+    ruleResult: '规则引擎: ' + (biz === 'water' ? '供水' : '燃气') + '/' + types[i % 4],
     businessType: biz,
     complaintType: types[i % 4],
     urgencyLevel: urgencies[i % 3],
@@ -65,6 +73,15 @@ const ComplaintList: React.FC = () => {
     { title: '紧急程度', dataIndex: 'urgencyLevel', width: 90,
       render: (t: string) => <Tag color={t === '特急' ? 'red' : t === '紧急' ? 'orange' : 'blue'}>{t}</Tag> },
     { title: '来源', dataIndex: 'source', width: 90 },
+    { title: '来源系统', dataIndex: 'sourceSystem', width: 100, render: (v: string) => <Tag color={v === '宜接就办' ? 'blue' : 'default'}>{v}</Tag> },
+    { title: '纠偏', dataIndex: 'correctionStatus', width: 90, render: (v: string, r: any) => {
+      const map: Record<string, { color: string; text: string }> = { none:{color:'default',text:'无需'}, pending:{color:'warning',text:'待纠偏'}, corrected:{color:'success',text:'已纠偏'}, failed:{color:'error',text:'失败'} };
+      return <Tooltip title={`置信度 ${Math.round(r.correctionConfidence * 100)}%`}><Tag color={map[v].color}>{map[v].text}</Tag></Tooltip>;
+    } },
+    { title: '同步', dataIndex: 'syncStatus', width: 90, render: (v: string) => {
+      const map: Record<string, { color: string; text: string }> = { not_synced:{color:'default',text:'未同步'}, syncing:{color:'processing',text:'同步中'}, success:{color:'success',text:'成功'}, failed:{color:'error',text:'失败'} };
+      return <Tag color={map[v].color}>{map[v].text}</Tag>;
+    } },
     { title: '区域', dataIndex: 'districtName', width: 80 },
     { title: '责任企业', dataIndex: 'companyName', width: 140, ellipsis: true },
     { title: '状态', dataIndex: 'status', width: 80,

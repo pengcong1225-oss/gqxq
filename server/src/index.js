@@ -65,6 +65,29 @@ function generateComplaint(id) {
 
 // Generate 200 mock complaints
 const complaints = Array.from({ length: 200 }, (_, i) => generateComplaint(i + 1));
+const inboundSourceIds = new Set(complaints.map(c => c.sourceId).filter(Boolean));
+const processLogs = [];
+const syncLogs = [];
+const dispatchArchives = [];
+
+function preprocessComplaint(payload) {
+  const text = [payload.title, payload.content, payload.address].filter(Boolean).join(' ');
+  const businessType = /液化气|钢瓶|瓶装气/.test(text) ? 'lpg' : /燃气|天然气|漏气|气压|停气/.test(text) ? 'gas' : 'water';
+  const complaintType = /举报|违法|偷水|盗气/.test(text) ? '举报' : /咨询|请问|如何|查询/.test(text) ? '咨询' : /建议|希望|优化/.test(text) ? '建议' : '投诉';
+  const urgencyLevel = /爆炸|泄漏|中毒|大面积停|伤亡|群体/.test(text) ? '特急' : /爆管|断裂|污染|火灾|安全隐患/.test(text) ? '紧急' : '一般';
+  const hitWords = ['爆管', '大面积停水', '燃气泄漏', '水质异常', '安全隐患'].filter(word => text.includes(word));
+
+  return {
+    businessType,
+    complaintType,
+    urgencyLevel,
+    isSensitive: hitWords.length > 0 ? 1 : 0,
+    sensitiveKeywords: hitWords,
+    ruleConfidence: hitWords.length > 0 ? 0.88 : 0.72,
+    correctionStatus: payload.locationLng && payload.locationLat ? 'none' : 'pending',
+    correctionConfidence: payload.locationLng && payload.locationLat ? 0.9 : 0.45
+  };
+}
 
 // ==================== API Routes ====================
 
@@ -136,6 +159,84 @@ app.get('/api/v1/complaints/:id', (req, res) => {
   const c = complaints.find(c => c.id === parseInt(req.params.id));
   if (!c) return res.status(404).json({ code: 404, message: '诉求不存在' });
   res.json({ code: 200, data: c });
+});
+
+// Scheme B: Yijiejieban inbound, rule preprocessing and address correction
+app.post('/api/v1/external/yijiejieban/appeal', (req, res) => {
+  const payload = req.body || {};
+  const sourceId = payload.sourceId || payload.appealId;
+  if (!sourceId) return res.status(400).json({ code: 400, message: 'sourceId 必填' });
+
+  if (inboundSourceIds.has(sourceId)) {
+    syncLogs.push({ appCode: 'gqxq', sourceSystem: 'yijiejieban', sourceId, result: 'duplicate', createdAt: new Date().toISOString() });
+    return res.json({ code: 200, message: 'duplicate', data: { duplicate: true, sourceId } });
+  }
+
+  const ruleResult = preprocessComplaint(payload);
+  const id = complaints.length + 1;
+  const complaint = {
+    id,
+    sourceId,
+    sourceSystem: '宜接就办',
+    complaintNo: 'CS' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + String(id).padStart(4, '0'),
+    title: payload.title || '宜接就办推送诉求',
+    content: payload.content || '',
+    source: payload.source || payload.sourceChannel || '宜接就办',
+    districtCode: payload.districtCode || payload.districtName || '西陵区',
+    districtName: payload.districtName || payload.districtCode || '西陵区',
+    address: payload.address || '',
+    locationLng: payload.locationLng || payload.longitude,
+    locationLat: payload.locationLat || payload.latitude,
+    companyName: payload.companyName || '待匹配企业',
+    status: 'pending',
+    dispatchStatus: 'none',
+    syncStatus: 'success',
+    createdAt: payload.createdAt || payload.createTime || new Date().toISOString(),
+    receivedAt: new Date().toISOString(),
+    ...ruleResult
+  };
+
+  complaints.unshift(complaint);
+  inboundSourceIds.add(sourceId);
+  processLogs.push({ complaintId: id, action: '规则引擎预处理', content: JSON.stringify(ruleResult), createdAt: new Date().toISOString() });
+  res.json({ code: 200, message: 'success', data: { duplicate: false, complaint } });
+});
+
+app.get('/api/v1/address-correction/pending', (req, res) => {
+  const content = complaints
+    .filter(c => c.correctionStatus === 'pending' || (!c.locationLng && !c.locationLat))
+    .slice(0, 20)
+    .map(c => ({
+      id: c.id,
+      complaintNo: c.complaintNo,
+      title: c.title,
+      rawAddress: c.address || c.districtName,
+      confidence: c.correctionConfidence || 0.45,
+      sourceSystem: c.sourceSystem || '宜接就办'
+    }));
+  res.json({ code: 200, data: { content, total: content.length } });
+});
+
+app.post('/api/v1/address-correction/batch', (req, res) => {
+  const items = req.body?.items || req.body || [];
+  const list = Array.isArray(items) ? items : [items];
+  list.forEach(item => {
+    const c = complaints.find(row => row.id === Number(item.id) || row.complaintNo === item.complaintNo);
+    if (c) {
+      c.correctedAddress = item.correctedAddress;
+      c.locationLng = item.locationLng || item.lng || c.locationLng;
+      c.locationLat = item.locationLat || item.lat || c.locationLat;
+      c.correctionStatus = 'corrected';
+      c.correctionConfidence = 0.92;
+      processLogs.push({ complaintId: c.id, action: '地址纠偏', content: c.correctedAddress, createdAt: new Date().toISOString() });
+    }
+  });
+  res.json({ code: 200, message: 'success', data: { updated: list.length } });
+});
+
+app.get('/api/v1/complaints/:id/sync', (req, res) => {
+  syncLogs.push({ appCode: 'gqxq', sourceSystem: 'yijiejieban', complaintId: req.params.id, result: 'success', createdAt: new Date().toISOString() });
+  res.json({ code: 200, message: 'success', data: { syncStatus: 'success', syncedAt: new Date().toISOString() } });
 });
 
 // Analysis
@@ -216,10 +317,57 @@ app.get('/api/v1/dispatch/orders', (req, res) => {
     targetCompanyId: c.companyId, targetCompanyName: c.companyName,
     deadline: new Date(Date.now() + randomInt(1, 7) * 24 * 3600 * 1000).toISOString(),
     status: randomItem(['pending', 'processing', 'completed']),
+    syncStatus: randomItem(['not_synced', 'syncing', 'success', 'failed']),
+    externalStatus: randomItem(['pending', 'accepted', 'processing', 'completed', 'overtime']),
     dispatcherName: '管理员',
     createdAt: c.createdAt
   }));
   res.json({ code: 200, data: { content: orders, total: orders.length } });
+});
+
+app.post('/api/v1/dispatch/orders', (req, res) => {
+  const body = req.body || {};
+  const order = {
+    id: Date.now(),
+    orderNo: 'JB' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + String(randomInt(1, 9999)).padStart(4, '0'),
+    assignmentId: body.assignmentId,
+    complaintId: body.complaintId,
+    complaintTitle: body.complaintTitle || body.title || '人工交办诉求',
+    targetCompanyName: body.targetCompanyName || body.targetCompany || '待匹配企业',
+    status: 'pending',
+    syncStatus: 'not_synced',
+    externalStatus: 'pending',
+    createdAt: new Date().toISOString()
+  };
+  processLogs.push({ complaintId: order.complaintId, action: '创建交办单', content: order.orderNo, createdAt: new Date().toISOString() });
+  res.json({ code: 200, data: order });
+});
+
+app.post('/api/v1/dispatch/orders/:id/push', (req, res) => {
+  syncLogs.push({ appCode: 'tianbao', assignmentId: req.params.id, action: 'push', result: 'success', createdAt: new Date().toISOString() });
+  res.json({ code: 200, message: 'success', data: { syncStatus: 'success', externalStatus: 'accepted' } });
+});
+
+app.post('/api/v1/dispatch/orders/:id/repush', (req, res) => {
+  syncLogs.push({ appCode: 'tianbao', assignmentId: req.params.id, action: 'repush', result: 'success', createdAt: new Date().toISOString() });
+  res.json({ code: 200, message: 'success', data: { syncStatus: 'success', externalStatus: 'accepted' } });
+});
+
+app.get('/api/v1/dispatch/orders/:id/sync', (req, res) => {
+  syncLogs.push({ appCode: 'tianbao', assignmentId: req.params.id, action: 'sync', result: 'success', createdAt: new Date().toISOString() });
+  res.json({ code: 200, message: 'success', data: { externalStatus: 'completed', resultContent: 'mock 填报系统已反馈处理结果' } });
+});
+
+app.post('/api/v1/dispatch/orders/:id/archive', (req, res) => {
+  const archive = { assignmentId: req.params.id, archivedAt: new Date().toISOString(), result: req.body?.resultContent || '管理员确认归档' };
+  dispatchArchives.push(archive);
+  processLogs.push({ action: '交办归档', content: JSON.stringify(archive), createdAt: archive.archivedAt });
+  res.json({ code: 200, message: 'success', data: archive });
+});
+
+app.post('/api/v1/external/tianbao/status-callback', (req, res) => {
+  syncLogs.push({ appCode: 'tianbao', action: 'status-callback', payload: req.body, result: 'success', createdAt: new Date().toISOString() });
+  res.json({ code: 200, message: 'success', data: { received: true } });
 });
 
 // Reports

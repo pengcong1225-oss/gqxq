@@ -5,7 +5,8 @@ import {
   DashboardOutlined, FileTextOutlined, BarChartOutlined, WarningOutlined,
   TeamOutlined, AppstoreOutlined, FireOutlined, PauseCircleOutlined,
   ToolOutlined, FilePdfOutlined, DatabaseOutlined, SettingOutlined,
-  MenuFoldOutlined, MenuUnfoldOutlined, LogoutOutlined, UserOutlined
+  MenuFoldOutlined, MenuUnfoldOutlined, LogoutOutlined, UserOutlined,
+  EnvironmentOutlined, FolderOpenOutlined
 } from '@ant-design/icons';
 
 const { Header, Sider, Content } = Layout;
@@ -13,8 +14,10 @@ const { Header, Sider, Content } = Layout;
 const menuItems = [
   { key: '/dashboard', icon: <DashboardOutlined />, label: '数据大屏' },
   { key: '/complaints', icon: <FileTextOutlined />, label: '诉求管理' },
+  { key: '/address-correction', icon: <EnvironmentOutlined />, label: '地址纠偏' },
   { key: '/analysis', icon: <BarChartOutlined />, label: '数据分析' },
   { key: '/dispatch', icon: <WarningOutlined />, label: '敏感交办' },
+  { key: '/dispatch/archive', icon: <FolderOpenOutlined />, label: '交办归档' },
   { key: '/companies', icon: <TeamOutlined />, label: '企业管理' },
   { key: '/grids', icon: <AppstoreOutlined />, label: '网格管理' },
   { key: '/heatmap', icon: <FireOutlined />, label: '热力图' },

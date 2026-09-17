@@ -10,6 +10,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    headers: {
+      'Access-Control-Allow-Origin': '*'
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3100',

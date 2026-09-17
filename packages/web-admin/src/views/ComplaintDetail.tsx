@@ -8,13 +8,17 @@ const complaintData: Record<string, any> = {
   '1': {
     complaintNo: 'CS202605280001', title: '西陵区水管爆裂导致大面积停水', content: '西陵区沿江大道188号附近供水主管道爆裂，导致周边3个小区大面积停水，涉及约2000户居民，目前已超过6小时未恢复供水，居民生活受到严重影响，希望相关部门尽快抢修。',
     source: '12345热线', businessType: 'water', complaintType: '投诉', urgencyLevel: '特急',
+    sourceSystem: '宜接就办', sourceId: 'YJJB202606240001', syncStatus: 'success',
+    correctionStatus: 'corrected', correctionConfidence: 0.92, correctedAddress: '西陵区沿江大道188号附近',
+    ruleResult: { category: '供水/投诉/特急', entity: '西陵区沿江大道188号、宜昌市供水总公司', sensitiveWords: ['爆管', '大面积停水'] },
     districtName: '西陵区', companyName: '宜昌市供水总公司', status: 'processing',
     isSensitive: true, locationLng: 111.286, locationLat: 30.708,
     createdAt: '2026-05-28T08:30:00', receivedAt: '2026-05-28T08:32:00',
     dispatchInfo: { orderNo: 'JB202605280001', deadline: '2026-05-29T18:00:00', status: 'processing' },
     processes: [
       { time: '2026-05-28T08:32:00', action: '系统接收', operator: '系统', content: '诉求已自动接入，完成数据清洗和GIS关联', color: 'blue' },
-      { time: '2026-05-28T08:35:00', action: 'NLP自动分类', operator: 'AI引擎', content: '自动分类：投诉-供水-特急，责任企业：宜昌市供水总公司，敏感标记：是', color: 'purple' },
+      { time: '2026-05-28T08:35:00', action: '规则引擎预处理', operator: '规则引擎', content: '分类：投诉-供水-特急；实体：西陵区沿江大道188号、宜昌市供水总公司；敏感词：爆管、大面积停水', color: 'purple' },
+      { time: '2026-05-28T08:38:00', action: '地址纠偏', operator: '系统/人工确认', content: '置信度低于阈值后进入纠偏队列，已修正为西陵区沿江大道188号附近', color: 'green' },
       { time: '2026-05-28T08:40:00', action: '交办', operator: '管理员', content: '已自动生成交办单JB202605280001，推送至宜昌市供水总公司，要求24小时内办结', color: 'orange' },
       { time: '2026-05-28T09:00:00', action: '企业签收', operator: '市供水公司-王经理', content: '已签收交办单，立即安排抢修队伍赶赴现场', color: 'blue' },
       { time: '2026-05-28T09:30:00', action: '处理中', operator: '市供水公司-抢修队', content: '抢修人员已到达现场，正在排查漏水点并进行抢修作业', color: 'processing' },
@@ -63,10 +67,15 @@ const ComplaintDetail: React.FC = () => {
               <Descriptions.Item label="诉求类型"><Tag>{data.complaintType}</Tag></Descriptions.Item>
               <Descriptions.Item label="紧急程度"><Tag color="red">{data.urgencyLevel}</Tag></Descriptions.Item>
               <Descriptions.Item label="来源渠道">{data.source}</Descriptions.Item>
+              <Descriptions.Item label="来源系统">{data.sourceSystem}</Descriptions.Item>
+              <Descriptions.Item label="来源ID">{data.sourceId}</Descriptions.Item>
               <Descriptions.Item label="所属区域">{data.districtName}</Descriptions.Item>
               <Descriptions.Item label="责任企业">{data.companyName}</Descriptions.Item>
               <Descriptions.Item label="是否敏感">{data.isSensitive ? <Tag color="red">是</Tag> : <Tag>否</Tag>}</Descriptions.Item>
               <Descriptions.Item label="地理位置">{data.locationLng.toFixed(4)}, {data.locationLat.toFixed(4)}</Descriptions.Item>
+              <Descriptions.Item label="纠偏状态"><Tag color="success">已纠偏 {Math.round(data.correctionConfidence * 100)}%</Tag></Descriptions.Item>
+              <Descriptions.Item label="同步状态"><Tag color="success">{data.syncStatus}</Tag></Descriptions.Item>
+              <Descriptions.Item label="规则预处理" span={2}>{data.ruleResult.category}；{data.ruleResult.entity}</Descriptions.Item>
               <Descriptions.Item label="诉求时间">{new Date(data.createdAt).toLocaleString('zh-CN')}</Descriptions.Item>
               <Descriptions.Item label="系统接收时间">{new Date(data.receivedAt).toLocaleString('zh-CN')}</Descriptions.Item>
               <Descriptions.Item label="诉求内容" span={2}>{data.content}</Descriptions.Item>

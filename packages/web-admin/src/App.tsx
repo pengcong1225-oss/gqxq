@@ -4,8 +4,10 @@ import MainLayout from './layouts/MainLayout';
 import Dashboard from './views/Dashboard';
 import ComplaintList from './views/ComplaintList';
 import ComplaintDetail from './views/ComplaintDetail';
+import AddressCorrection from './views/AddressCorrection';
 import Analysis from './views/Analysis';
 import DispatchOrders from './views/DispatchOrders';
+import DispatchArchive from './views/DispatchArchive';
 import CompanyList from './views/CompanyList';
 import GridManager from './views/GridManager';
 import HeatmapView from './views/HeatmapView';
@@ -25,8 +27,10 @@ const App: React.FC = () => {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="complaints" element={<ComplaintList />} />
         <Route path="complaints/:id" element={<ComplaintDetail />} />
+        <Route path="address-correction" element={<AddressCorrection />} />
         <Route path="analysis" element={<Analysis />} />
         <Route path="dispatch" element={<DispatchOrders />} />
+        <Route path="dispatch/archive" element={<DispatchArchive />} />
         <Route path="companies" element={<CompanyList />} />
         <Route path="grids" element={<GridManager />} />
         <Route path="heatmap" element={<HeatmapView />} />
