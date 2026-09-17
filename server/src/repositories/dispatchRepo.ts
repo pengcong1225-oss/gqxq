@@ -26,6 +26,7 @@ export const ORDER_SELECT_COLUMNS = [
   'd.order_no',
   'd.complaint_id',
   'c.complaint_no as complaint_no',
+  'c.source_id as source_event_no',
   'coalesce(d.complaint_title, c.title) as complaint_title',
   'd.dispatch_type',
   'd.trigger_type',
@@ -397,4 +398,39 @@ export function supervisionStatusWithoutActiveDispatch(complaint: LockedComplain
     complaint.enterprise_code !== null && String(complaint.enterprise_code).trim() !== '';
   if (complaint.is_sensitive === 1 && !hasEnterprise) return 'pending_match';
   return 'none';
+}
+
+/* ---------------- G3：推送成功后的状态推进 ---------------- */
+
+/**
+ * 推送成功：pending -> pushed，并落对方 task.id 与推送时间。
+ * 只改这几列：sync_status 置 success（否则推送成功了还显示"未同步"就是假状态），
+ * external_status 保持不动——填报任务创建成功不等于企业已签收。
+ */
+export async function updatePushSuccess(
+  tx: Tx,
+  assignmentId: string,
+  taskId: string,
+  pushedAt: Date
+): Promise<number> {
+  const [result] = await tx.execute(
+    "update dispatch_order set status = 'pushed', reporting_task_id = ?, pushed_at = ?," +
+      " sync_status = 'success', updated_at = ? where assignment_id = ?",
+    [taskId, pushedAt, pushedAt, assignmentId]
+  );
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0);
+}
+
+/** 推送成功同时推进诉求的填报审批状态轴（来源事件轴仍然只读，不受影响） */
+export async function updateComplaintReportingStatus(
+  tx: Tx,
+  complaintId: string,
+  reportingStatus: string,
+  updatedAt: Date
+): Promise<number> {
+  const [result] = await tx.execute(
+    'update complaint set reporting_status = ?, updated_at = ? where complaint_id = ?',
+    [reportingStatus, updatedAt, complaintId]
+  );
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0);
 }

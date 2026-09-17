@@ -33,7 +33,9 @@ import {
   rowToDispatchDetail,
   rowToDispatchListItem,
   supervisionStatusWithoutActiveDispatch,
+  updateComplaintReportingStatus,
   updateComplaintSupervision,
+  updatePushSuccess,
   type LockedComplaint,
 } from '../repositories/dispatchRepo';
 import { insertAssignment, updateComplaintEnterprise } from '../repositories/assignmentRepo';
@@ -444,4 +446,161 @@ export async function cancelDispatch(
   const updated = await findOrderByAssignmentId(pool, assignmentId);
   if (!updated) throw AppError.internal('撤销后回读失败');
   return rowToDispatchDetail(updated);
+}
+
+/* ---------------- G3：推送准备与状态推进 ---------------- */
+
+/** 一次推送所需的全部素材；由 preparePush 在发起 HTTP **之前**就把校验做完 */
+export interface PushPreparation {
+  assignmentId: string;
+  requestId: string;
+  complaintId: string;
+  complaintNo: string | null;
+  /** 来源系统业务键（宜接就办事件号），只作追溯用，进 prefilledData */
+  sourceEventNo: string | null;
+  complaintTitle: string;
+  targetEnterpriseCode: string;
+  targetEnterpriseName: string;
+  requirement: string | null;
+  reason: string | null;
+  deadline: Date;
+  dispatchType: string | null;
+  triggerType: string | null;
+  status: string;
+  reportingTaskId: string | null;
+}
+
+function textOf(value: unknown): string {
+  return value === null || value === undefined ? '' : String(value).trim();
+}
+
+/**
+ * 推送前置校验并取出所需字段。
+ * 这里刻意把"能不能推"的判断放在 HTTP 之前：对方要求 deadline 必填、enterpriseSubjects 至少 1 项，
+ * 本地缺这些字段时应当直接给出可修的 400，而不是发出去换一个语义模糊的 422。
+ */
+export async function preparePush(assignmentId: string): Promise<PushPreparation> {
+  const row = await findOrderByAssignmentId(pool, assignmentId);
+  if (!row) throw AppError.notFound('交办单不存在');
+
+  const status = String(row.status);
+  if (isTerminal(status)) {
+    throw new AppError(
+      'INVALID_STATE_TRANSITION',
+      '交办单当前状态为「' + labelOf('supervision_status', status) + '」，已是终态，不允许推送'
+    );
+  }
+
+  const targetEnterpriseCode = textOf(row.target_enterprise_code);
+  const targetEnterpriseName = textOf(row.target_enterprise_name);
+  const deadline = row.deadline instanceof Date ? row.deadline : null;
+
+  const fieldErrors: FieldError[] = [];
+  if (targetEnterpriseCode === '') {
+    fieldErrors.push({ field: 'targetEnterpriseCode', message: '交办单没有责任企业编码，无法创建填报任务' });
+  }
+  if (targetEnterpriseName === '') {
+    fieldErrors.push({ field: 'targetEnterpriseName', message: '交办单没有责任企业名称，无法创建填报任务' });
+  }
+  if (deadline === null) {
+    fieldErrors.push({ field: 'deadline', message: '交办单没有截止时间；对方 deadline 必填且要求带时区偏移' });
+  }
+  if (fieldErrors.length > 0) {
+    throw AppError.validation('交办单信息不完整，无法创建填报任务', fieldErrors);
+  }
+
+  return {
+    assignmentId,
+    requestId: String(row.request_id),
+    complaintId: String(row.complaint_id),
+    complaintNo: row.complaint_no === null || row.complaint_no === undefined ? null : String(row.complaint_no),
+    sourceEventNo: row.source_event_no === null || row.source_event_no === undefined ? null : String(row.source_event_no),
+    complaintTitle: textOf(row.complaint_title) === '' ? '敏感交办' : textOf(row.complaint_title),
+    targetEnterpriseCode,
+    targetEnterpriseName,
+    requirement: row.requirement === null || row.requirement === undefined ? null : String(row.requirement),
+    reason: row.reason === null || row.reason === undefined ? null : String(row.reason),
+    deadline: deadline as Date,
+    dispatchType: row.dispatch_type === null || row.dispatch_type === undefined ? null : String(row.dispatch_type),
+    triggerType: row.trigger_type === null || row.trigger_type === undefined ? null : String(row.trigger_type),
+    status,
+    reportingTaskId: row.reporting_task_id === null || row.reporting_task_id === undefined
+      ? null
+      : String(row.reporting_task_id),
+  };
+}
+
+/**
+ * 推送成功后的状态推进（在事务内做，先锁行再改）：
+ *   dispatch_order.status -> pushed、reporting_task_id、pushed_at、sync_status -> success
+ *   complaint.reporting_status -> pushed（只动这一条轴）
+ *   写审计 DISPATCH_PUSH
+ */
+export async function markDispatchPushed(
+  assignmentId: string,
+  taskId: string,
+  ctx: OperatorContext
+): Promise<DispatchOrderDetail> {
+  const pushedAt = new Date();
+
+  await withTransaction(async (tx) => {
+    const currentStatus = await lockOrderStatus(tx, assignmentId);
+    if (currentStatus === null) throw AppError.notFound('交办单不存在');
+    if (isTerminal(currentStatus)) {
+      throw new AppError(
+        'INVALID_STATE_TRANSITION',
+        '交办单当前状态为「' + labelOf('supervision_status', currentStatus) + '」，已是终态，不允许推送'
+      );
+    }
+
+    await updatePushSuccess(tx, assignmentId, taskId, pushedAt);
+
+    const order = await findOrderByAssignmentId(tx, assignmentId);
+    const complaintId = order === null ? null : String(order.complaint_id);
+    if (complaintId !== null) {
+      await updateComplaintReportingStatus(tx, complaintId, 'pushed', pushedAt);
+    }
+
+    await insertAudit(tx, {
+      userId: ctx.userId,
+      appCode: GQXQ_APP_CODE,
+      resourceCode: assignmentId,
+      action: 'DISPATCH_PUSH',
+      bizType: 'dispatch_order',
+      bizId: complaintId,
+      result: 'success',
+      clientIp: ctx.clientIp,
+      detail: { assignmentId, complaintId, taskId, fromStatus: currentStatus, toStatus: 'pushed' },
+      createdAt: pushedAt,
+    });
+  });
+
+  const updated = await findOrderByAssignmentId(pool, assignmentId);
+  if (!updated) throw AppError.internal('推送成功后回读失败');
+  return rowToDispatchDetail(updated);
+}
+
+/**
+ * 推送失败只记审计，**不改 status**——交办仍是 pending，可以再推。
+ * 交付纪律：失败就是失败，不允许为了"看起来成功"而推进状态。
+ */
+export async function recordPushFailure(
+  assignmentId: string,
+  complaintId: string | null,
+  detail: { result: string; httpStatus: number | null; errorCode: string | null; message: string | null; attempt: number },
+  ctx: OperatorContext
+): Promise<void> {
+  const at = new Date();
+  await insertAudit(pool, {
+    userId: ctx.userId,
+    appCode: GQXQ_APP_CODE,
+    resourceCode: assignmentId,
+    action: 'DISPATCH_PUSH',
+    bizType: 'dispatch_order',
+    bizId: complaintId,
+    result: 'failed',
+    clientIp: ctx.clientIp,
+    detail: { assignmentId, complaintId, ...detail },
+    createdAt: at,
+  });
 }
