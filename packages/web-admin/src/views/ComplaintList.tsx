@@ -42,6 +42,7 @@ import { applyDisposition, assignEnterprise } from '../api/complaintActions';
 import { createDispatch } from '../api/dispatch';
 import { getDictItems } from '../api/dicts';
 import { listEnterprises } from '../api/enterprises';
+import { getSourceAdapterState } from '../api/source';
 import type {
   ApiError,
   BusinessType,
@@ -54,6 +55,7 @@ import type {
   DictItem,
   DispositionKind,
   EnterpriseListItem,
+  SourceAdapterState,
   SourceEventStatus,
   SupervisionStatus,
   UrgencyLevel,
@@ -168,6 +170,27 @@ const ComplaintList: React.FC = () => {
     (code: DictCode) => (dicts[code] ?? []).map((d) => ({ value: d.value, label: d.label })),
     [dicts]
   );
+
+  /* ---------- G6：来源对接状态 ----------
+   * 适配器默认关闭，列表里的来源状态因此一律是「未接入」——那是**真实状态**，不是异常。
+   * 这里只如实呈现服务端返回的状态：绝不用本地常量假装适配器已接入或未接入。 */
+  const [sourceState, setSourceState] = useState<SourceAdapterState | null>(null);
+  const [sourceStateError, setSourceStateError] = useState<string | null>(null);
+
+  const loadSourceState = useCallback(async () => {
+    setSourceStateError(null);
+    try {
+      setSourceState(await getSourceAdapterState());
+    } catch (err) {
+      // 获取失败时**不能**当成「未接入」——那是编造适配器状态，与编造来源进度同样不可接受。
+      setSourceState(null);
+      setSourceStateError((err as ApiError)?.message ?? '来源对接状态获取失败');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSourceState();
+  }, [loadSourceState]);
 
   /* ---------- 查询参数 ---------- */
   const params = useMemo<ComplaintListParams>(
@@ -341,6 +364,69 @@ const ComplaintList: React.FC = () => {
       }
     />
   ) : null;
+
+  /**
+   * G6 来源对接状态提示。三态必须分清，不能混成一个"出错了"：
+   *   * 状态获取失败 -> 不能假装未接入（那是编造适配器状态），给可重试提示；
+   *   * 配置无效     -> 警告级，原样展示服务端 message；
+   *   * 适配器关闭   -> **信息级**（这是真实状态，不是错误），并说明列表里显示「未接入」的原因；
+   *   * 已接入       -> 不显示任何提示条。
+   */
+  const sourceStatusAlert = (() => {
+    if (sourceStateError !== null) {
+      return (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="来源对接状态获取失败"
+          description={
+            '无法确认宜接就办来源适配器当前是否已接入：' + sourceStateError + '。（不会用默认值假装未接入）'
+          }
+          action={
+            <Button size="small" onClick={() => void loadSourceState()}>
+              重试
+            </Button>
+          }
+        />
+      );
+    }
+    if (sourceState === null) return null; // 尚未取到：不做任何断言，避免误报
+    if (sourceState.enabled) return null; // 已接入：不显示提示条
+
+    if (sourceState.misconfigured) {
+      return (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={'来源对接：适配器配置无效（批次 ' + (sourceState.batch ?? 'G6') + '）'}
+          description={
+            <>
+              {sourceState.message}
+              <br />
+              列表中的来源状态一律显示「未接入」，这是真实状态，不代表异常。
+            </>
+          }
+        />
+      );
+    }
+    return (
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message={'来源对接：未接入（批次 ' + (sourceState.batch ?? 'G6') + '）'}
+        description={
+          <>
+            {sourceState.message}
+            <br />
+            列表中的来源状态一律显示「未接入」，这是真实状态，不代表异常；本平台不展示任何模拟的来源进度。
+          </>
+        }
+      />
+    );
+  })();
 
   const reload = useCallback(() => {
     void load(params);
@@ -654,6 +740,8 @@ const ComplaintList: React.FC = () => {
           description="筛选下拉项来自服务端字典接口，加载失败时下拉为空；表格数据不受影响。"
         />
       )}
+
+      {sourceStatusAlert}
 
       <Row gutter={12} style={{ marginBottom: 16 }}>
         <Col span={4}>

@@ -31,6 +31,7 @@ export type ApiErrorCode =
   | 'DUPLICATE_CONFLICT'
   | 'INVALID_STATE_TRANSITION'
   | 'PAYLOAD_TOO_LARGE'
+  | 'SOURCE_ADAPTER_UNAVAILABLE'
   | 'INTERNAL_ERROR'
   | 'NOT_IMPLEMENTED';
 
@@ -365,6 +366,28 @@ export type DispatchOrderStatus =
   | 'completed' | 'rejected' | 'archived' | 'cancelled';
 
 /* ==================== 企业主数据（与 server/src/types/api.ts 对齐） ==================== */
+
+/* ==================== G6 来源对接（与 server/src/types/api.ts 对齐） ==================== */
+
+export interface SourceAdapterState {
+  adapter: string;
+  enabled: boolean;
+  batch: string | null;
+  message: string;
+  misconfigured: boolean;
+}
+
+export interface SourceSyncResult {
+  complaintId: string;
+  synced: boolean;
+  adapterEnabled: boolean;
+  rawStatus: string | null;
+  sourceEventStatusCode: string | null;
+  sourceEventStatusName: string | null;
+  updated: boolean;
+  message: string | null;
+  syncedAt: string | null;
+}
 
 /* ==================== G5 回传后流程（与 server/src/types/api.ts 对齐） ==================== */
 

@@ -35,11 +35,13 @@ import type { Dayjs } from 'dayjs';
 import { getComplaint, getComplaintTimeline } from '../api/complaints';
 import { createDispatch, getDispatchOrder } from '../api/dispatch';
 import { listEnterprises } from '../api/enterprises';
+import { getSourceAdapterState, syncSource } from '../api/source';
 import type {
   ApiError,
   ComplaintDetail as ComplaintDetailModel,
   DispatchOrderDetail,
   EnterpriseListItem,
+  SourceAdapterState,
   TimelineCategory,
   TimelineItem,
 } from '../types/api';
@@ -271,6 +273,73 @@ const ComplaintDetail: React.FC = () => {
     void load();
   }, [load]);
 
+  /* ---------- G6：来源对接状态与手动同步 ----------
+   * 适配器默认关闭，来源状态因此一律是「未接入」——那是**真实状态**。
+   * 这里只如实呈现服务端返回的状态，绝不用本地常量假装适配器已接入或未接入。 */
+  const [sourceState, setSourceState] = useState<SourceAdapterState | null>(null);
+  const [sourceStateError, setSourceStateError] = useState<string | null>(null);
+  const [sourceSyncing, setSourceSyncing] = useState(false);
+  const [sourceSyncNotice, setSourceSyncNotice] = useState<{
+    type: 'success' | 'info' | 'warning' | 'error';
+    text: string;
+  } | null>(null);
+
+  const loadSourceState = useCallback(async () => {
+    setSourceStateError(null);
+    try {
+      setSourceState(await getSourceAdapterState());
+    } catch (err) {
+      // 获取失败不能当成「未接入」：那是编造适配器状态，与编造来源进度同样不可接受。
+      setSourceState(null);
+      setSourceStateError((err as ApiError)?.message ?? '来源对接状态获取失败');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSourceState();
+  }, [loadSourceState]);
+
+  /**
+   * 手动同步来源状态。
+   * 适配器未启用时服务端返回 **501 NOT_IMPLEMENTED** —— 那是设计如此，不是故障：
+   * 必须单独识别并如实说明，既不显示成泛化错误，更不能假装成功。
+   */
+  const handleSyncSource = useCallback(async () => {
+    if (!id) return;
+    setSourceSyncing(true);
+    setSourceSyncNotice(null);
+    try {
+      const res = await syncSource(id);
+      if (res.updated) {
+        setSourceSyncNotice({
+          type: 'success',
+          text:
+            '来源状态已更新为「' + (res.sourceEventStatusName ?? '未知') + '」' +
+            (res.rawStatus ? '（来源原值：' + res.rawStatus + '）' : ''),
+        });
+        await load();
+      } else {
+        setSourceSyncNotice({ type: 'info', text: res.message ?? '来源状态未发生变化' });
+      }
+    } catch (err) {
+      const e = err as ApiError;
+      const code = e?.code;
+      if (code === 501 || code === 'NOT_IMPLEMENTED') {
+        setSourceSyncNotice({
+          type: 'info',
+          text: '来源适配器未启用（批次 G6），真实接口待对接：' + (e?.message ?? ''),
+        });
+      } else {
+        setSourceSyncNotice({
+          type: 'error',
+          text: '同步来源状态失败：' + (e?.message ?? '未知错误'),
+        });
+      }
+    } finally {
+      setSourceSyncing(false);
+    }
+  }, [id, load]);
+
   const handleCreateDispatch = useCallback(async () => {
     if (!detail) return;
     let values: {
@@ -351,7 +420,72 @@ const ComplaintDetail: React.FC = () => {
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/complaints')}>
         返回列表
       </Button>
+      <Tooltip title="从宜接就办同步该诉求的来源处置状态（只读）。适配器未启用时会如实返回未实现，不会展示模拟进度。">
+        <Button loading={sourceSyncing} onClick={() => void handleSyncSource()}>
+          同步来源状态
+        </Button>
+      </Tooltip>
     </Space>
+  );
+
+  /**
+   * G6 来源对接面板。三态必须分清：
+   *   状态获取失败 -> 不能假装未接入，给可重试提示；
+   *   配置无效     -> 警告级，原样展示服务端 message；
+   *   适配器关闭   -> **信息级**（真实状态，不是错误）；
+   *   已接入       -> 不显示。
+   * 另附手动同步的结果提示（501 单独识别为「未启用」）。
+   */
+  const sourceStatusPanel = (
+    <>
+      {sourceStateError !== null && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="来源对接状态获取失败"
+          description={
+            '无法确认宜接就办来源适配器当前是否已接入：' + sourceStateError + '。（不会用默认值假装未接入）'
+          }
+          action={
+            <Button size="small" onClick={() => void loadSourceState()}>
+              重试
+            </Button>
+          }
+        />
+      )}
+
+      {sourceState !== null && !sourceState.enabled && (
+        <Alert
+          type={sourceState.misconfigured ? 'warning' : 'info'}
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={
+            sourceState.misconfigured
+              ? '来源对接：适配器配置无效（批次 ' + (sourceState.batch ?? 'G6') + '）'
+              : '来源对接：未接入（批次 ' + (sourceState.batch ?? 'G6') + '）'
+          }
+          description={
+            <>
+              {sourceState.message}
+              <br />
+              本页的来源状态显示「未接入」，这是真实状态，不代表异常；本平台不展示任何模拟的来源进度。
+            </>
+          }
+        />
+      )}
+
+      {sourceSyncNotice !== null && (
+        <Alert
+          type={sourceSyncNotice.type}
+          showIcon
+          closable
+          style={{ marginBottom: 12 }}
+          message={sourceSyncNotice.text}
+          onClose={() => setSourceSyncNotice(null)}
+        />
+      )}
+    </>
   );
 
   if (notFound) {
@@ -419,6 +553,8 @@ const ComplaintDetail: React.FC = () => {
     <div>
       {backButton}
       <h2 style={{ marginBottom: 16 }}>诉求详情 - {detail.complaintNo}</h2>
+
+      {sourceStatusPanel}
 
       <Row gutter={[16, 16]}>
         <Col span={16}>
