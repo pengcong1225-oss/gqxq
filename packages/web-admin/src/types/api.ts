@@ -366,6 +366,120 @@ export type DispatchOrderStatus =
 
 /* ==================== 企业主数据（与 server/src/types/api.ts 对齐） ==================== */
 
+/* ==================== G5 回传后流程（与 server/src/types/api.ts 对齐） ==================== */
+
+/** G5 纠偏项自身的处理状态。**注意**：与投诉级的 CorrectionStatus（none/pending/corrected/failed）
+ *  是两回事，历史上前者曾与后者同名，造成 TS2300 重复标识符，已改名区分。 */
+export type CorrectionItemStatus = 'pending' | 'confirmed' | 'rejected';
+
+export interface CorrectionItem {
+  id: number;
+  correctionId: string;
+  complaintId: string;
+  assignmentId: string | null;
+  fieldName: string;
+  fieldLabel: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  basis: string | null;
+  status: CorrectionItemStatus;
+  statusName: string;
+  confirmerId: string | null;
+  confirmerName: string | null;
+  confirmedAt: string | null;
+  createdAt: string | null;
+}
+
+export interface CorrectionConfirmRequest {
+  newValue?: string;
+  basis?: string;
+}
+
+export interface CorrectionRejectRequest {
+  basis?: string;
+}
+
+export interface CorrectionGenerateResult {
+  complaintId: string;
+  assignmentId: string;
+  created: boolean;
+  total: number;
+  items: CorrectionItem[];
+}
+
+export interface AnalysisRecordItem {
+  id: number;
+  analysisId: string;
+  complaintId: string;
+  assignmentId: string | null;
+  businessTypeCode: string;
+  businessTypeName: string;
+  complaintTypeCode: string;
+  complaintTypeName: string;
+  districtCode: string | null;
+  districtName: string | null;
+  enterpriseCode: string | null;
+  enterpriseName: string | null;
+  summary: string | null;
+  disposalResult: string | null;
+  confirmedAt: string | null;
+  createdAt: string | null;
+}
+
+export type ReportTodoStatus = 'pending' | 'in_progress' | 'done';
+
+export interface ReportTodoItem {
+  id: number;
+  todoId: string;
+  analysisId: string;
+  complaintId: string;
+  reportId: string | null;
+  status: ReportTodoStatus;
+  statusName: string;
+  note: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface CloseComplaintRequest {
+  basis: string;
+}
+
+export interface CloseComplaintResult {
+  complaintId: string;
+  closedInSystem: boolean;
+  closedAt: string | null;
+  closedBy: string | null;
+  closedByName: string | null;
+  closedBasis: string | null;
+}
+
+/**
+ * 确认 / 拒绝一项纠偏的响应。
+ * analysisEntered 由**后端**判定「是否已进入分析库」——前端不要靠数 pending 项自己推断，
+ * 因为入库规则（未纠偏不得入库、未走督办链路不入库、并发兜底）都在服务端。
+ */
+export interface CorrectionDecisionResult {
+  item: CorrectionItem;
+  analysisEntered: boolean;
+  analysisId: string | null;
+  analysisReason: string | null;
+  writtenBack: boolean;
+}
+
+/**
+ * 分析记录下钻的组合形状（**嵌套**，字段名是 approvalTraces 复数）。
+ * 原先只定义在 analysisService.ts 内部，前端要用之后提升为对外契约。
+ */
+export interface AnalysisDrilldown {
+  record: AnalysisRecordItem;
+  complaint: ComplaintListItem | null;
+  dispatch: DispatchOrderDetail | null;
+  approvalTraces: ApprovalTraceItem[];
+  corrections: CorrectionItem[];
+  reportTodo: ReportTodoItem | null;
+}
+
 /* ==================== G3/G4（与 server/src/types/api.ts 对齐） ==================== */
 
 export type PushResultKind =
@@ -476,6 +590,8 @@ export interface DispatchOrderListItem {
   externalStatus: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  /** 归档时间。放在列表项里是因为归档列表要按它展示 */
+  archivedAt: string | null;
 }
 
 export interface DispatchOrderDetail extends DispatchOrderListItem {
