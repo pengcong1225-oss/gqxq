@@ -147,6 +147,8 @@ const UPPER_ALLOW = new Set([
   // 本仓库的错误码常量（http/errors.ts 的 ERROR_STATUS 键），不是业务枚举
   'FORBIDDEN', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'NOT_FOUND', 'DUPLICATE_CONFLICT',
   'INVALID_STATE_TRANSITION', 'PAYLOAD_TOO_LARGE', 'INTERNAL_ERROR', 'NOT_IMPLEMENTED',
+  // 本仓库的错误码常量（http/errors.ts 的 ERROR_STATUS 键）
+  'SOURCE_ADAPTER_UNAVAILABLE',
   // public-utility 契约里的审批结论与通用冲突码（外部协议固定大写，见落地计划 §3.2）
   'AGREED', 'DISAGREED', 'RETURNED', 'CONFLICT',
   // Node 进程信号
