@@ -111,14 +111,28 @@ def read_rows(xls_path):
     return sheet.name, header, rows
 
 
+# 大陆手机号（用于**我们自己派生的标题**，不是来源列）
+MOBILE_RE = re.compile(r'1[3-9]\d{9}')
+MOBILE_PLACEHOLDER = '[联系方式已隐去]'
+
+
 def derive_title(content, case_type):
+    """派生标题：去掉【…】前缀后取首句，并把手机号替换成占位符。
+
+    为什么只动标题：标题是**本平台派生的展示字段**（来源表根本没有标题列），
+    在标题里留一个手机号既无意义又多余暴露；而 content / metadata 是来源原文，
+    一律**逐字保留**，绝不改写来源案卷。
+
+    诚实边界：这是**展示卫生**，不是合规级脱敏——完整号码仍在 source_payload 中，
+    真正的处置口径要么是"接受来源文本"，要么是读取时掩码，见验收证据 §6.3。
+    """
     text = re.sub(r'^【[^】]*】', '', content).strip()
     if not text:
         return case_type[:TITLE_MAX]
     first = re.split(r'[。！？!?\n]', text, maxsplit=1)[0].strip()
     if not first:
         return case_type[:TITLE_MAX]
-    return first[:TITLE_MAX]
+    return MOBILE_RE.sub(MOBILE_PLACEHOLDER, first)[:TITLE_MAX]
 
 
 def derive_channel(content):
