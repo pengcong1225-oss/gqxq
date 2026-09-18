@@ -17,7 +17,12 @@ import type { DistributionItem, RegionRankItem } from '../types/api';
 import { labelOf } from '../domain/enums';
 import { shanghaiDate } from '../db/sequence';
 import { toNum, type ComplaintRow } from './complaintMapper';
-import { ACTIVE_DISPATCH_COLUMNS, ACTIVE_DISPATCH_JOIN, COMPLAINT_SELECT_COLUMNS } from './complaintRepo';
+import {
+  ACTIVE_DISPATCH_COLUMNS,
+  ACTIVE_DISPATCH_JOIN,
+  BUSINESS_TIME,
+  COMPLAINT_SELECT_COLUMNS,
+} from './complaintRepo';
 
 const NOT_DELETED = 'coalesce(c.deleted, 0) = 0';
 
@@ -34,18 +39,27 @@ export interface DashboardAggregates {
   gasReceived: number;
   sensitiveTotal: number;
   closedInSystem: number;
+  /** 来源状态为已办结（completed/closed）的件数 */
+  sourceClosed: number;
+  /** 已接入来源状态（source_event_status <> 'unknown'）的件数，作为办结率的分母 */
+  sourceKnown: number;
 }
 
 export async function findAggregates(): Promise<DashboardAggregates> {
   const sql =
     'select' +
     ' count(*) as total,' +
-    ' sum(case when c.received_at >= curdate()' +
-    ' and c.received_at < date_add(curdate(), interval 1 day) then 1 else 0 end) as todayReceived,' +
+    // 「今日受理」按**业务时间**统计（受理时间为准），不是"今天收到报文"
+    ' sum(case when ' + BUSINESS_TIME + ' >= curdate()' +
+    ' and ' + BUSINESS_TIME + " < date_add(curdate(), interval 1 day) then 1 else 0 end) as todayReceived," +
     " sum(case when c.business_type = 'water' then 1 else 0 end) as waterReceived," +
     " sum(case when c.business_type = 'gas' then 1 else 0 end) as gasReceived," +
     ' sum(case when c.is_sensitive = 1 then 1 else 0 end) as sensitiveTotal,' +
-    ' sum(case when c.closed_in_system = 1 then 1 else 0 end) as closedInSystem' +
+    ' sum(case when c.closed_in_system = 1 then 1 else 0 end) as closedInSystem,' +
+    // 来源办结率的两端：分子=来源已办结，分母=**已接入来源状态**的件数。
+    // 分母刻意不含 unknown：否则"来源还没接通"会被误算成"办结率低"，那是拿未知当已知。
+    " sum(case when c.source_event_status in ('completed', 'closed') then 1 else 0 end) as sourceClosed," +
+    " sum(case when c.source_event_status <> 'unknown' then 1 else 0 end) as sourceKnown" +
     ' from complaint c where ' +
     NOT_DELETED;
 
@@ -58,6 +72,8 @@ export async function findAggregates(): Promise<DashboardAggregates> {
     gasReceived: toNum(r.gasReceived) ?? 0,
     sensitiveTotal: toNum(r.sensitiveTotal) ?? 0,
     closedInSystem: toNum(r.closedInSystem) ?? 0,
+    sourceClosed: toNum(r.sourceClosed) ?? 0,
+    sourceKnown: toNum(r.sourceKnown) ?? 0,
   };
 }
 
@@ -65,18 +81,27 @@ export interface TrendData {
   dates: string[];
   water: number[];
   gas: number[];
+  /** 窗口长度（天） */
+  days: number;
+  /** 窗口起止（Asia/Shanghai 墙钟日，含端点）——前端据此标注区间，避免"看着像近 7 天其实不是" */
+  from: string;
+  to: string;
 }
 
 /**
- * 最近 7 天（含今天，按 +08:00）的供水/燃气诉求量。
+ * 最近 days 天（含今天，按 +08:00 墙钟日）的供水/燃气诉求量，口径为 BUSINESS_TIME（受理时间）。
  * SQL 只返回有数据的日期，**缺失日期在 JS 补 0**——这是"补齐分桶"，不是兜底常量。
+ *
+ * days 由调用方给（路由已校验 1..365）。做成参数而不是写死 7 天，原因见 BUSINESS_TIME 注释：
+ * 历史回灌后"最近 7 天"很可能整段没有数据，必须让使用者自己把窗口拉长，
+ * 而**不能**把窗口偷偷锚到"有数据的那些天"——那会让图表日期与实际不符，是另一种欺骗。
  */
-export async function findTrend7d(): Promise<TrendData> {
+export async function findTrend(days: number): Promise<TrendData> {
   const today = shanghaiDate();
   const todayUtcMidnight = new Date(today + 'T00:00:00Z').getTime();
 
   const dates: string[] = [];
-  for (let i = 6; i >= 0; i -= 1) {
+  for (let i = days - 1; i >= 0; i -= 1) {
     dates.push(new Date(todayUtcMidnight - i * DAY_MS).toISOString().slice(0, 10));
   }
   const tomorrow = new Date(todayUtcMidnight + DAY_MS).toISOString().slice(0, 10);
@@ -84,12 +109,12 @@ export async function findTrend7d(): Promise<TrendData> {
   const endUtc = new Date(tomorrow + 'T00:00:00' + SHANGHAI);
 
   const [rows] = await pool.query<Row[]>(
-    "select date_format(c.received_at, '%Y-%m-%d') as d," +
+    'select date_format(' + BUSINESS_TIME + ", '%Y-%m-%d') as d," +
       " sum(case when c.business_type = 'water' then 1 else 0 end) as water," +
       " sum(case when c.business_type = 'gas' then 1 else 0 end) as gas" +
       ' from complaint c where ' +
       NOT_DELETED +
-      ' and c.received_at >= ? and c.received_at < ? group by d',
+      ' and ' + BUSINESS_TIME + ' >= ? and ' + BUSINESS_TIME + ' < ? group by d',
     [startUtc, endUtc]
   );
 
@@ -102,6 +127,9 @@ export async function findTrend7d(): Promise<TrendData> {
     dates,
     water: dates.map((d) => byDate.get(d)?.water ?? 0),
     gas: dates.map((d) => byDate.get(d)?.gas ?? 0),
+    days,
+    from: dates[0] ?? today,
+    to: dates[dates.length - 1] ?? today,
   };
 }
 
@@ -142,7 +170,7 @@ export async function findRegionRank(limit: number): Promise<RegionRankItem[]> {
   }));
 }
 
-/** 最新诉求（列表项字段） */
+/** 最新诉求（列表项字段）。按**接收时间**倒序：这是"最新到达"的运营口径，不是业务受理口径 */
 export async function findLatest(limit: number): Promise<ComplaintRow[]> {
   const [rows] = await pool.query<Row[]>(
     'select ' +

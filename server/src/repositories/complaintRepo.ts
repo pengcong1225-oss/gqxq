@@ -4,7 +4,8 @@
 //   * 时间口径（2026-09-17 主线与本人分别实测确认，已固化进迁移设计 §3.5）：
 //     gqxq_service 的 DATETIME 存的是 **Asia/Shanghai 墙钟时间**，不是 UTC；连接池 timezone 为 '+08:00'。
 //       - 比较/写入一律传 JS Date，由驱动按 +08:00 格式化成墙钟串；不要自己拼 UTC 字符串去比；
-//       - 日界判断直接按 received_at 墙钟日，**不要**再 CONVERT_TZ('+00:00','+08:00')，那会整日后移 8 小时；
+//       - 日界判断直接按墙钟日，**不要**再 CONVERT_TZ('+00:00','+08:00')，那会整日后移 8 小时；
+//       - 业务口径（仪表盘/日期筛选）用 BUSINESS_TIME（受理时间），接收时间 received_at 只作审计口径；
 //       - 绝不用 UTC_TIMESTAMP()；命名时区一律禁用（本机 MySQL 时区表未加载，会静默返回 NULL）。
 //   * LIKE 转义用 '!' 而不是反斜杠：反斜杠在 MySQL 字符串字面量里还要再转义一层，
 //     写成 escape '\\' 极易被上层语言再吃一层，实测会直接语法错误
@@ -22,6 +23,21 @@ export function escapeLike(value: string): string {
 
 /** 软删除行不进总账；deleted 可空，用 coalesce 兜住历史 NULL */
 const NOT_DELETED = 'coalesce(c.deleted, 0) = 0';
+
+/**
+ * **业务时间**（= 受理时间）：来源给了受理时间就用它，没给才回落到平台接收时间。
+ *
+ * 为什么必须区分（2026-09-18 真实数据回灌时暴露）：
+ *   received_at        = 平台**收到报文**的时间
+ *   source_reported_at = 来源系统**受理诉求**的时间（入站报文的 createdAt）
+ * 实时一进一出时两者几乎重合，所以 G1 统一用 received_at 也没错；但把 6 个月历史
+ * （2026-03-10 ~ 09-11）一次性回灌后，464 条的 received_at 全落在同一天，
+ * 于是趋势被压成一个点、"今日受理"显示 464 —— 口径不写明就会让人得出错误结论。
+ *
+ * 因此凡是**面向业务时间**的口径（仪表盘聚合/趋势、总账日期筛选）一律用它；
+ * 而"接收时间"列、最新到达排序等**审计/运营口径**继续用 received_at，二者都要能看见。
+ */
+export const BUSINESS_TIME = 'coalesce(c.source_reported_at, c.received_at)';
 
 /** 详情需要 mapper 里 rowToDetail 会读、但共享列清单未含的两列 */
 const DETAIL_EXTRA_COLUMNS = ', c.source_payload_hash, c.deleted';
@@ -107,12 +123,16 @@ export function buildWhere(filter: ComplaintFilter): WhereClause {
     parts.push('c.is_sensitive = ?');
     params.push(filter.isSensitive ? 1 : 0);
   }
+  // 日期筛选改用业务时间，与仪表盘口径、与列表新增的「受理时间」列保持一致；
+  // 服务层 parseShanghaiBoundary 已把日期按 +08:00 折算成墙钟端点，这里只换列、不动边界。
+  // 代价：coalesce(...) 用不上 source_reported_at 的索引。当前量级（数百条）无影响；
+  // 若日后上量，可改写为 (source_reported_at >= ? or (source_reported_at is null and received_at >= ?))。
   if (filter.startDate) {
-    parts.push('c.received_at >= ?');
+    parts.push(BUSINESS_TIME + ' >= ?');
     params.push(new Date(filter.startDate));
   }
   if (filter.endDate) {
-    parts.push('c.received_at <= ?');
+    parts.push(BUSINESS_TIME + ' <= ?');
     params.push(new Date(filter.endDate));
   }
 

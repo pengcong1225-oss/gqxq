@@ -626,6 +626,17 @@ const ComplaintList: React.FC = () => {
           v ? <Tooltip title={v}>{v}</Tooltip> : <span style={{ color: '#faad14' }}>未匹配</span>,
       },
       {
+        // 业务口径时间（与服务端 complaintRepo.BUSINESS_TIME 一致）：
+        // 来源给了受理时间就用它，否则回落接收时间。
+        // 与下面的「接收时间」并列展示——历史数据一次性回灌时，两列会明显分离，
+        // 让"这批件其实是 3~9 月受理、今天才入库"在台账里直接可见。
+        title: '受理时间',
+        dataIndex: 'sourceReportedAt',
+        width: 165,
+        render: (v: string | null) =>
+          v ? fmtDateTime(v) : <Tooltip title="来源未提供受理时间"><span style={{ color: '#bfbfbf' }}>—</span></Tooltip>,
+      },
+      {
         title: '接收时间',
         dataIndex: 'receivedAt',
         width: 165,
@@ -850,6 +861,7 @@ const ComplaintList: React.FC = () => {
             onChange={(v: string | undefined) => applyFilter({ districtCode: v })}
           />
           <RangePicker
+            placeholder={['受理时间起', '受理时间止']}
             value={range}
             onChange={(v) => {
               const next = v as [Dayjs | null, Dayjs | null] | null;

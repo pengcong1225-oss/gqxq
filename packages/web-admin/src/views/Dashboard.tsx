@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Button, Card, Col, Empty, Result, Row, Skeleton, Space, Statistic, Table, Tag, Tooltip, Typography,
+  Alert, Button, Card, Col, Empty, Result, Row, Select, Skeleton, Space, Statistic, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import {
   CheckCircleOutlined, ClockCircleOutlined, DatabaseOutlined, FileTextOutlined,
@@ -16,6 +16,18 @@ const NOT_AVAILABLE = '—';
 
 /** 服务端未给出原因时的兜底提示（只影响提示文案，不影响数值展示） */
 const REASON_FALLBACK = '该指标当前不可计算';
+
+/**
+ * 趋势窗口可选天数。**不写死 7 天**：历史数据回灌后"最近 7 天"可能整段为空，
+ * 必须让使用者自己拉长窗口（服务端按 days 校验 1..365）。
+ */
+const TREND_RANGE_OPTIONS = [
+  { value: 7, label: '近 7 天' },
+  { value: 30, label: '近 30 天' },
+  { value: 90, label: '近 90 天' },
+  { value: 180, label: '近 180 天' },
+];
+const TREND_DEFAULT_DAYS = 7;
 
 /** 标签配色只由前端决定；**中文名一律用服务端返回的 *Name 字段**，前端不自建翻译表 */
 const URGENCY_COLOR: Record<string, string> = {
@@ -80,6 +92,7 @@ const Dashboard: React.FC = () => {
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [trendDays, setTrendDays] = useState<number>(TREND_DEFAULT_DAYS);
   // 请求序号：丢弃过期响应，避免快速重试时旧结果覆盖新结果
   const requestSeq = useRef<number>(0);
 
@@ -89,7 +102,7 @@ const Dashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getDashboardOverview();
+      const data = await getDashboardOverview(trendDays);
       if (seq !== requestSeq.current) return;
       setOverview(data);
     } catch (err) {
@@ -98,7 +111,7 @@ const Dashboard: React.FC = () => {
     } finally {
       if (seq === requestSeq.current) setLoading(false);
     }
-  }, []);
+  }, [trendDays]);
 
   useEffect(() => {
     void load();
@@ -288,7 +301,7 @@ const Dashboard: React.FC = () => {
 
       <Row gutter={[16, 16]}>
         <Col span={4}>
-          <MetricCard title="今日诉求" value={metrics.todayReceived} icon={<FileTextOutlined />} onClick={() => navigate('/complaints')} />
+          <MetricCard title="今日受理" value={metrics.todayReceived} icon={<FileTextOutlined />} onClick={() => navigate('/complaints')} />
         </Col>
         <Col span={4}>
           <MetricCard title="供水诉求" value={metrics.waterReceived} valueStyle={{ color: '#1677ff' }} onClick={() => navigate('/complaints')} />
@@ -321,10 +334,24 @@ const Dashboard: React.FC = () => {
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col span={14}>
-          <Card title="诉求趋势（近 7 天）">
+          <Card
+            title={'诉求趋势（' + overview.trend.from + ' ~ ' + overview.trend.to + '）'}
+            extra={
+              <Select
+                size="small"
+                style={{ width: 120 }}
+                value={trendDays}
+                options={TREND_RANGE_OPTIONS}
+                onChange={(v: number) => setTrendDays(v)}
+              />
+            }
+          >
             {overview.trend.dates.length === 0
               ? <Empty description="暂无趋势数据" />
               : <ReactECharts option={trendOption} style={{ height: 280 }} />}
+            <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
+              口径：{overview.period.timeBasisLabel}；区间 {overview.trend.from} ~ {overview.trend.to}（{overview.trend.days} 天）
+            </div>
           </Card>
         </Col>
         <Col span={10}>

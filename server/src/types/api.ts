@@ -170,10 +170,26 @@ export interface RegionRankItem {
 export interface DashboardOverview {
   generatedAt: string;
   source: string;
-  period: { today: string; timezone: string };
+  period: {
+    today: string;
+    timezone: string;
+    /** 业务口径时间列标识；实际表达式见 repositories/complaintRepo.ts 的 BUSINESS_TIME */
+    timeBasis: string;
+    /** 口径中文说明，前端直接展示，避免"今日"歧义 */
+    timeBasisLabel: string;
+  };
   metrics: DashboardMetrics;
   unavailable: UnavailableMetric[];
-  trend: { dates: string[]; water: number[]; gas: number[] };
+  trend: {
+    dates: string[];
+    water: number[];
+    gas: number[];
+    /** 窗口长度（天） */
+    days: number;
+    /** 窗口起止（Asia/Shanghai 墙钟日，含端点） */
+    from: string;
+    to: string;
+  };
   businessTypeDistribution: DistributionItem[];
   complaintTypeDistribution: DistributionItem[];
   regionRank: RegionRankItem[];

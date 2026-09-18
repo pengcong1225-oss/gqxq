@@ -85,7 +85,8 @@ const HAS_OFFSET = /(Z|z|[+-]\d{2}:?\d{2})$/;
  *   只给日期：start 取当日 00:00:00.000，end 取当日 23:59:59.999（闭区间，含整天）
  *   给了时间但没带偏移：同样按 +08:00 解释
  * 返回 UTC ISO-8601 字符串（契约 ComplaintFilter.startDate 声明为 string）；
- * repository 会再转成 JS Date 交给驱动，由驱动按 +08:00 格式化成墙钟串与 received_at 比较。
+ * repository 会再转成 JS Date 交给驱动，由驱动按 +08:00 格式化成墙钟串，
+ * 与**业务时间**（coalesce(source_reported_at, received_at)，见 complaintRepo.BUSINESS_TIME）比较。
  */
 export function parseShanghaiBoundary(raw: string, name: string, kind: 'start' | 'end'): string {
   const candidate = DATE_ONLY.test(raw)

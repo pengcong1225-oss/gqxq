@@ -304,12 +304,21 @@ export interface UnavailableMetric {
 export interface DashboardPeriod {
   today: string;
   timezone: string;
+  /** 业务口径时间列标识（受理时间为准，来源受理时间优先、缺失回落接收时间） */
+  timeBasis: string;
+  /** 口径中文说明，直接展示，避免"今日"歧义 */
+  timeBasisLabel: string;
 }
 
 export interface DashboardTrend {
   dates: string[];
   water: number[];
   gas: number[];
+  /** 窗口长度（天） */
+  days: number;
+  /** 窗口起止（Asia/Shanghai 墙钟日，含端点） */
+  from: string;
+  to: string;
 }
 
 export interface DistributionItem<C extends string = string> {
