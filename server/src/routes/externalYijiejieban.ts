@@ -118,8 +118,21 @@ externalRouter.post(
 
     const errors: FieldError[] = [];
 
-    const title = optText(data.title, 500) ?? '';
-    if (title === '') errors.push({ field: 'title', message: 'title 必填' });
+    // complaint.title 是 varchar(255)：这里必须**按列宽拦住并给 400**。
+    // 之前截到 500，256–500 字的标题会一路走到 INSERT 撞 ER_DATA_TOO_LONG，
+    // 统一封套就把"对方输入不合法（400）"报成了"我们崩了（500）"。
+    // 完整标题本就在 source_payload 里，收敛列值不丢任何信息。
+    const TITLE_MAX = 255;
+    const titleRaw = data.title === null || data.title === undefined ? '' : String(data.title).trim();
+    if (titleRaw === '') {
+      errors.push({ field: 'title', message: 'title 必填' });
+    } else if (titleRaw.length > TITLE_MAX) {
+      errors.push({
+        field: 'title',
+        message: 'title 最长 ' + TITLE_MAX + ' 字，实际 ' + titleRaw.length + ' 字（完整报文已存 source_payload）',
+      });
+    }
+    const title = titleRaw.slice(0, TITLE_MAX);
 
     const sourceId = optText(data.sourceId, 128) ?? optText(data.appealId, 128) ?? '';
     if (sourceId === '') errors.push({ field: 'sourceId', message: 'sourceId（或 appealId）必填' });
