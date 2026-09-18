@@ -46,12 +46,20 @@ export const env = {
     secret: optRaw('GQXQ_PU_SECRET'),
     timeoutMs: Number(opt('GQXQ_PU_TIMEOUT_MS', '15000')),
   },
-  /** G6 来源对接：aimed 只读状态适配器。目前只有 disabled 一种有效形态。 */
+  /**
+   * G6 来源对接：宜接就办只读状态适配器。有效形态两种：
+   *   * disabled（默认）—— 不发起任何调用，同步即 501；
+   *   * file —— 读 GQXQ_YJJB_FILE 指向的**仓库外**快照 JSON，当成来源系统来用
+   *             （见 adapters/fileSourceAdapter.ts）。
+   * 其余取值一律回退 disabled 并标记 misconfigured，绝不构造假适配器。
+   */
   yijiejieban: {
     adapter: opt('GQXQ_YJJB_ADAPTER', 'disabled'),
     baseUrl: opt('GQXQ_YJJB_BASE_URL', ''),
     token: optRaw('GQXQ_YJJB_TOKEN'),
     timeoutMs: Number(opt('GQXQ_YJJB_TIMEOUT_MS', '10000')),
+    /** adapter=file 时读取的快照 JSON 路径；为空表示该形态配置不完整 */
+    file: opt('GQXQ_YJJB_FILE', ''),
   },
   /** G4 入站：校验 public-utility 回调签名与 ACK 响应体 */
   callback: {

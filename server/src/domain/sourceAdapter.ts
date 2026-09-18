@@ -27,6 +27,12 @@ const SOURCE_STATUS_MAP: Record<string, SourceEventStatusCode> = {
   FINISHED: 'completed',
   DONE: 'completed',
   CLOSED: 'closed',
+  // 宜接就办**导出快照**的中文口径（GQXQ_YJJB_ADAPTER=file，见 adapters/fileSourceAdapter.ts）。
+  // 「超期结案」映射为 completed：超期是**时效**维度、不是状态维度。原文仍原样保留在
+  // SourceStatusSnapshot.rawStatus 与 sync_log.response_body 里，事实不丢。
+  '正常在办': 'processing',
+  '正常结案': 'completed',
+  '超期结案': 'completed',
 };
 
 export function mapSourceStatus(rawStatus: string): SourceEventStatusCode | null {
