@@ -18,6 +18,8 @@
  *   node scripts/verify-source-adapter.mjs                      # 静态与纯函数检查，不连库
  *   GQXQ_BASE=http://localhost:33xx/api/v1 GQXQ_LOGIN_PASSWORD=*** \
  *     node scripts/verify-source-adapter.mjs --http             # 追加真实 HTTP 栈检查
+ *     （注意：G6-5 断言"开关关闭时同步被拒"，要求被测服务以 GQXQ_YJJB_ADAPTER=disabled 运行；
+ *       若服务配成 file，该项会如实标 MANUAL 而不是 FAIL。）
  */
 
 import { readFileSync } from 'node:fs';
@@ -108,6 +110,12 @@ function checkWriteScope() {
 }
 
 async function checkDisabledSwitch() {
+  // 本项检查的是"开关关闭"这个**特定状态**，因此必须自己固定前置条件。
+  // 环境里可能配着 file（读来源快照，见 adapters/fileSourceAdapter.ts）以便联调，
+  // 此时适配器本来就是"开"的；不固定这一行就会把"开着的适配器正常返回状态"
+  // 误判成"关闭时返回了状态"——那是拿环境差异当缺陷。
+  // dotenv 不覆盖已存在的 process.env，所以在 import 之前设置即可生效。
+  process.env.GQXQ_YJJB_ADAPTER = 'disabled';
   const mod = await import(pathToFileURL(join(SERVER_ROOT, 'dist/adapters/index.js')).href).catch(() => null);
   if (mod === null) {
     emit('G6-4', '开关关闭时不返回任何来源状态', 'FAIL', ['无法加载 dist/adapters/index.js，请先 npm run build']);
@@ -162,6 +170,18 @@ async function checkHttp() {
     return;
   }
   const state = await fetch(BASE + '/source-status', { headers }).then((r) => r.json());
+  // 前置条件：本项断言的是"开关关闭时同步被拒"。服务端的配置来自环境，脚本改不动——
+  // 若当前配成 file，适配器是开的，同步会成功而不是 501。
+  // 此时如实标 MANUAL 并说清原因，而不是报一个假 FAIL。
+  if (state && state.data && state.data.enabled === true) {
+    emit('G6-5', 'HTTP 栈：同步被拒且业务状态不变', 'MANUAL', [
+      'GET /source-status: ' + JSON.stringify(state.data),
+      '当前服务的来源适配器是【启用】状态，而本项要求开关关闭（GQXQ_YJJB_ADAPTER=disabled）。',
+      '请在 disabled 配置下重启服务后重跑：cd server && $env:GQXQ_YJJB_ADAPTER="disabled"; node dist/index.js',
+      '适配器启用时的正向同步路径由 scripts/verify-file-source-adapter.ts 覆盖（tsx 直跑 src）。',
+    ]);
+    return;
+  }
   const syncRes = await fetch(BASE + '/complaints/' + encodeURIComponent(target.id) + '/source-sync', { method: 'POST', headers: headers });
   const syncBody = await syncRes.json().catch(() => ({}));
   const after = await fetch(BASE + '/complaints/' + encodeURIComponent(target.id), { headers: headers }).then((r) => r.json());
