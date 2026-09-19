@@ -39,6 +39,8 @@ export async function listComplaints(
     supervisionStatus: toCsv(params.supervisionStatus),
     sourceEventStatus: toCsv(params.sourceEventStatus),
     reportingStatus: toCsv(params.reportingStatus),
+    // 单值参数（'1' / '0' / 'none'），原样透传；非法值由服务端 zod 拦成 400
+    overtime: params.overtime,
     isSensitive: toFlag(params.isSensitive),
     correctionStatus: params.correctionStatus,
     districtCode: params.districtCode,

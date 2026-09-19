@@ -1,12 +1,14 @@
 // 诉求总账查询服务：参数解析/校验 + DTO 组装。
 // 校验口径见 docs/2026-09-17-诉求平台G1详细实施方案.md §5.4：
 //   size 必须在 1..100（超限 400）；sort 只允许白名单字段；startDate/endDate 按 +08:00 解析。
+import { z } from 'zod';
 import { AppError } from '../http/errors';
 import type {
   ComplaintDetail,
   ComplaintFilter,
   ComplaintListItem,
   ComplaintListResult,
+  OvertimeFilterCode,
   TimelineItem,
 } from '../types/api';
 import { labelOf } from '../domain/enums';
@@ -79,6 +81,26 @@ function intParam(v: unknown, name: string, min: number, max: number | undefined
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const HAS_OFFSET = /(Z|z|[+-]\d{2}:?\d{2})$/;
+
+/**
+ * overtime 筛选参数：只认 1 / 0 / none 三个值（zod 校验，非法值 400）。
+ * 刻意不接受 true/false/2/空串——它们各自都能被"善意解释"成某种口径，
+ * 而三态筛选的语义一旦能含混解释，"超期件数"就没有可核对的唯一定义了。
+ */
+const OVERTIME_VALUES = ['1', '0', 'none'] as const;
+const OvertimeParamSchema = z.enum(OVERTIME_VALUES);
+
+export function parseOvertime(raw: unknown): OvertimeFilterCode | undefined {
+  const value = firstString(raw);
+  if (value === undefined) return undefined;
+  const parsed = OvertimeParamSchema.safeParse(value);
+  if (!parsed.success) {
+    throw AppError.validation('参数 overtime 只能是 ' + OVERTIME_VALUES.join(' / '), [
+      { field: 'overtime', message: '期望 1（超期）/ 0（未超期）/ none（无时效信息）' },
+    ]);
+  }
+  return parsed.data as OvertimeFilterCode;
+}
 
 /**
  * startDate / endDate 一律按东八区解析（本地业务口径）。
@@ -162,6 +184,7 @@ export function parseListQuery(query: Record<string, unknown>): ParsedListQuery 
     supervisionStatus: stringList(query.supervisionStatus),
     sourceEventStatus: stringList(query.sourceEventStatus),
     reportingStatus: stringList(query.reportingStatus),
+    overtime: parseOvertime(query.overtime),
     correctionStatus: firstString(query.correctionStatus),
     districtCode: firstString(query.districtCode),
     enterpriseCode: firstString(query.enterpriseCode),

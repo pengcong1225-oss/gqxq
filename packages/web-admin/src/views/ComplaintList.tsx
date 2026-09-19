@@ -55,6 +55,7 @@ import type {
   DictItem,
   DispositionKind,
   EnterpriseListItem,
+  OvertimeFilter,
   SourceAdapterState,
   SourceEventStatus,
   SupervisionStatus,
@@ -81,6 +82,8 @@ interface Filters {
   urgencyLevel?: UrgencyLevel;
   supervisionStatus?: SupervisionStatus;
   sourceEventStatus?: SourceEventStatus;
+  /** 超期时效筛选；undefined = 全部（不传该参数） */
+  overtime?: OvertimeFilter;
   isSensitive?: 0 | 1;
   correctionStatus?: CorrectionStatus;
   districtCode?: string;
@@ -108,6 +111,17 @@ const SUPERVISION_COLOR: Record<string, string> = {
   rejected: 'error',
   archived: 'default',
   cancelled: 'default',
+};
+
+/**
+ * 超期时效三态的 Tag 配色（**只配色，不配文案**——文案取服务端 overtimeFlagName）。
+ * 键是筛选口径而不是库值：'none' 代表 overtime_flag IS NULL。
+ * NULL 用中性灰而不是绿色：它的意思是"来源没给时效信息"，画成绿色会被读成"没超期"。
+ */
+const OVERTIME_COLOR: Record<'1' | '0' | 'none', string> = {
+  '1': 'red',
+  '0': 'green',
+  none: 'default',
 };
 
 /** 筛选下拉用的字典类型（标签来自服务端 /dicts/:code/items，不在前端硬编码）。 */
@@ -203,6 +217,7 @@ const ComplaintList: React.FC = () => {
       urgencyLevel: filters.urgencyLevel,
       supervisionStatus: filters.supervisionStatus,
       sourceEventStatus: filters.sourceEventStatus,
+      overtime: filters.overtime,
       isSensitive: filters.isSensitive,
       correctionStatus: filters.correctionStatus,
       startDate: filters.range?.[0] ? filters.range[0].format('YYYY-MM-DD') : undefined,
@@ -612,6 +627,22 @@ const ComplaintList: React.FC = () => {
           ),
       },
       {
+        title: '超期',
+        dataIndex: 'overtimeFlag',
+        width: 110,
+        render: (_: unknown, r) => {
+          const key = r.overtimeFlag === 1 ? '1' : r.overtimeFlag === 0 ? '0' : 'none';
+          const tag = <Tag color={OVERTIME_COLOR[key]}>{r.overtimeFlagName}</Tag>;
+          return key === 'none' ? (
+            <Tooltip title="来源未给出时效信息（未同步 / 正常在办 / 状态认不出 / 历史未回填），不等于「未超期」">
+              {tag}
+            </Tooltip>
+          ) : (
+            tag
+          );
+        },
+      },
+      {
         title: '区域',
         dataIndex: 'districtName',
         width: 90,
@@ -836,6 +867,22 @@ const ComplaintList: React.FC = () => {
             options={dictOptions('source_event_status')}
             onChange={(v: SourceEventStatus | undefined) => applyFilter({ sourceEventStatus: v })}
           />
+          {/*
+            超期是**时效**维度（M11 的 complaint.overtime_flag），与「来源状态」正交：
+            同一批 completed 里可能既有超期也有未超期，所以两个下拉可以叠加使用。
+            allowClear（不传 overtime）= 全部；三档标签与筛选口径一一对应，见 OvertimeFilter。
+          */}
+          <Select
+            placeholder="超期时效"
+            allowClear
+            style={{ width: 130 }}
+            options={[
+              { value: '1', label: '超期' },
+              { value: '0', label: '未超期' },
+              { value: 'none', label: '无时效信息' },
+            ]}
+            onChange={(v: OvertimeFilter | undefined) => applyFilter({ overtime: v })}
+          />
           <Select
             placeholder="是否敏感"
             allowClear
@@ -884,6 +931,8 @@ const ComplaintList: React.FC = () => {
         <div style={{ marginBottom: 12 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             统计卡片为当前筛选条件下的全量口径（不受分页影响）。来源状态「未接入」表示宜接就办接口尚未对接（批次 G6），不代表处置进度。
+            <br />
+            「超期」是时效维度，只由来源同步路径派生（批次 G6／迁移 M11）；「无时效信息」= 来源没给结论，不等于「未超期」，历史存量尚未回填。
           </Typography.Text>
         </div>
 
@@ -908,7 +957,7 @@ const ComplaintList: React.FC = () => {
             dataSource={data?.content ?? []}
             loading={loading}
             size="middle"
-            scroll={{ x: 1700 }}
+            scroll={{ x: 1810 }}
             locale={{ emptyText: <Empty description="暂无诉求数据" /> }}
             pagination={{
               current: page,

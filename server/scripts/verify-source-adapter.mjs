@@ -7,11 +7,13 @@
  *
  *   一、契约本身可满足：用内存假适配器实现契约，证明接口自洽（真实实现照此写即可）。
  *   二、状态映射不猜：认不出来的来源状态必须返回 null，绝不能映射成某个已知状态。
+ *       G6-6 另钉「时效轴」（M11 的 overtime_flag）同样不猜：来源没说超期与否的必须仍是 NULL。
  *   三、安全不变量（本批次最重要）：
  *         * 开关关闭时调用即报未实现，不返回任何来源状态；
  *         * 配置成未知适配器时不构造假适配器，而是回报配置无效；
  *         * 无论成功失败，不得改动 reporting_status（填报结果）与 closed_*（本系统办结）——
- *           因此同步 SQL 只允许写 source_event_status 与 source_synced_at，这一条直接扫源码断言。
+ *           因此同步 SQL 只允许写 source_event_status / overtime_flag / source_synced_at 三列，
+ *           这一条直接扫源码按**精确允许集合**断言。
  *
  * 用法：
  *   cd server && npm run build
@@ -70,6 +72,38 @@ async function checkMapping() {
     wrong.length > 0 ? '不符: ' + wrong.join('; ') : '全部符合：已知状态正确映射，未知状态一律 null（调用方保留原状态并留痕）',
   ]);
 
+  // G6-6：超期是**时效**维度（M11 的 complaint.overtime_flag），与状态轴并行。
+  // 判据的关键不是"1 有没有映射上"，而是**来源没说的必须仍是 null**：
+  // 把「正常在办」或英文 COMPLETED 猜成 0，等于替来源撒一句"这批件没超期"。
+  const overtimeCases = [
+    ['正常在办', 'processing', null],
+    ['正常结案', 'completed', 0],
+    ['超期结案', 'completed', 1],
+    ['COMPLETED', 'completed', null],
+    ['ACCEPTED', 'accepted', null],
+    ['某来源特有的状态', null, null],
+    ['', null, null],
+  ];
+  const overtimeWrong = [];
+  for (const [input, wantCode, wantOvertime] of overtimeCases) {
+    const got = mod.mapSourceStatusDetail(input);
+    const gotCode = got === null ? null : got.code;
+    const gotOvertime = got === null ? null : got.overtimeFlag;
+    if (gotCode !== wantCode || gotOvertime !== wantOvertime) {
+      overtimeWrong.push(
+        JSON.stringify(input) + ' -> ' + JSON.stringify(got) +
+          '（期望 code=' + JSON.stringify(wantCode) + ' overtime=' + JSON.stringify(wantOvertime) + '）'
+      );
+    }
+  }
+  const overtimeOk = mod.mapSourceStatus('超期结案') === 'completed' &&
+    mod.mapSourceStatusDetail('超期结案').overtimeFlag === 1;
+  emit('G6-6', '时效映射三态（来源没说的一律 NULL，不压成 0）', overtimeWrong.length === 0 && overtimeOk ? 'PASS' : 'FAIL', [
+    '共 ' + overtimeCases.length + ' 个用例：状态轴 + 时效轴二元组必须同时正确',
+    '「超期结案」必须是 (completed, 1) 且旧签名 mapSourceStatus 仍返回 completed（G6 契约不破坏）-> ' + overtimeOk,
+    overtimeWrong.length > 0 ? '不符: ' + overtimeWrong.join('; ') : '全部符合；未列出的取值整体返回 null，两轴都保留原值',
+  ]);
+
   const fake = {
     name: 'in-memory-fake',
     enabled: true,
@@ -91,21 +125,30 @@ function checkWriteScope() {
   try {
     text = readFileSync(file, 'utf8');
   } catch (err) {
-    emit('G6-3', '同步 SQL 只允许写来源状态两列', 'FAIL', ['读不到 ' + file + ': ' + String(err)]);
+    emit('G6-3', '同步 SQL 只允许写来源状态三列', 'FAIL', ['读不到 ' + file + ': ' + String(err)]);
     return;
   }
   const m = /update\s+complaint\s+set([\s\S]*?)where/i.exec(text);
   const setClause = m ? m[1] : '';
-  const forbidden = ['reporting_status', 'supervision_status', 'closed_in_system', 'closed_at', 'closed_by', 'closed_basis', 'analysis_included'];
-  const leaked = forbidden.filter((col) => setClause.indexOf(col) >= 0);
-  const allowedOk = ['source_event_status', 'source_synced_at'].every((col) => setClause.indexOf(col) >= 0);
-  const pass = setClause !== '' && leaked.length === 0 && allowedOk;
-  emit('G6-3', '同步 SQL 只允许写来源状态两列', pass ? 'PASS' : 'FAIL', [
+  // **精确允许集合**（不是"不含禁用列即通过"）：新增列必须显式在这里登记，
+  // 这样"顺手在同一条 UPDATE 里多写一列"一定会被拦下。
+  // overtime_flag 是 M11 的超期时效派生列，与 source_event_status 共用同一条单写者路径。
+  const ALLOWED = ['source_event_status', 'overtime_flag', 'source_synced_at'];
+  const assigned = [...setClause.matchAll(/([a-z_][a-z0-9_]*)\s*=/gi)].map((x) => x[1].toLowerCase());
+  const leaked = assigned.filter((col) => !ALLOWED.includes(col));
+  const missing = ALLOWED.filter((col) => !assigned.includes(col));
+  const duplicated = assigned.filter((col, i) => assigned.indexOf(col) !== i);
+  const pass = setClause !== '' && leaked.length === 0 && missing.length === 0 && duplicated.length === 0;
+  emit('G6-3', '同步 SQL 只允许写来源状态三列', pass ? 'PASS' : 'FAIL', [
     '扫源码 ' + file + ' 里 update complaint 的 SET 子句：',
     '  SET' + setClause.replace(/\s+/g, ' ').trim(),
-    '必须只含 source_event_status 与 source_synced_at；含 reporting_status / closed_* / analysis_* 即判失败',
+    '解析出的赋值列: ' + JSON.stringify(assigned),
+    '精确允许集合: ' + JSON.stringify(ALLOWED) + '（超出即失败；缺列同样失败，防止窄接口被改窄后静默降级）',
     leaked.length > 0 ? '越界列: ' + leaked.join(', ') : '未发现越界列',
-    '说明：这条是 G6 的核心不变量——来源适配器无论成功失败，都不得改动填报结果与本系统办结状态。',
+    missing.length > 0 ? '缺少必需列: ' + missing.join(', ') : '三个必需列齐备',
+    duplicated.length > 0 ? '重复赋值列: ' + duplicated.join(', ') : '无重复赋值',
+    '说明：这条是 G6 的核心不变量——来源适配器无论成功失败，都不得改动填报结果与本系统办结状态；',
+    '      来源侧只允许 source_event_status + overtime_flag（时效派生）+ source_synced_at（时间戳）三列。',
   ]);
 }
 

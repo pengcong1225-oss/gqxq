@@ -7,8 +7,9 @@
 import { AppError } from '../http/errors';
 import { withTransaction } from '../db/tx';
 import { labelOf } from '../domain/enums';
-import { mapSourceStatus } from '../domain/sourceAdapter';
+import { mapSourceStatusDetail, overtimeFlagName } from '../domain/sourceAdapter';
 import { resolveSourceAdapter } from '../adapters';
+import type { OvertimeFlag } from '../domain/sourceAdapter';
 import type { SourceAdapterState, SourceSyncResult } from '../types/api';
 import { findComplaintForSync, insertSyncLog, updateSourceEventStatus } from '../repositories/sourceSyncRepo';
 
@@ -104,15 +105,18 @@ export async function syncComplaintSource(
       rawStatus: null,
       sourceEventStatusCode: complaint.source_event_status,
       sourceEventStatusName: nameOf(complaint.source_event_status),
+      // 来源这次没给任何原文，时效维度**不表态**（null ≠ "无时效信息"这个标签，而是"本次没结论"）
+      overtimeFlag: null,
+      overtimeFlagName: null,
       updated: false,
       message: '来源系统没有该事件，来源状态保持原值',
       syncedAt: null,
     };
   }
 
-  // ---- 4) 状态认不出来：保留原状态并留痕，不猜 ----
-  const mapped = mapSourceStatus(snapshot.rawStatus);
-  if (mapped === null) {
+  // ---- 4) 状态认不出来：保留原状态**与原时效标记**并留痕，不猜 ----
+  const mapping = mapSourceStatusDetail(snapshot.rawStatus);
+  if (mapping === null) {
     await withTransaction((tx) =>
       insertSyncLog(tx, {
         complaintId,
@@ -129,15 +133,21 @@ export async function syncComplaintSource(
       rawStatus: snapshot.rawStatus,
       sourceEventStatusCode: complaint.source_event_status,
       sourceEventStatusName: nameOf(complaint.source_event_status),
+      // 原文认不出 -> 时效维度同样没有结论；**不写库**，所以也不谎报"无时效信息"
+      overtimeFlag: null,
+      overtimeFlagName: null,
       updated: false,
       message: '来源状态「' + snapshot.rawStatus + '」无法映射，已保留原状态并留痕',
       syncedAt: null,
     };
   }
 
-  // ---- 5) 正常更新：只写 source_event_status 与 source_synced_at ----
+  // ---- 5) 正常更新：只写 source_event_status / overtime_flag / source_synced_at 三列 ----
+  // 这里**不按"状态没变"短路**：状态轴没动而时效轴从 NULL 变 1（正常结案 -> 超期结案）
+  // 是真实变化，短路会把这次更正丢掉。见 sourceSyncRepo.updateSourceEventStatus 的注释。
+  const overtimeFlag: OvertimeFlag = mapping.overtimeFlag;
   await withTransaction(async (tx) => {
-    await updateSourceEventStatus(tx, complaintId, mapped, now);
+    await updateSourceEventStatus(tx, complaintId, mapping.code, overtimeFlag, now);
     await insertSyncLog(tx, {
       complaintId,
       result: 'success',
@@ -152,8 +162,10 @@ export async function syncComplaintSource(
     synced: true,
     adapterEnabled: true,
     rawStatus: snapshot.rawStatus,
-    sourceEventStatusCode: mapped,
-    sourceEventStatusName: nameOf(mapped),
+    sourceEventStatusCode: mapping.code,
+    sourceEventStatusName: nameOf(mapping.code),
+    overtimeFlag,
+    overtimeFlagName: overtimeFlagName(overtimeFlag),
     updated: true,
     message: null,
     syncedAt: now.toISOString(),

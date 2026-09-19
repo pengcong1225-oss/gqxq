@@ -157,6 +157,15 @@ export interface ComplaintListItem {
   sourceEventStatusCode: SourceEventStatus;
   /** unknown 时服务端返回「未接入」，前端必须原样展示 */
   sourceEventStatusName: string;
+  /**
+   * 超期时效派生标记（complaint.overtime_flag，M11）。**三态**：
+   *   null = 来源未给出时效信息（未同步 / 正常在办 / 认不出 / 历史未回填），**不等于"未超期"**
+   *   0    = 来源明确未超期
+   *   1    = 来源明确超期
+   */
+  overtimeFlag: number | null;
+  /** 三态标签由服务端给（超期 / 未超期 / 无时效信息），前端不建翻译表 */
+  overtimeFlagName: string;
   supervisionStatusCode: SupervisionStatus;
   supervisionStatusName: string;
   reportingStatusCode: ReportingStatus;
@@ -222,6 +231,14 @@ export type SortSpec = `${SortField},${SortOrder}`;
 /** 协议上多值参数是「逗号分隔字符串」；此处同时接受数组，由 api 层序列化 */
 export type Csv<T extends string = string> = T | readonly T[];
 
+/**
+ * 超期筛选参数（query `overtime`，与服务端 OvertimeFilterCode 一致）。三值即三种口径：
+ *   '1'    超期 ／ '0' 来源明确未超期 ／ 'none' 无时效信息（库里 NULL）
+ * '0' 与 'none' **不等价**：把 NULL 并入"未超期"会把未同步/未回填的件谎报成来源说过没超期。
+ * 不传即不按超期筛（前端「全部」= 不传该参数）。
+ */
+export type OvertimeFilter = '1' | '0' | 'none';
+
 export interface ComplaintListParams {
   /** 页码，默认 1 */
   page?: number;
@@ -235,6 +252,8 @@ export interface ComplaintListParams {
   supervisionStatus?: Csv<SupervisionStatus>;
   sourceEventStatus?: Csv<SourceEventStatus>;
   reportingStatus?: Csv<ReportingStatus>;
+  /** 超期时效筛选；不传 = 全部。取值语义见 OvertimeFilter */
+  overtime?: OvertimeFilter;
   /** 协议值 0/1；为方便调用方也接受 boolean */
   isSensitive?: 0 | 1 | boolean;
   correctionStatus?: CorrectionStatus;
@@ -400,6 +419,12 @@ export interface SourceSyncResult {
   rawStatus: string | null;
   sourceEventStatusCode: string | null;
   sourceEventStatusName: string | null;
+  /**
+   * 本次来源原文给出的超期时效标记（三态）。
+   * not_found / unmapped 时为 null，表示"本次没有时效结论"，**不代表**库里该列是 NULL。
+   */
+  overtimeFlag: number | null;
+  overtimeFlagName: string | null;
   updated: boolean;
   message: string | null;
   syncedAt: string | null;

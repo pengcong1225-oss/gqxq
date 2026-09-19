@@ -17,13 +17,14 @@
  *   $env:GQXQ_YJJB_ADAPTER='whatever'                                   # 未知形态
  *
  * 断言项：
- *   F1 中文口径映射：三个已知值 -> 码位；其余 -> null（绝不猜）
+ *   F1 中文口径映射：每个取值钉 (状态码, 时效标记) 二元组；其余 -> null（绝不猜）
  *   F2 resolveSourceAdapter() 与该 env 组合应有的期望一致
  *   F3 file 激活时：真快照能命中、未命中返回 null、原文保真、码位可映射
  *   F4 错误路径：文件缺失/坏 JSON/顶层类型不对/值不合法/空对象/未配置路径
  *                -> 必须抛错，绝不能返回空成功
- *   F5 不变量：src/ 里 update complaint 的 SET 子句含 source_event_status 的文件只能有一个
- *              （证明没有新增第二条写该列的代码路径）
+ *   F5 不变量：src/ 里 update complaint 的 SET 子句含 source_event_status **或 overtime_flag**
+ *              的文件只能有一个（sourceSyncRepo.ts）
+ *              （证明 M11 只把时效派生列并进同一条窄 UPDATE，没有新增第二条写路径）
  */
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -31,7 +32,7 @@ import { basename, join } from 'node:path';
 import { env } from '../src/config/env';
 import { resolveSourceAdapter } from '../src/adapters';
 import { FileSourceAdapter } from '../src/adapters/fileSourceAdapter';
-import { mapSourceStatus } from '../src/domain/sourceAdapter';
+import { mapSourceStatus, mapSourceStatusDetail } from '../src/domain/sourceAdapter';
 
 const SERVER_ROOT = process.cwd();
 const results: Array<{ id: string; status: string }> = [];
@@ -45,27 +46,35 @@ function emit(id: string, title: string, status: string, lines: string[] = []): 
 }
 
 function checkMapping(): void {
-  const cases: Array<[string, string | null]> = [
-    ['正常在办', 'processing'],
-    ['正常结案', 'completed'],
-    ['超期结案', 'completed'],
-    ['  正常在办  ', 'processing'],
-    ['待处理', null],
-    ['已转办', null],
-    ['', null],
-    ['ACCEPTED', 'accepted'],
-    ['某来源特有的状态', null],
+  // 每个用例钉**二元组**：(状态码, 时效标记)。null 时效 = 来源没给时效结论，**不等于 0**。
+  const cases: Array<[string, string | null, number | null]> = [
+    ['正常在办', 'processing', null],
+    ['正常结案', 'completed', 0],
+    ['超期结案', 'completed', 1],
+    ['  正常在办  ', 'processing', null],
+    ['待处理', null, null],
+    ['已转办', null, null],
+    ['', null, null],
+    ['ACCEPTED', 'accepted', null],
+    ['某来源特有的状态', null, null],
   ];
   const wrong: string[] = [];
-  for (const [input, expected] of cases) {
-    const got = mapSourceStatus(input);
-    if (got !== expected) {
-      wrong.push(JSON.stringify(input) + ' -> ' + JSON.stringify(got) + '（期望 ' + JSON.stringify(expected) + '）');
+  for (const [input, wantCode, wantOvertime] of cases) {
+    const gotCode = mapSourceStatus(input);
+    const detail = mapSourceStatusDetail(input);
+    const gotOvertime = detail === null ? null : detail.overtimeFlag;
+    if (gotCode !== wantCode || gotOvertime !== wantOvertime) {
+      wrong.push(
+        JSON.stringify(input) + ' -> (' + JSON.stringify(gotCode) + ', ' + JSON.stringify(gotOvertime) + ')' +
+          '（期望 (' + JSON.stringify(wantCode) + ', ' + JSON.stringify(wantOvertime) + ')）'
+      );
     }
   }
-  emit('F1', '中文口径映射（认不出一律 null）', wrong.length === 0 ? 'PASS' : 'FAIL', [
-    '共 ' + cases.length + ' 个用例；三个快照口径必须是 正常在办->processing / 正常结案->completed / 超期结案->completed',
-    wrong.length > 0 ? '不符: ' + wrong.join('; ') : '全部符合；未列出的取值一律 null，由 service 保留原状态并留痕（绝不猜）',
+  emit('F1', '中文口径映射：状态轴 + 时效轴二元组（认不出一律 null）', wrong.length === 0 ? 'PASS' : 'FAIL', [
+    '共 ' + cases.length + ' 个用例；三个快照口径必须是 (正常在办->processing, NULL) / (正常结案->completed, 0) / (超期结案->completed, 1)',
+    '超期是**时效**维度（M11 的 complaint.overtime_flag），不改变 source_event_status 的取值；' +
+      '来源没给时效结论的必须仍是 NULL —— 压成 0 就是替来源谎报"没超期"',
+    wrong.length > 0 ? '不符: ' + wrong.join('; ') : '全部符合；未列出的取值整体返回 null，由 service 保留原状态并留痕（绝不猜）',
   ]);
 }
 
@@ -186,6 +195,9 @@ function checkSingleWriter(): void {
   const files = walk(join(SERVER_ROOT, 'src'));
   const updaters: string[] = [];
   const writers: string[] = [];
+  /** 两列都是"来源侧派生列"，共用同一条单写者路径（M11 只扩列、不开第二个写者） */
+  const PINNED_COLUMNS = ['source_event_status', 'overtime_flag'];
+  const hits: string[] = [];
   for (const file of files) {
     const text = readFileSync(file, 'utf8');
     if (!/update\s+complaint\b/i.test(text)) continue;
@@ -197,16 +209,21 @@ function checkSingleWriter(): void {
       if (setIdx < 0) continue;
       const whereIdx = text.indexOf('where', setIdx);
       const clause = text.slice(setIdx, whereIdx < 0 ? setIdx + 400 : whereIdx);
-      if (clause.includes('source_event_status')) writers.push(basename(file));
+      const pinned = PINNED_COLUMNS.filter((col) => clause.includes(col));
+      if (pinned.length === 0) continue;
+      writers.push(basename(file));
+      hits.push(basename(file) + ' 写 ' + pinned.join(' + '));
     }
   }
   const unique = Array.from(new Set(writers));
   const ok = unique.length === 1 && unique[0] === 'sourceSyncRepo.ts';
-  emit('F5', '写 source_event_status 的 UPDATE 只允许一处', ok ? 'PASS' : 'FAIL', [
+  emit('F5', '写 source_event_status / overtime_flag 的 UPDATE 只允许一处', ok ? 'PASS' : 'FAIL', [
     '扫描 ' + files.length + ' 个 src/**/*.ts',
     '会 update complaint 的文件: ' + JSON.stringify(updaters),
-    '其中 SET 子句含 source_event_status 的文件: ' + JSON.stringify(unique),
-    '期望恰好一个且为 sourceSyncRepo.ts（即 sourceStatusService 唯一的落库出口）——本次改动只新增适配器实现，没有新增写入路径',
+    '其中 SET 子句含来源派生列的命中: ' + JSON.stringify(hits),
+    '命中文件集合: ' + JSON.stringify(unique),
+    '期望恰好一个且为 sourceSyncRepo.ts（即 sourceStatusService 唯一的落库出口）——' +
+      'M11 把 overtime_flag 并进同一条窄 UPDATE，**没有**新增第二个写者',
   ]);
 }
 

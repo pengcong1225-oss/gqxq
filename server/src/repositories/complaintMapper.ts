@@ -3,8 +3,14 @@
 // 约定：查询一律**具名列**，禁止 select *（平台侧依赖列序的假设同样不成立）。
 import type { ComplaintDetail, ComplaintListItem } from '../types/api';
 import { labelOf } from '../domain/enums';
+import { overtimeFlagName, toOvertimeFlag } from '../domain/sourceAdapter';
 
-/** 查询 complaint 时统一使用的列清单（含 G1 新增的三条状态轴与来源快照列） */
+/**
+ * 查询 complaint 时统一使用的列清单（含 G1 新增的三条状态轴与来源快照列）。
+ * M11 起含派生列 overtime_flag（超期时效，三态）。
+ * **写侧清单 COMPLAINT_INSERT_COLUMNS 刻意不含它**：入站报文里没有时效口径，
+ * 该列只能由来源同步路径写（见 repositories/sourceSyncRepo.ts 与 scripts/verify-* 的静态扫描）。
+ */
 export const COMPLAINT_COLUMNS = [
   'c.id',
   'c.complaint_id',
@@ -42,6 +48,7 @@ export const COMPLAINT_COLUMNS = [
   'c.source_reported_at',
   'c.source_updated_at',
   'c.source_event_status',
+  'c.overtime_flag',
   'c.supervision_status',
   'c.reporting_status',
   'c.closed_in_system',
@@ -172,6 +179,8 @@ export function rowToListItem(r: ComplaintRow): ComplaintListItem {
   const sourceEventStatusCode = String(r.source_event_status ?? 'unknown');
   const supervisionStatusCode = String(r.supervision_status ?? 'none');
   const reportingStatusCode = String(r.reporting_status ?? 'not_started');
+  // 三态派生标记：NULL 必须原样是 null（= 来源没给时效信息），不能压成 0（= 谎报"未超期"）。
+  const overtimeFlag = toOvertimeFlag(r.overtime_flag);
   return {
     id: Number(r.id),
     complaintId: String(r.complaint_id),
@@ -197,6 +206,10 @@ export function rowToListItem(r: ComplaintRow): ComplaintListItem {
     correctionConfidence: toNum(r.correction_confidence),
     sourceEventStatusCode,
     sourceEventStatusName: labelOf('source_event_status', sourceEventStatusCode),
+    // 三态派生标记：NULL 必须原样是 null（= 来源没给时效信息），不能压成 0（= 谎报"未超期"）。
+    // 非 0/1 的意外取值也回落到 null——不猜。
+    overtimeFlag,
+    overtimeFlagName: overtimeFlagName(overtimeFlag),
     supervisionStatusCode,
     supervisionStatusName: labelOf('supervision_status', supervisionStatusCode),
     reportingStatusCode,

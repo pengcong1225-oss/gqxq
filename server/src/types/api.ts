@@ -48,6 +48,15 @@ export interface ComplaintListItem {
 
   sourceEventStatusCode: string;
   sourceEventStatusName: string;
+  /**
+   * 超期时效派生标记（complaint.overtime_flag，M11）。**三态**：
+   *   null = 来源未给出时效信息（未同步 / 正常在办 / 认不出 / 历史未回填）——不是"未超期"
+   *   0    = 来源明确未超期
+   *   1    = 来源明确超期
+   */
+  overtimeFlag: number | null;
+  /** 三态标签（超期 / 未超期 / 无时效信息）由服务端给；前端不自建翻译表 */
+  overtimeFlagName: string | null;
   supervisionStatusCode: string;
   supervisionStatusName: string;
   reportingStatusCode: string;
@@ -105,6 +114,16 @@ export interface TimelineItem {
   detail: Record<string, unknown> | null;
 }
 
+/**
+ * 超期筛选参数（query `overtime`）。三值即三种口径，**没有第四个值**：
+ *   '1'    = 只要超期（overtime_flag = 1）
+ *   '0'    = 只要来源明确未超期（overtime_flag = 0）
+ *   'none' = 只要无时效信息（overtime_flag IS NULL）
+ * 未传该参数 = 不按超期筛。注意 '0' 与 'none' 不等价：把 NULL 当成"未超期"会把
+ * 未同步/历史未回填的件谎报成"来源说没超期"，所以两者必须能分开筛。
+ */
+export type OvertimeFilterCode = '1' | '0' | 'none';
+
 export interface ComplaintFilter {
   keyword?: string;
   businessType?: string[];
@@ -113,6 +132,8 @@ export interface ComplaintFilter {
   supervisionStatus?: string[];
   sourceEventStatus?: string[];
   reportingStatus?: string[];
+  /** 超期时效筛选；取值与语义见 OvertimeFilterCode */
+  overtime?: OvertimeFilterCode;
   correctionStatus?: string;
   districtCode?: string;
   /** 责任企业 business key */
@@ -253,6 +274,13 @@ export interface SourceSyncResult {
   /** 映射后的状态；无法映射或未更新时为 null */
   sourceEventStatusCode: string | null;
   sourceEventStatusName: string | null;
+  /**
+   * 本次来源原文给出的超期时效标记（三态，见 ComplaintListItem.overtimeFlag）。
+   * 未更新（not_found / unmapped）时为 null，表示"来源这次没给时效信息"，
+   * **不代表**库里该列是 NULL。
+   */
+  overtimeFlag: number | null;
+  overtimeFlagName: string | null;
   updated: boolean;
   message: string | null;
   syncedAt: string | null;

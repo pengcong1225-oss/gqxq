@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { AppError } from '../http/errors';
-import { mapSourceStatus } from '../domain/sourceAdapter';
+import { mapSourceStatusDetail } from '../domain/sourceAdapter';
 import type { SourceStatusAdapter, SourceStatusSnapshot } from '../domain/sourceAdapter';
 
 /**
@@ -11,9 +11,10 @@ import type { SourceStatusAdapter, SourceStatusSnapshot } from '../domain/source
  * 而不是写脚本直接改库，好处是**不新增任何写路径**：
  *   POST /complaints/:idOrNo/source-sync
  *     -> sourceStatusService.syncComplaintSource（第 5 步）
- *     -> sourceSyncRepo.updateSourceEventStatus（只写 source_event_status 与 source_synced_at）
+ *     -> sourceSyncRepo.updateSourceEventStatus（只写 source_event_status / overtime_flag / source_synced_at）
  *     -> sync_log 留痕
- * 即：本文件只是"用手工导出的数据喂给既有同步路径"，写 source_event_status 的仍然只有那一条代码路径。
+ * 即：本文件只是"用手工导出的数据喂给既有同步路径"，写 source_event_status 与 overtime_flag
+ * 的仍然只有那一条代码路径。
  *
  * 快照 JSON 结构（**就这一种**）：
  *   { "<来源案件公文号>": "<督办状态中文>" }
@@ -24,10 +25,11 @@ import type { SourceStatusAdapter, SourceStatusSnapshot } from '../domain/source
  * 快照含真实案卷号，**必须落在仓库外，不要提交**。
  *
  * 本适配器**不做码位改写**：返回的 rawStatus 永远是快照里的原文。
- * 中文 → 码位由 domain/sourceAdapter.ts 的 mapSourceStatus 完成（单一真源），
- * 由 sourceStatusService 第 4 步消费：
- *   * 三个已知值 -> 落码位；
- *   * 其它值     -> 服务记 sync_log.result='unmapped'、**保留原状态**、updated=false，绝不猜。
+ * 中文 → （状态码 + 时效标记）由 domain/sourceAdapter.ts 的 mapSourceStatusDetail 完成（单一真源），
+ * 由 sourceStatusService 第 4/5 步消费：
+ *   * 正常在办 -> processing + overtime_flag 保持 NULL（来源没给时效结论，不谎报"未超期"）；
+ *   * 正常结案 -> completed + 0；超期结案 -> completed + 1（超期是**时效**维度、不是状态维度）；
+ *   * 其它值   -> 服务记 sync_log.result='unmapped'、**两轴都保留原值**、updated=false，绝不猜。
  * 所以这里遇到认不出的状态**既不抛错也不吞掉**：
  *   * 抛错会让整次同步失败（把"一条数据认不出"升级成"同步不可用"）；
  *   * 返回 null 会被服务记成「来源系统没有该事件」——那是另一句假话。
@@ -129,7 +131,7 @@ export class FileSourceAdapter implements SourceStatusAdapter {
   private warnUnmappable(map: Map<string, string>): void {
     const unknown = new Map<string, number>();
     for (const raw of map.values()) {
-      if (mapSourceStatus(raw) !== null) continue;
+      if (mapSourceStatusDetail(raw) !== null) continue;
       const key = raw.trim();
       unknown.set(key, (unknown.get(key) ?? 0) + 1);
     }

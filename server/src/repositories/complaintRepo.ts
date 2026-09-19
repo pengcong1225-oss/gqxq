@@ -111,6 +111,18 @@ export function buildWhere(filter: ComplaintFilter): WhereClause {
     parts.push('c.correction_status = ?');
     params.push(filter.correctionStatus);
   }
+  // 超期时效（M11 派生列）：三态各自一档，**NULL 不并进"未超期"**。
+  // 库里 NULL 的含义是"来源没给时效信息"（未同步 / 正常在办 / 认不出 / 历史未回填），
+  // 把它当成 0 会让筛选结果谎报"这些件来源说没超期"。所以 'none' 必须是独立可筛的一档。
+  // 用 `= 1` / `= 0` / `is null` 三种确定形态，不写 `ifnull(overtime_flag,0)` 这类函数包裹。
+  if (filter.overtime) {
+    if (filter.overtime === 'none') {
+      parts.push('c.overtime_flag is null');
+    } else {
+      parts.push('c.overtime_flag = ?');
+      params.push(Number(filter.overtime));
+    }
+  }
   if (filter.districtCode) {
     parts.push('c.district_code = ?');
     params.push(filter.districtCode);

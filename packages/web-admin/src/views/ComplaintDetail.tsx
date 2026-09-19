@@ -315,6 +315,7 @@ const ComplaintDetail: React.FC = () => {
           type: 'success',
           text:
             '来源状态已更新为「' + (res.sourceEventStatusName ?? '未知') + '」' +
+            (res.overtimeFlagName ? '；超期时效：「' + res.overtimeFlagName + '」' : '') +
             (res.rawStatus ? '（来源原值：' + res.rawStatus + '）' : ''),
         });
         await load();
@@ -629,6 +630,17 @@ const ComplaintDetail: React.FC = () => {
                   </Tooltip>
                 ) : (
                   <Tag color="cyan">{detail.sourceEventStatusName}</Tag>
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="超期时效">
+                {detail.overtimeFlag === 1 ? (
+                  <Tag color="red">{detail.overtimeFlagName}</Tag>
+                ) : detail.overtimeFlag === 0 ? (
+                  <Tag color="green">{detail.overtimeFlagName}</Tag>
+                ) : (
+                  <Tooltip title="来源未给出时效信息（未同步 / 正常在办 / 状态认不出 / 历史未回填），不等于「未超期」">
+                    <Tag color="default">{detail.overtimeFlagName}</Tag>
+                  </Tooltip>
                 )}
               </Descriptions.Item>
               <Descriptions.Item label="填报状态">
