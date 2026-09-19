@@ -81,6 +81,32 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 /**
+ * business_event.template_version / submission_version 是**有符号 int**（实测列类型 int）。
+ * 契约只写了"必须是 >=1 的整数"，没写上界，于是 2147483648 这类值能过校验、
+ * 到 INSERT 时撞 1264 Out of range，被统一封套报成 500（把对方输入不合法说成我们崩了）。
+ * 与 complaint.title 那次同源：契约上限必须停在列容量上。
+ */
+const INT_MAX = 2147483647;
+
+/**
+ * 一次拒绝最多回传/落审计多少条字段级错误。
+ * 回传报文的 attachments[] 条数由调用方决定（1 MiB 报文里塞几万个 `{}` 没问题），
+ * 而**全部**错误会被 JSON 化写进 operation_audit_log.detail —— 那是 TEXT，上限 65535 **字节**。
+ * 不设上限时，一条畸形大报文就能自己把审计撑爆（同一事务内 -> 整体 500）。
+ * 事件原文整包已落 business_event.payload（JSON 列），少列几条错误不丢证据。
+ */
+const MAX_REPORTED_ERRORS = 50;
+
+function capReportedErrors(errors: FieldError[]): FieldError[] {
+  if (errors.length <= MAX_REPORTED_ERRORS) return errors;
+  const dropped = errors.length - MAX_REPORTED_ERRORS;
+  return [
+    ...errors.slice(0, MAX_REPORTED_ERRORS),
+    { field: 'body', message: '其余 ' + dropped + ' 条字段错误已省略（事件原文已存 business_event.payload）' },
+  ];
+}
+
+/**
  * 校验回传事件。
  * 返回 fieldErrors 而非抛异常，便于把"校验失败"也留痕到 business_event。
  *
@@ -183,14 +209,19 @@ function validateEvent(body: unknown): { ok: true; event: ParsedEvent } | { ok: 
   }
 
   const templateVersion = body.templateVersion;
-  if (typeof templateVersion !== 'number' || !Number.isInteger(templateVersion) || templateVersion < 1) {
-    errors.push({ field: 'templateVersion', message: '必须是 >=1 的整数' });
+  if (typeof templateVersion !== 'number' || !Number.isInteger(templateVersion) || templateVersion < 1 || templateVersion > INT_MAX) {
+    errors.push({ field: 'templateVersion', message: '必须是 1..' + INT_MAX + ' 的整数（受 template_version 列 int 容量约束）' });
   }
 
   let submissionVersion: number | null = null;
   if (body.submissionVersion !== undefined && body.submissionVersion !== null) {
-    if (typeof body.submissionVersion !== 'number' || !Number.isInteger(body.submissionVersion) || body.submissionVersion < 1) {
-      errors.push({ field: 'submissionVersion', message: '必须是 >=1 的整数' });
+    if (
+      typeof body.submissionVersion !== 'number' ||
+      !Number.isInteger(body.submissionVersion) ||
+      body.submissionVersion < 1 ||
+      body.submissionVersion > INT_MAX
+    ) {
+      errors.push({ field: 'submissionVersion', message: '必须是 1..' + INT_MAX + ' 的整数（受 submission_version 列 int 容量约束）' });
     } else submissionVersion = body.submissionVersion;
   }
 
@@ -204,7 +235,7 @@ function validateEvent(body: unknown): { ok: true; event: ParsedEvent } | { ok: 
     if (approvedAt === null) errors.push({ field: 'approvedAt', message: '必须是带时区偏移的 ISO-8601' });
   }
 
-  if (errors.length > 0) return { ok: false, errors };
+  if (errors.length > 0) return { ok: false, errors: capReportedErrors(errors) };
   return {
     ok: true,
     event: {

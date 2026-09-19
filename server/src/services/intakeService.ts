@@ -192,8 +192,22 @@ function resolveClassification(cmd: IntakeCommand, text: string): Classification
   };
 }
 
-function keywordsToColumn(keywords: string[]): string | null {
-  return keywords.length === 0 ? null : keywords.join(',');
+/** complaint.sensitive_keywords 是 varchar(500)：整串截断会留下半个关键词，
+ *  这里按**整词**装箱（逗号一并计入），装不下就丢掉后面的整词并回传丢弃数——
+ *  逐条命中证据本来就在 sensitive_hit（keyword / matched_text 各自按列宽截断），不靠这一列做全量。 */
+const KEYWORDS_COLUMN_MAX = 500;
+
+function keywordsToColumn(keywords: string[]): { value: string | null; dropped: number } {
+  if (keywords.length === 0) return { value: null, dropped: 0 };
+  const kept: string[] = [];
+  let used = 0;
+  for (const word of keywords) {
+    const need = kept.length === 0 ? word.length : word.length + 1;
+    if (used + need > KEYWORDS_COLUMN_MAX) break;
+    kept.push(word);
+    used += need;
+  }
+  return { value: kept.join(','), dropped: keywords.length - kept.length };
 }
 
 function buildMessage(parts: Array<string | null>): string | null {
@@ -258,10 +272,16 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
   const classification = resolveClassification(cmd, text);
   const sensitive = await detectSensitive(tx, text);
   const ruleVersion = buildRuleVersion(sensitive);
+  const keywords = keywordsToColumn(sensitive.keywords);
 
   const attempted = attemptedProtectedColumns(cmd.payload);
   const warnings = [...cmd.warnings];
   if (sensitive.warning) warnings.push(sensitive.warning);
+  if (keywords.dropped > 0) {
+    warnings.push(
+      '命中关键词超出 sensitive_keywords 列容量（varchar(' + KEYWORDS_COLUMN_MAX + ')），已丢弃 ' + keywords.dropped + ' 个关键词；逐条证据见 sensitive_hit'
+    );
+  }
   if (attempted.length > 0) {
     warnings.push('报文包含受保护字段，新建时不写入：' + attempted.map((a) => a.column).join(', '));
   }
@@ -288,7 +308,7 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
     complaint_type: classification.complaintType,
     urgency_level: classification.urgencyLevel,
     is_sensitive: sensitive.isSensitive ? 1 : 0,
-    sensitive_keywords: keywordsToColumn(sensitive.keywords),
+    sensitive_keywords: keywords.value,
     rule_confidence: sensitive.confidence,
     rule_version: ruleVersion,
     source_payload: cmd.payload,
@@ -448,6 +468,7 @@ async function applyRedelivery(
   const classification = resolveClassification(cmd, text);
   const sensitive = await detectSensitive(tx, text);
   const ruleVersion = buildRuleVersion(sensitive);
+  const keywords = keywordsToColumn(sensitive.keywords);
 
   const target: Record<string, unknown> = {
     title: cmd.title,
@@ -462,7 +483,7 @@ async function applyRedelivery(
     complaint_type: classification.complaintType,
     urgency_level: classification.urgencyLevel,
     is_sensitive: sensitive.isSensitive ? 1 : 0,
-    sensitive_keywords: keywordsToColumn(sensitive.keywords),
+    sensitive_keywords: keywords.value,
     rule_confidence: sensitive.confidence,
     rule_version: ruleVersion,
     source_payload: cmd.payload,
@@ -581,6 +602,11 @@ async function applyRedelivery(
 
   const warnings = [...cmd.warnings];
   if (sensitive.warning) warnings.push(sensitive.warning);
+  if (keywords.dropped > 0) {
+    warnings.push(
+      '命中关键词超出 sensitive_keywords 列容量（varchar(' + KEYWORDS_COLUMN_MAX + ')），已丢弃 ' + keywords.dropped + ' 个关键词；逐条证据见 sensitive_hit'
+    );
+  }
   if (attempted.length > 0) {
     warnings.push('报文包含受保护字段，已拒绝覆盖：' + attempted.map((a) => a.column).join(', '));
   }

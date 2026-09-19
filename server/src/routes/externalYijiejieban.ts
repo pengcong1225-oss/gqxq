@@ -32,7 +32,9 @@ const BodySchema = z.object({
   sourceId: z.string().max(128).nullish(),
   appealId: z.string().max(128).nullish(),
   title: z.string().nullish(),
-  content: z.string().max(20000).nullish(),
+  // content 的上限不放在 zod 里：它要按 complaint.content 的**列容量**（TEXT = 65535 字节）折算，
+  // 见下面 CONTENT_MAX；写在 zod 里只会得到一个与列宽无关的英文提示。
+  content: z.string().nullish(),
   address: z.string().max(500).nullish(),
   districtCode: z.string().max(32).nullish(),
   districtName: z.string().max(64).nullish(),
@@ -134,6 +136,21 @@ externalRouter.post(
     }
     const title = titleRaw.slice(0, TITLE_MAX);
 
+    // complaint.content 是 TEXT：MySQL 的 TEXT 容量是 **65535 字节**，而不是字符。
+    // 按 utf8mb4 最坏 4 字节/字符折算，保守字符上限是 floor(65535/4)=16383，这里取 16000 留余量。
+    // 实测口径备查：20000 个汉字（旧上限）= 60000 字节，恰好没越界但只剩 8% 余量，
+    // 而本次导入的真实数据 content 最长 1224 字——收敛到 16000 不影响任何现网报文，
+    // 只是顺手堵住「以后把上限调到 21845 字以上就直接 500」这条路。完整正文仍随整包落 source_payload。
+    const CONTENT_MAX = 16000;
+    const contentRaw = data.content === null || data.content === undefined ? '' : String(data.content).trim();
+    if (contentRaw !== '' && contentRaw.length > CONTENT_MAX) {
+      errors.push({
+        field: 'content',
+        message: 'content 最长 ' + CONTENT_MAX + ' 字，实际 ' + contentRaw.length + ' 字（完整报文已存 source_payload）',
+      });
+    }
+    const content = contentRaw === '' ? null : contentRaw.slice(0, CONTENT_MAX);
+
     const sourceId = optText(data.sourceId, 128) ?? optText(data.appealId, 128) ?? '';
     if (sourceId === '') errors.push({ field: 'sourceId', message: 'sourceId（或 appealId）必填' });
 
@@ -202,7 +219,7 @@ externalRouter.post(
       sourceId,
       channel: optText(data.source, 64),
       title,
-      content: optText(data.content, 20000),
+      content,
       address: optText(data.address, 500),
       districtCode: optText(data.districtCode, 32),
       districtName: optText(data.districtName, 64),
