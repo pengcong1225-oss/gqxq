@@ -12,11 +12,23 @@ import type { ApiError, ApiErrorCode, FieldError } from '../types/api';
 declare global {
   interface ImportMetaEnv {
     readonly VITE_API_BASE_URL?: string;
+    /** Vite 内建：由 vite.config.ts 的 base 在构建期静态注入（dev 为 '/'） */
+    readonly BASE_URL?: string;
   }
   interface ImportMeta {
     readonly env: ImportMetaEnv;
   }
 }
+
+/**
+ * 子路径部署的公共基址，与 vite base / import.meta.env.BASE_URL 同源。
+ *
+ * 剥掉尾部斜杠便于直接拼接：
+ *   * dev（base '/'）→ ''，拼接结果与改动前逐字节一致；
+ *   * 生产（base '/gqxq/'）→ '/gqxq'，登录跳转与路由 basename 都跟着走子路径。
+ * 真源只有一个：改挂载点只需改 vite.config.ts 的 base，勿在别处硬编码 '/gqxq'。
+ */
+export const BASE_PATH: string = (import.meta.env.BASE_URL ?? '/').replace(/\/+$/, '');
 
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api/v1',
@@ -66,10 +78,11 @@ request.interceptors.response.use(
     }
 
     // 登录接口自身的 401 不跳转，交给登录页提示；其余 401 仍清 token 并跳 /login
+    // 前缀必须跟 BASE_PATH：子路径部署（/gqxq/）下硬跳 '/login' 会跳出挂载点
     const url: string = error?.config?.url ?? '';
     if (status === 401 && !url.includes('/auth/login')) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      window.location.href = `${BASE_PATH}/login`;
     }
     return Promise.reject(apiError);
   }
