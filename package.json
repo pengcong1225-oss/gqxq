@@ -7,6 +7,7 @@
     "typecheck": "npm --prefix server run typecheck && npm --prefix packages/web-admin run typecheck",
     "gate": "node server/scripts/gate-g1.mjs",
     "verify": "npm run typecheck && npm run gate",
+    "verify:hardening": "npm --prefix server run verify:hardening",
     "migrate:latest": "npm --prefix server run migrate:latest"
   }
 }
