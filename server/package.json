@@ -20,6 +20,7 @@
     "acceptance:g6": "npm run verify:source-adapter && npm run verify:file-source-adapter",
     "verify:source-adapter": "node scripts/verify-source-adapter.mjs",
     "verify:file-source-adapter": "tsx scripts/verify-file-source-adapter.ts",
+    "verify:m1": "node scripts/verify-bind-host.mjs",
     "mock:public-utility": "node scripts/mock-public-utility.mjs",
     "mock:public-utility-callback": "node scripts/mock-public-utility-callback.mjs"
   },

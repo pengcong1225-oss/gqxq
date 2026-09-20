@@ -26,6 +26,14 @@ function optRaw(name: string): string {
 export const env = {
   nodeEnv: opt('NODE_ENV', 'development'),
   port: Number(opt('PORT', '3100')),
+  /**
+   * M1（docs/2026-09-19-入站无鉴权端点防护方案.md §4.1）：监听地址显式可配置，**默认只绑回环**。
+   * 之前 index.ts 是 app.listen(port) 不传 host ⇒ 0.0.0.0/::，"只在内网"仅是文档承诺、代码不保证。
+   * 默认值改成回环后，生产形态是"本机反代 → 127.0.0.1:PORT"；
+   * 容器形态（宿主把端口发布到 127.0.0.1）必须显式设 GQXQ_HOST=0.0.0.0，
+   * 否则容器内回环不通、发布端口连不上（这是配置事实，不是代码兜底）。
+   */
+  host: opt('GQXQ_HOST', '127.0.0.1'),
   db: {
     host: opt('GQXQ_DB_HOST', '127.0.0.1'),
     port: Number(opt('GQXQ_DB_PORT', '3306')),
