@@ -34,6 +34,13 @@ export const env = {
    * 否则容器内回环不通、发布端口连不上（这是配置事实，不是代码兜底）。
    */
   host: opt('GQXQ_HOST', '127.0.0.1'),
+  /**
+   * M3（防护方案 §4.1）：套网关**必须**同时声明哪些对端可信，否则 req.ip 与
+   * complaint_source_log.remote_ip 一律退化成网关 IP —— 白名单与事后追溯同时失效。
+   * 默认 loopback：与 M1 的默认回环绑定配套，只有同机反代能改写 X-Forwarded-For，
+   * 远程直连者给的 XFF 一律不采信。取值语义见 app.ts 的 applyTrustProxy。
+   */
+  trustProxy: opt('GQXQ_TRUST_PROXY', 'loopback'),
   db: {
     host: opt('GQXQ_DB_HOST', '127.0.0.1'),
     port: Number(opt('GQXQ_DB_PORT', '3306')),
