@@ -1,29 +1,45 @@
-// G5 纠偏与入库服务：最终回传 -> 纠偏待办 -> 分析库 -> 待查报告待办。
+// G5 纠偏与入库服务：纠偏待办 -> 分析库 -> 待查报告待办。
 //
-// 三条业务规则（业主 2026-09-17 确认，不得自行发挥）：
+// 业务规则（业主 2026-09-17 确认 + 2026-09-20 修正，不得自行发挥）：
 //   1) 本系统办结 = 最终审批通过 + 纠偏全部确认之后，再由**人工显式**办结；机器只给条件与校验（见 closureService）。
-//   2) 未交办 / 误报归库的诉求**不纳入分析库**，只在总账可查。所以入库前必须验"有交办单"。
-//   3) 待查报告只做待办入口，报告正文与发布规则后置。
+//   2) **纠偏与交办是并行两条轴**（2026-09-20 裁定，推翻旧口径）：纠偏是数据质量轴，
+//      覆盖**所有**诉求，与是否交办、是否审批通过无关；交办针对"原件"派单，不改诉求内容。
+//      旧实现里"审批通过 + 有交办单"两道生成前置已拆除，assignmentId 只在确有交办时回填。
+//   3) 未交办 / 误报归库的诉求**不纳入分析库**，只在总账可查——这条只约束入库，不约束纠偏生成，
+//      所以"入纠偏队列但暂不入分析库"是正常状态，不是 bug。
+//   4) 待查报告只做待办入口，报告正文与发布规则后置。
 //
 // ★ 本文件最关键的一条：**未纠偏不得进入分析库**（maybeEnterAnalysis 是唯一入库入口）。
-import type { CorrectionGenerateResult, CorrectionItem, CorrectionConfirmRequest, CorrectionRejectRequest, Paged } from '../types/api';
+import type {
+  CorrectionBatchResult,
+  CorrectionGenerateResult,
+  CorrectionItem,
+  CorrectionConfirmRequest,
+  CorrectionRejectRequest,
+  Paged,
+} from '../types/api';
 import { AppError } from '../http/errors';
 import { pool } from '../db/pool';
 import { withTransaction, type Tx } from '../db/tx';
 import { insertAudit } from '../repositories/auditLogRepo';
 import { insertFieldVersions } from '../repositories/complaintFieldVersionRepo';
-import { findComplaintRefByAnyKey } from '../repositories/dispatchRepo';
+import { findComplaintRefByAnyKey, findDispatchedComplaintIds } from '../repositories/dispatchRepo';
 import {
   CORRECTION_FIELD_DEFS,
   countByComplaint,
+  countComplaintsWithoutCorrections,
+  countLiveComplaints,
   countPendingByComplaint,
   decideCorrection,
   fieldDef,
+  findComplaintIdsWithoutCorrections,
   findPendingPage,
   insertCorrections,
   listByComplaint,
   lockCorrection,
   rowToCorrectionItem,
+  type CorrectionFieldDef,
+  type DispatchedFilter,
 } from '../repositories/correctionRepo';
 import {
   findAnalysisByComplaint,
@@ -31,6 +47,7 @@ import {
   insertAnalysisIfAbsent,
 } from '../repositories/analysisRepo';
 import { insertTodoIfAbsent } from '../repositories/reportTodoRepo';
+import { confirmResponsibleEnterpriseInTx } from './assignmentService';
 import { GQXQ_APP_CODE } from './intakeService';
 import { optionalText, type OperatorContext } from './dispatchService';
 
@@ -96,6 +113,15 @@ async function resolveComplaintId(db: Tx | typeof pool, idOrNo: string): Promise
   const ref = await findComplaintRefByAnyKey(db, idOrNo);
   if (!ref) throw AppError.notFound('诉求不存在');
   return String(ref.complaint_id);
+}
+
+/**
+ * 该诉求在**交办轴**上的状态（R4）：进行中或历史交办都算已交办。
+ * 只用于给纠偏项打标记，不参与"能不能纠偏"的判断；口径与 analysisRepo.hasDispatchOrder 同源。
+ */
+async function hasDispatchForComplaint(db: Tx | typeof pool, complaintId: string): Promise<boolean> {
+  const dispatched = await findDispatchedComplaintIds(db, [complaintId]);
+  return dispatched.has(complaintId);
 }
 
 /** 锁住诉求行。**先锁 complaint 再锁 correction**，保证并发确认同一诉求时不会交错。 */
@@ -175,7 +201,7 @@ async function loadLatestAssignmentId(db: Tx | typeof pool, complaintId: string)
 
 export interface GenerateCorrectionInput {
   complaintId: string;
-  /** 触发来源交办；为空时按该诉求最近一条交办回填 */
+  /** 触发来源交办；为空时按该诉求最近一条交办回填，确实没有交办则为 null */
   assignmentId: string | null;
   operatorId: string | null;
   operatorName: string | null;
@@ -185,9 +211,13 @@ export interface GenerateCorrectionInput {
 /**
  * 生成纠偏清单（逐字段一行）。
  * **幂等**：已生成过则不再插入，直接返回既有清单（created=false）。
- * 前提：最终审批通过（reporting_status=approved）且走过督办链路（有交办单）。
  *
- * 被 G4 回调（task_approved + agreed 进入 completed 后）与手工入口共用。
+ * 前置条件（2026-09-20 裁定，替代旧口径）：**只要是诉求就能生成**——不再有
+ * "reporting_status=approved" 与"必须有交办单"两道闸，也不因为没有交办而抛错。
+ * 纠偏是覆盖全部诉求的数据质量轴，与交办轴并行；assignmentId 只是回查线索。
+ *
+ * 触发点：G4 回调（task_approved 进入 completed 后仍会调一次，用于刷新/补挂，但不再是唯一入口）、
+ * 单条手工入口、批量补挂入口。
  */
 export async function generateCorrectionsInTx(
   tx: Tx,
@@ -195,23 +225,7 @@ export async function generateCorrectionsInTx(
 ): Promise<CorrectionGenerateResult> {
   const complaint = await lockComplaintFull(tx, input.complaintId);
 
-  if (complaint.reporting_status !== 'approved') {
-    throw new AppError(
-      'INVALID_STATE_TRANSITION',
-      '该诉求填报审批状态为 ' + complaint.reporting_status + '，只有最终审批通过（approved）后才生成纠偏待办'
-    );
-  }
-  if (!(await hasDispatchOrder(tx, input.complaintId))) {
-    throw new AppError(
-      'INVALID_STATE_TRANSITION',
-      '该诉求从未产生交办，未走过督办链路，不纳入分析口径，不生成纠偏待办'
-    );
-  }
-
   const assignmentId = input.assignmentId ?? (await loadLatestAssignmentId(tx, input.complaintId));
-  if (assignmentId === null) {
-    throw new AppError('INVALID_STATE_TRANSITION', '未找到该诉求的交办记录，无法生成纠偏待办');
-  }
 
   const existingCount = await countByComplaint(tx, input.complaintId);
   if (existingCount > 0) {
@@ -280,6 +294,81 @@ export async function generateCorrections(
       now,
     })
   );
+}
+
+/* ==================== 批量补挂（R2：纠偏覆盖全部诉求） ==================== */
+
+/** 每轮取多少条"还没有纠偏项"的诉求。一条诉求一个事务，避免一个大事务把全库锁住。 */
+const BATCH_PAGE = 200;
+/** 轮次上限：正常一轮就补完；留余量只是为了容忍个别失败后仍有进展的情况。 */
+const BATCH_MAX_PASSES = 50;
+/** 错误明细最多带这么多条：批处理里几百条同类报错没有信息量，计数才是要看的。 */
+const BATCH_MAX_ERRORS = 20;
+
+/**
+ * 为**所有**还没有纠偏清单的诉求补挂待办（幂等，可反复执行）。
+ *
+ * 为什么要有这个入口（2026-09-20 裁定）：纠偏是数据质量轴，覆盖所有诉求，
+ * 与是否交办、是否审批通过无关。拆掉生成闸只解决"能生成"，存量 464 条不会自己冒出来，
+ * 所以提供一个可复跑的补挂入口：新入站诉求同样靠它（或手工单条入口）纳入纠偏口径。
+ *
+ * 三条纪律：
+ *   1) 生成走的是与入站/回调同一条 generateCorrectionsInTx，不另造一份清单口径，也不往库里塞造出来的值；
+ *   2) 幂等——已有清单的诉求直接跳过（countByComplaint 在事务内判），复跑计数不变；
+ *   3) 收尾必须自己核对 uncoveredComplaints，为 0 才叫补挂完成；不为 0 就把 complaintId 留在 errors 里。
+ */
+export async function generateCorrectionsForAllComplaints(
+  ctx: OperatorContext
+): Promise<CorrectionBatchResult> {
+  const result: CorrectionBatchResult = {
+    totalComplaints: await countLiveComplaints(pool),
+    createdComplaints: 0,
+    skippedComplaints: 0,
+    itemsInserted: 0,
+    uncoveredComplaints: 0,
+    errors: [],
+  };
+
+  for (let pass = 0; pass < BATCH_MAX_PASSES; pass += 1) {
+    const pendingIds = await findComplaintIdsWithoutCorrections(pool, BATCH_PAGE);
+    if (pendingIds.length === 0) break;
+
+    let progressed = 0;
+    for (const complaintId of pendingIds) {
+      const now = new Date();
+      try {
+        const outcome = await withTransaction((tx) =>
+          generateCorrectionsInTx(tx, {
+            complaintId,
+            // 不指定触发来源：有交办则回填最近一条，没交办过就是 null
+            assignmentId: null,
+            operatorId: ctx.userId,
+            operatorName: ctx.userName,
+            now,
+          })
+        );
+        if (outcome.created) {
+          result.createdComplaints += 1;
+          result.itemsInserted += outcome.total;
+        } else {
+          result.skippedComplaints += 1;
+        }
+        progressed += 1;
+      } catch (err) {
+        if (result.errors.length < BATCH_MAX_ERRORS) {
+          result.errors.push({
+            complaintId,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+    // 一轮下来零推进：剩下的诉求在当前数据下就是生成不了，继续跑也只会重复同一批失败
+    if (progressed === 0) break;
+  }
+
+  result.uncoveredComplaints = await countComplaintsWithoutCorrections(pool);
+  return result;
 }
 
 /* ==================== 入库（唯一入口） ==================== */
@@ -411,6 +500,72 @@ function coerceWriteBackValue(def: { code: string; label: string }, newValue: st
   return parsed;
 }
 
+/**
+ * 责任单位成对写回（R3）。
+ *
+ * 纠偏确认「企业名称/归属」时，newValue 的口径是**企业主数据的登记编码**：
+ * 校验（编码必须能查到）与写回（code + name + responsible_matched_at 成对）全部委托给
+ * assignmentService.confirmResponsibleEnterpriseInTx——那是这两列的唯一人工写实现，
+ * 在这里另写一条 update 迟早和它漂移成 code 与 name 各说一套。
+ * 留痕写两行（编码列与名称列各一行），因为改一次确实动了两列。
+ */
+async function writeBackResponsibleEnterprise(
+  tx: Tx,
+  complaint: ComplaintFullRow,
+  nameColumn: string,
+  codeColumn: string,
+  enterpriseCode: string,
+  def: CorrectionFieldDef,
+  ctx: OperatorContext,
+  now: Date
+): Promise<boolean> {
+  const result = await confirmResponsibleEnterpriseInTx(
+    tx,
+    {
+      complaintId: complaint.complaint_id,
+      complaintNo: complaint.complaint_no,
+      currentEnterpriseCode: complaint.enterprise_code,
+      currentEnterpriseName: complaint.enterprise_name,
+      currentSupervisionStatus: complaint.supervision_status,
+    },
+    {
+      enterpriseCode,
+      // 名称不传：以 enterprise 表登记值为准，避免操作员手打的别名把主数据带偏
+      enterpriseName: null,
+      reason: '纠偏确认责任单位：' + def.label,
+      ctx,
+      now,
+      source: 'correction',
+    }
+  );
+
+  await insertFieldVersions(tx, [
+    {
+      complaintId: complaint.complaint_id,
+      fieldName: codeColumn,
+      oldValue: textOf(complaint.enterprise_code),
+      newValue: result.afterEnterpriseCode,
+      changeSource: 'manual_edit',
+      reason: 'G5 纠偏确认：' + def.label,
+      operatorId: ctx.userId,
+      operatorName: ctx.userName,
+      changedAt: now,
+    },
+    {
+      complaintId: complaint.complaint_id,
+      fieldName: nameColumn,
+      oldValue: textOf(complaint.enterprise_name),
+      newValue: result.afterEnterpriseName,
+      changeSource: 'manual_edit',
+      reason: 'G5 纠偏确认：' + def.label + '（名称取主数据登记值）',
+      operatorId: ctx.userId,
+      operatorName: ctx.userName,
+      changedAt: now,
+    },
+  ]);
+  return true;
+}
+
 /** 纠偏确认后要把改对的字段写回 complaint —— 纠偏的目的就是改对数据。 */
 async function writeBackToComplaint(
   tx: Tx,
@@ -421,18 +576,25 @@ async function writeBackToComplaint(
   now: Date
 ): Promise<boolean> {
   const def = fieldDef(fieldName);
-  if (!def || def.column === null) return false;
+  const column = def === null ? null : def.column;
+  if (def === null || column === null) return false;
+
+  const codeColumn = def.pairedCodeColumn;
+  if (codeColumn !== undefined) {
+    return writeBackResponsibleEnterprise(tx, complaint, column, codeColumn, newValue, def, ctx, now);
+  }
+
   const bound = coerceWriteBackValue(def, newValue);
   // 旧值必须从当前行取真实值：原先这里写死 null，等于审计里丢掉了「改之前是什么」。
-  const oldValue = textOf((complaint as unknown as Record<string, unknown>)[def.column]);
+  const oldValue = textOf((complaint as unknown as Record<string, unknown>)[column]);
   await tx.execute(
-    'update complaint set ' + def.column + ' = ?, updated_at = ? where complaint_id = ?',
+    'update complaint set ' + column + ' = ?, updated_at = ? where complaint_id = ?',
     [bound, now, complaint.complaint_id]
   );
   await insertFieldVersions(tx, [
     {
       complaintId: complaint.complaint_id,
-      fieldName: def.column,
+      fieldName: column,
       oldValue,
       newValue,
       changeSource: 'manual_edit',
@@ -543,7 +705,10 @@ async function decide(
     });
 
     const items = await listByComplaint(tx, complaintId);
-    const item = items.find((x) => x.correctionId === correctionId) ?? rowToCorrectionItem(locked);
+    // 兜底分支只在极端情况下走到（重查没命中）：此时也必须给出真实的 hasDispatch，不能猜 false
+    const item =
+      items.find((x) => x.correctionId === correctionId) ??
+      rowToCorrectionItem(locked, await hasDispatchForComplaint(tx, complaintId));
     return {
       item,
       analysisEntered: analysis.entered,
@@ -574,6 +739,20 @@ export async function rejectCorrection(
 
 /* ==================== 查询 ==================== */
 
+/**
+ * 交办轴筛选（R4）：dispatched=只看交办过的、undispatched=只看没交办过的、不传=全部。
+ * 三条都是合法视图——纠偏覆盖所有诉求，但页面要能把自己关心的那条轴切开看。
+ */
+function parseDispatchedFilter(raw: unknown): DispatchedFilter | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const text = String(raw).trim();
+  if (text === '') return undefined;
+  if (text === 'dispatched' || text === 'undispatched') return text;
+  throw AppError.validation('dispatched 只能是 dispatched 或 undispatched', [
+    { field: 'dispatched', message: '收到「' + text + '」' },
+  ]);
+}
+
 export async function listPendingCorrections(
   query: Record<string, unknown>
 ): Promise<Paged<CorrectionItem>> {
@@ -581,7 +760,8 @@ export async function listPendingCorrections(
   const complaintIdRaw = queryText(query.complaintId, 'complaintId', 64);
   const complaintId =
     complaintIdRaw === undefined ? undefined : await resolveComplaintId(pool, complaintIdRaw);
-  const { content, total } = await findPendingPage(pool, { complaintId }, page, size);
+  const dispatched = parseDispatchedFilter(query.dispatched);
+  const { content, total } = await findPendingPage(pool, { complaintId, dispatched }, page, size);
   return paged(content, total, page, size);
 }
 

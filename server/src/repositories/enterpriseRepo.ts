@@ -1,6 +1,9 @@
 // 企业主数据读取。数据源是既有的 enterprise 表（已有 4 家真实企业），不是新建字典。
-// 存在意义：总账的「匹配单位」与「发起交办」必须从真实企业列表里选——
-// 手抄 enterprise_code 一旦与登记值不一致，后续交办就匹配不到同一主体。
+// 两个用途（业主 2026-09-20 裁定后）：
+//   1) 纠偏页选责任单位、总账页发起交办时，企业清单从这里取——手抄 enterprise_code 一旦与登记值不一致，
+//      后续交办就匹配不到同一主体；
+//   2) **写路径的校验源**：confirmResponsibleEnterpriseInTx 在事务内按 enterprise_code 回查登记名称，
+//      编码查不到就直接拒绝写入，enterprise_name 一律取这里的登记值（见 assignmentService）。
 import { pool, type Row } from '../db/pool';
 import { labelOf } from '../domain/enums';
 import type {
@@ -10,6 +13,7 @@ import type {
   Paged,
 } from '../types/api';
 import { toNum, toStr } from './complaintMapper';
+import type { Queryable } from './complaintSourceLogRepo';
 
 const ENTERPRISE_COLUMNS = [
   'e.id',
@@ -90,8 +94,8 @@ export async function findEnterprises(
   };
 }
 
-export async function findEnterpriseByCode(code: string): Promise<EnterpriseDetail | null> {
-  const [rows] = await pool.query<Row[]>(
+export async function findEnterpriseByCodeIn(db: Queryable, code: string): Promise<EnterpriseDetail | null> {
+  const [rows] = await db.query<Row[]>(
     'select ' + ENTERPRISE_COLUMNS + ' from enterprise e where e.enterprise_code = ? limit 1',
     [code]
   );
@@ -102,4 +106,13 @@ export async function findEnterpriseByCode(code: string): Promise<EnterpriseDeta
     legalPerson: toStr(row.legal_person),
     annualScore: toNum(row.annual_score),
   };
+}
+
+/**
+ * 按登记编码查企业（连接池只读）。
+ * 写路径上的校验请用 findEnterpriseByCodeIn —— 校验与写入必须在同一个事务连接里，
+ * 否则"校验通过后再被人换掉登记值"这段窗口无法避免。
+ */
+export async function findEnterpriseByCode(code: string): Promise<EnterpriseDetail | null> {
+  return findEnterpriseByCodeIn(pool, code);
 }

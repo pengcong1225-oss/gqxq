@@ -294,7 +294,14 @@ export interface CorrectionItem {
   id: number;
   correctionId: string;
   complaintId: string;
+  /** 触发本次纠偏清单的交办；**没有交办过的诉求为 null**（纠偏与交办并行，不互为前置） */
   assignmentId: string | null;
+  /**
+   * 该诉求是否交办过（进行中或历史交办都算）。
+   * 纠偏是覆盖全部诉求的数据质量轴，与交办轴并行；这个标记只用于区分两条轴的交叉状态，
+   * 不参与任何"能不能纠偏"的判断。
+   */
+  hasDispatch: boolean;
   fieldName: string;
   fieldLabel: string | null;
   oldValue: string | null;
@@ -318,15 +325,35 @@ export interface CorrectionRejectRequest {
 }
 
 /**
- * 生成纠偏待办。**只对走过督办链路的诉求生成**——
- * 按业主确认的口径，「无需交办归库」「误报归库」的诉求不纳入分析口径。
+ * 生成纠偏待办。**覆盖所有诉求**（业主 2026-09-20 裁定，推翻旧口径）：
+ * 纠偏是数据质量轴，与是否交办、是否审批通过无关；任何诉求只要有 complaintId 就能生成。
+ * assignmentId 只是"这条清单由哪次交办触发"的回查线索——有交办则回填最近一条，无交办则为 null。
  */
 export interface CorrectionGenerateResult {
   complaintId: string;
-  assignmentId: string;
+  assignmentId: string | null;
   created: boolean;
   total: number;
   items: CorrectionItem[];
+}
+
+/**
+ * 批量补挂纠偏待办的结果（幂等：已有清单的诉求只跳过、不重复插入）。
+ * 覆盖存量与"入站后尚未生成清单"的诉求都靠这个入口收敛，计数可复核。
+ */
+export interface CorrectionBatchResult {
+  /** 本次扫描时库里存活的诉求总数 */
+  totalComplaints: number;
+  /** 本次新建了纠偏清单的诉求数 */
+  createdComplaints: number;
+  /** 已有纠偏清单、本次跳过的诉求数（幂等复跑时全部落这里） */
+  skippedComplaints: number;
+  /** 本次插入的纠偏项行数 */
+  itemsInserted: number;
+  /** 补挂后仍没有任何纠偏项的诉求数（必须为 0，非 0 表示有诉求生成失败） */
+  uncoveredComplaints: number;
+  /** 失败明细（最多 20 条），非空即代表本次覆盖不完整，不能当成功收口 */
+  errors: Array<{ complaintId: string; message: string }>;
 }
 
 export type AnalysisStatus = 'included';
@@ -577,7 +604,11 @@ export interface CreateDispatchResult {
   order: DispatchOrderDetail;
 }
 
-/** 匹配/调整责任单位 */
+/**
+ * 匹配/调整责任单位。
+ * enterpriseCode 必须是 enterprise 表里登记的编码：后端按主数据校验，匹配不到直接报错（不静默）；
+ * 写回的 enterprise_name 一律取主数据登记值，请求里给的名字只用于核对，避免 code/name 两处漂移。
+ */
 export interface AssignEnterpriseRequest {
   enterpriseCode: string;
   enterpriseName: string;

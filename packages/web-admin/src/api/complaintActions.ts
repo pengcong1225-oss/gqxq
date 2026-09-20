@@ -1,7 +1,5 @@
 import request from './request';
 import type {
-  AssignEnterpriseRequest,
-  AssignEnterpriseResult,
   ComplaintIdOrNo,
   DispositionRequest,
   DispositionResult,
@@ -11,21 +9,9 @@ function encode(value: ComplaintIdOrNo): string {
   return encodeURIComponent(String(value));
 }
 
-/**
- * 匹配 / 调整责任单位：写 complaint 的责任企业，并追加 complaint_assignment 留痕
- * （保存前后值、原因、操作者）。
- *
- * POST /complaints/:idOrNo/assignment
- */
-export async function assignEnterprise(
-  idOrNo: ComplaintIdOrNo,
-  body: AssignEnterpriseRequest
-): Promise<AssignEnterpriseResult> {
-  return request.post<never, AssignEnterpriseResult>(
-    '/complaints/' + encode(idOrNo) + '/assignment',
-    body
-  );
-}
+// 「匹配责任单位」的前端调用已随入口一起下线（业主 2026-09-20 裁定：收敛进纠偏入口）。
+// 后端 POST /complaints/:idOrNo/assignment 仍保留给脚本/外部复用，但页面不得再直接改责任企业——
+// 责任单位只能在纠偏里确认，那条路径会做主数据校验并成对写 enterprise_code + enterprise_name。
 
 /**
  * 归库处置：

@@ -5,6 +5,7 @@ import type { OperatorContext } from '../services/dispatchService';
 import {
   confirmCorrection,
   generateCorrections,
+  generateCorrectionsForAllComplaints,
   listComplaintCorrections,
   listPendingCorrections,
   rejectCorrection,
@@ -13,9 +14,12 @@ import { closeComplaint } from '../services/closureService';
 
 // G5 纠偏与办结。
 //
-// 关键设计：
-//   * 纠偏清单由「最终审批通过」触发（G4 回调自动调用，也留了手工入口），不是无条件生成；
+// 关键设计（业主 2026-09-20 裁定：纠偏与交办是并行两条轴）：
+//   * 纠偏是**数据质量轴**，覆盖**所有**诉求，与是否交办、是否审批通过无关；
+//     清单入口有三条——G4 回调（审批通过后补挂/刷新一次）、单条手工、批量补挂（存量与新入站都靠它收敛）；
 //   * 确认 / 判定无需纠偏都会检查"是否可入分析库"，那个判断唯一收敛在 correctionService.maybeEnterAnalysis；
+//     分析库口径未变（未交办 / 误报归库不纳入），所以"进了纠偏队列但没进分析库"是正常状态；
+//   * 责任单位在纠偏里确认：编码走企业主数据校验，code + name 成对写回（见 assignmentService）；
 //   * 办结是**人的显式决定**，机器只在条件不满足时拦下（basis 必填）。
 export const correctionsRouter = Router();
 
@@ -46,10 +50,22 @@ correctionsRouter.get('/complaints/:idOrNo/corrections', async (req, res, next) 
   }
 });
 
-/** 手工生成纠偏待办（幂等）。回调路径也会自动调用同一服务函数。 */
+/** 手工为单条诉求生成纠偏待办（幂等）。回调路径也会自动调用同一服务函数。 */
 correctionsRouter.post('/complaints/:idOrNo/corrections/generate', async (req, res, next) => {
   try {
     ok(res, await generateCorrections(String(req.params.idOrNo), ctxOf(req)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * 批量补挂：给所有还没有纠偏清单的诉求生成待办（幂等，可反复执行）。
+ * 纠偏覆盖全部诉求，存量与新入站都靠这个入口收敛；响应里的 uncoveredComplaints 为 0 才算补挂完成。
+ */
+correctionsRouter.post('/corrections/generate-batch', async (req, res, next) => {
+  try {
+    ok(res, await generateCorrectionsForAllComplaints(ctxOf(req)));
   } catch (err) {
     next(err);
   }

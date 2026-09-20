@@ -11,30 +11,46 @@ import {
   Modal,
   Result,
   Row,
+  Segmented,
+  Select,
   Space,
   Table,
   Tag,
   Tooltip,
   message,
 } from 'antd';
-import { CheckOutlined, ReloadOutlined, StopOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import {
+  CheckOutlined,
+  ReloadOutlined,
+  StopOutlined,
+  ThunderboltOutlined,
+  TeamOutlined,
+} from '@ant-design/icons';
 import {
   confirmCorrection,
+  generateCorrectionBatch,
   generateCorrections,
   listComplaintCorrections,
   listPendingCorrections,
   rejectCorrection,
 } from '../api/corrections';
-import type { CorrectionItem } from '../types/api';
+import type { DispatchedFilter } from '../api/corrections';
+import { listEnterprises } from '../api/enterprises';
+import type { CorrectionItem, EnterpriseListItem } from '../types/api';
 
 /**
  * 纠偏待办（真实接口驱动）。
  *
- * 口径（源自《落地计划》G5 与迁移设计）：
- *  - 纠偏是**最终回传之后**的环节；纠偏闭环完成后该诉求才会进入分析库。
- *  - 纠偏项按字段逐项生成（企业名称/归属、地址、分类、坐标、摘要、企业处置结果）。
+ * 口径（业主 2026-09-20 裁定，纠偏与交办是**并行两条轴**）：
+ *  - 纠偏是**数据质量轴**，覆盖**所有**诉求，与是否交办、是否审批通过无关；
+ *    交办针对"原件"派单、不改诉求内容。旧口径"只有走过督办链路才进纠偏"已作废。
+ *  - 每一项仍按字段逐项生成（企业名称/归属、地址、分类、坐标、摘要、企业处置结果）。
+ *  - 「企业名称/归属」现在就是**确认责任单位**的唯一入口（总账的「匹配单位」按钮已下线）：
+ *    取值必须从企业主数据里选，后端成对写回 enterprise_code + enterprise_name，编码未登记直接拒绝。
  *  - 无法确认的项留在待纠偏，**不假装完成**；判定不成立时可「无需纠偏」并留依据。
- *  - 「无需交办归库」「误报归库」的诉求不纳入纠偏口径（后端不为它们生成纠偏项）。
+ *  - 纠偏闭环仍是进入分析库的前置条件之一；分析库口径本批未变（未交办 / 误报归库不纳入分析），
+ *    所以"队列里有未交办的件、但它们不会进分析库"是正常状态。
+ *  - 存量 / 新入站诉求靠「补齐全部诉求纠偏待办」这个幂等入口收敛进队列，页面不造任何数据。
  */
 
 function errText(e: unknown): string {
@@ -59,6 +75,20 @@ const DASH = <span style={{ color: '#bfbfbf' }}>—</span>;
  */
 const NUMERIC_FIELDS = new Set(['location_lng', 'location_lat']);
 
+/**
+ * 责任单位这一项的特例：确认值是**企业主数据的登记编码**，不是手打的名称。
+ * 后端拿这个编码回查 enterprise 表，成对写回 enterprise_code + enterprise_name；
+ * 编码没登记就直接报错，不会静默写脏数据——所以这里只能给下拉，不给自由输入。
+ */
+const ENTERPRISE_FIELD = 'enterprise_name';
+
+/** 交办轴筛选（两条轴并行，页面要能分别看） */
+const DISPATCHED_OPTIONS: Array<{ label: string; value: DispatchedFilter | 'all' }> = [
+  { label: '全部诉求', value: 'all' },
+  { label: '已交办', value: 'dispatched' },
+  { label: '未交办', value: 'undispatched' },
+];
+
 const AddressCorrection: React.FC = () => {
   // ---- 左侧队列 ----
   const [queue, setQueue] = useState<CorrectionItem[]>([]);
@@ -69,6 +99,18 @@ const AddressCorrection: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [firstLoaded, setFirstLoaded] = useState(false);
   const seqRef = useRef(0);
+  /** 交办轴筛选：all=全部（两条轴一起看）、dispatched=只看交办过、undispatched=只看没交办过 */
+  const [dispatched, setDispatched] = useState<DispatchedFilter | 'all'>('all');
+
+  // ---- 企业主数据：确认责任单位时的下拉（值=enterprise_code） ----
+  // 不做本地兜底清单：手抄的编码与登记值不一致时，后端会直接拒绝写入，页面不该假装能填。
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
+  const [enterpriseLoading, setEnterpriseLoading] = useState(false);
+  const [enterpriseError, setEnterpriseError] = useState<string | null>(null);
+  const enterpriseSeqRef = useRef(0);
+
+  // ---- 批量补挂 ----
+  const [batching, setBatching] = useState(false);
 
   // ---- 右侧闭环面板 ----
   const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(null);
@@ -87,31 +129,68 @@ const AddressCorrection: React.FC = () => {
   const [confirmForm] = Form.useForm();
   const [rejectForm] = Form.useForm();
 
-  const loadQueue = useCallback(async (p: number, s: number) => {
-    const seq = ++seqRef.current;
-    setLoading(true);
-    setLoadError(null);
+  const fetchEnterprises = useCallback(async (keyword?: string) => {
+    const seq = ++enterpriseSeqRef.current;
+    setEnterpriseLoading(true);
     try {
-      const res = await listPendingCorrections({ page: p, size: s });
-      if (seq !== seqRef.current) return;
-      setQueue(res.content);
-      setQueueTotal(res.total);
+      const res = await listEnterprises({
+        keyword: keyword && keyword.trim() !== '' ? keyword.trim() : undefined,
+        size: 100,
+      });
+      if (seq !== enterpriseSeqRef.current) return; // 丢弃过期响应
+      setEnterpriseOptions(res.content);
+      setEnterpriseError(null);
     } catch (err) {
-      if (seq !== seqRef.current) return;
-      setLoadError(errText(err));
-      setQueue([]);
-      setQueueTotal(0);
+      if (seq !== enterpriseSeqRef.current) return;
+      setEnterpriseOptions([]); // 失败就是空，绝不回落到本地示例企业
+      setEnterpriseError(errText(err));
     } finally {
-      if (seq === seqRef.current) {
-        setLoading(false);
-        setFirstLoaded(true);
-      }
+      if (seq === enterpriseSeqRef.current) setEnterpriseLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadQueue(page, size);
-  }, [loadQueue, page, size]);
+    void fetchEnterprises();
+  }, [fetchEnterprises]);
+
+  const loadQueue = useCallback(
+    async (p: number, s: number, d: DispatchedFilter | 'all') => {
+      const seq = ++seqRef.current;
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const res = await listPendingCorrections({
+          page: p,
+          size: s,
+          dispatched: d === 'all' ? undefined : d,
+        });
+        if (seq !== seqRef.current) return;
+        setQueue(res.content);
+        setQueueTotal(res.total);
+      } catch (err) {
+        if (seq !== seqRef.current) return;
+        setLoadError(errText(err));
+        setQueue([]);
+        setQueueTotal(0);
+      } finally {
+        if (seq === seqRef.current) {
+          setLoading(false);
+          setFirstLoaded(true);
+        }
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    void loadQueue(page, size, dispatched);
+  }, [loadQueue, page, size, dispatched]);
+
+  /** 换筛选口径时回到第 1 页，否则可能停在当前口径下不存在的页码 */
+  const applyDispatchedFilter = useCallback((next: DispatchedFilter | 'all') => {
+    setDispatched(next);
+    setPage(1);
+  }, []);
 
   const loadItems = useCallback(async (complaintId: string) => {
     setItemsLoading(true);
@@ -140,7 +219,7 @@ const AddressCorrection: React.FC = () => {
   const afterDecision = useCallback(
     async (complaintId: string, analysisEntered?: boolean) => {
       await loadItems(complaintId);
-      await loadQueue(page, size);
+      await loadQueue(page, size, dispatched);
       // 「是否已进入分析库」用**后端返回的判定**（confirm/reject 响应里的 analysisEntered），
       // 不在前端靠"数还有没有 pending 项"来推断——那是猜测，不是事实。
       if (analysisEntered === true) {
@@ -149,7 +228,7 @@ const AddressCorrection: React.FC = () => {
         message.success('已处置该项纠偏');
       }
     },
-    [loadItems, loadQueue, page, size]
+    [loadItems, loadQueue, page, size, dispatched]
   );
 
   const doGenerate = async () => {
@@ -168,18 +247,42 @@ const AddressCorrection: React.FC = () => {
       }
       setGenId('');
       selectComplaint(res.complaintId);
-      await loadQueue(page, size);
+      await loadQueue(page, size, dispatched);
     } catch (err) {
       const code = errCode(err);
       if (code === 404 || code === 'NOT_FOUND') {
         message.error('未找到该诉求：' + errText(err));
-      } else if (code === 409 || code === 'INVALID_STATE_TRANSITION') {
-        message.error('该诉求当前状态不允许生成纠偏项：' + errText(err));
       } else {
         message.error('生成失败：' + errText(err));
       }
     } finally {
       setGenerating(false);
+    }
+  };
+
+  /**
+   * 批量补挂（幂等）：给所有还没有纠偏清单的诉求生成待办。
+   * 结果必须照实播报——uncoveredComplaints 不为 0 或 errors 非空就是没补全，
+   * 这时用 warning 而不是 success，避免"点了按钮=办完了"的错觉。
+   */
+  const doBatchGenerate = async () => {
+    setBatching(true);
+    try {
+      const res = await generateCorrectionBatch();
+      const detail =
+        '新建 ' + res.createdComplaints + ' 条诉求 / 跳过已有 ' + res.skippedComplaints +
+        ' 条 / 插入 ' + res.itemsInserted + ' 项；库内存活诉求 ' + res.totalComplaints +
+        ' 条，仍无清单 ' + res.uncoveredComplaints + ' 条';
+      if (res.uncoveredComplaints > 0 || res.errors.length > 0) {
+        message.warning('补挂未全部完成：' + detail, 8);
+      } else {
+        message.success('补挂完成，全部诉求已纳入纠偏口径：' + detail, 6);
+      }
+      await loadQueue(page, size, dispatched);
+    } catch (err) {
+      message.error('批量补挂失败：' + errText(err));
+    } finally {
+      setBatching(false);
     }
   };
 
@@ -223,6 +326,11 @@ const AddressCorrection: React.FC = () => {
   };
 
   const pendingCount = items.filter((x) => x.status === 'pending').length;
+  /**
+   * 该诉求在**交办轴**上的状态：取自服务端给的 hasDispatch，一条诉求的各行取值相同。
+   * 面板还没加载到任何项时为 null——这时候就是不知道，不能猜成"未交办"。
+   */
+  const selectedHasDispatch = items.length > 0 ? items[0].hasDispatch : null;
 
   return (
     <div>
@@ -231,12 +339,28 @@ const AddressCorrection: React.FC = () => {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="纠偏闭环是进入分析库的前置条件"
-        description="最终审批通过后的诉求会逐字段生成纠偏项（企业名称/归属、地址、分类、坐标、摘要、企业处置结果）。全部确认或判定无需纠偏后，该诉求才会进入分析库；无法确认的项请留在待纠偏，不要勉强确认。无需交办/误报归库的诉求不在本口径内。"
+        message="纠偏是数据质量轴，覆盖所有诉求；与交办轴并行"
+        description={
+          <>
+            任何诉求都会逐字段生成纠偏项（企业名称/归属、地址、分类、坐标、摘要、企业处置结果），
+            <b>与是否交办、是否审批通过无关</b>；列表里的「已交办 / 未交办」只是标出这条件在另一条轴上的状态。
+            <br />
+            责任单位现在<b>只在这里确认</b>（总账的「匹配单位」按钮已下线）：取值从企业主数据里选，
+            后端成对写回 enterprise_code + enterprise_name，编码未登记会被拒绝。
+            <br />
+            纠偏全部确认或判定无需后，该诉求才满足进入分析库的前置条件之一；分析库口径未变——
+            未交办、误报归库的件仍不纳入分析。无法确认的请留在待纠偏，不要勉强确认。
+          </>
+        }
       />
 
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
+          <Segmented
+            options={DISPATCHED_OPTIONS}
+            value={dispatched}
+            onChange={(v) => applyDispatchedFilter(v as DispatchedFilter | 'all')}
+          />
           <Input
             placeholder="诉求编号或 ID（用于补生成纠偏项）"
             value={genId}
@@ -252,8 +376,13 @@ const AddressCorrection: React.FC = () => {
           >
             生成纠偏待办
           </Button>
+          <Tooltip title="幂等：只给「还没有任何纠偏项」的诉求补挂清单，已有清单的诉求不受影响。存量与新入站都靠它收敛进纠偏口径。">
+            <Button icon={<TeamOutlined />} loading={batching} onClick={() => void doBatchGenerate()}>
+              补齐全部诉求纠偏待办
+            </Button>
+          </Tooltip>
           <Tooltip title="重新加载待纠偏队列">
-            <Button icon={<ReloadOutlined />} onClick={() => void loadQueue(page, size)}>
+            <Button icon={<ReloadOutlined />} onClick={() => void loadQueue(page, size, dispatched)}>
               刷新
             </Button>
           </Tooltip>
@@ -269,7 +398,7 @@ const AddressCorrection: React.FC = () => {
                 title="加载待纠偏队列失败"
                 subTitle={loadError}
                 extra={
-                  <Button type="primary" onClick={() => void loadQueue(page, size)}>
+                  <Button type="primary" onClick={() => void loadQueue(page, size, dispatched)}>
                     重试
                   </Button>
                 }
@@ -280,7 +409,17 @@ const AddressCorrection: React.FC = () => {
                 size="middle"
                 loading={loading}
                 dataSource={queue}
-                locale={{ emptyText: firstLoaded ? <Empty description="暂无待纠偏项" /> : <span /> }}
+                locale={{
+                  emptyText: firstLoaded ? (
+                    <Empty description="该口径下暂无待纠偏项；若有诉求从未生成清单，请点「补齐全部诉求纠偏待办」">
+                      <Button icon={<TeamOutlined />} loading={batching} onClick={() => void doBatchGenerate()}>
+                        补齐全部诉求纠偏待办
+                      </Button>
+                    </Empty>
+                  ) : (
+                    <span />
+                  ),
+                }}
                 rowClassName={(r) => (r.complaintId === selectedComplaintId ? 'ant-table-row-selected' : '')}
                 onRow={(record) => ({ onClick: () => selectComplaint(record.complaintId) })}
                 pagination={{
@@ -296,6 +435,14 @@ const AddressCorrection: React.FC = () => {
                 }}
                 columns={[
                   { title: '诉求', dataIndex: 'complaintId', width: 175, ellipsis: true },
+                  {
+                    // 两条轴并行的交叉状态：交办与否不影响这条件不该进纠偏队列
+                    title: '交办',
+                    dataIndex: 'hasDispatch',
+                    width: 78,
+                    render: (v: boolean) =>
+                      v ? <Tag color="processing">已交办</Tag> : <Tag>未交办</Tag>,
+                  },
                   {
                     title: '字段',
                     dataIndex: 'fieldLabel',
@@ -358,6 +505,15 @@ const AddressCorrection: React.FC = () => {
               <>
                 <Descriptions size="small" column={1} bordered style={{ marginBottom: 12 }}>
                   <Descriptions.Item label="诉求">{selectedComplaintId}</Descriptions.Item>
+                  <Descriptions.Item label="交办轴">
+                    {selectedHasDispatch === null ? (
+                      DASH
+                    ) : selectedHasDispatch ? (
+                      <Tag color="processing">已交办</Tag>
+                    ) : (
+                      <Tag>未交办</Tag>
+                    )}
+                  </Descriptions.Item>
                   <Descriptions.Item label="待确认项">{pendingCount}</Descriptions.Item>
                   <Descriptions.Item label="全部项">{items.length}</Descriptions.Item>
                 </Descriptions>
@@ -367,8 +523,12 @@ const AddressCorrection: React.FC = () => {
                     type="success"
                     showIcon
                     style={{ marginBottom: 12 }}
-                    message="该诉求纠偏已闭环，已进入分析库"
-                    description="全部纠偏项已确认或判定无需，满足进入分析库的前置条件。"
+                    message="该诉求纠偏已全部闭环"
+                    description={
+                      selectedHasDispatch
+                        ? '全部纠偏项已确认或判定无需，且该诉求走过督办链路——满足进入分析库的条件。'
+                        : '全部纠偏项已确认或判定无需；但该诉求没有交办记录，按现行分析库口径仍不纳入分析（只在总账可查）。'
+                    }
                   />
                 )}
 
@@ -425,7 +585,11 @@ const AddressCorrection: React.FC = () => {
                               onClick={() => {
                                 setConfirmTarget(r);
                                 confirmForm.setFieldsValue({
-                                  newValue: r.newValue ?? r.oldValue ?? '',
+                                  // 责任单位：确认值是主数据编码，只能重选，不能拿旧名称回显（旧值是名称，会直接被判为未登记）
+                                  newValue:
+                                    r.fieldName === ENTERPRISE_FIELD
+                                      ? ''
+                                      : r.newValue ?? r.oldValue ?? '',
                                   basis: r.basis ?? '',
                                 });
                               }}
@@ -477,12 +641,32 @@ const AddressCorrection: React.FC = () => {
               <Descriptions.Item label="诉求">{confirmTarget.complaintId}</Descriptions.Item>
               <Descriptions.Item label="原值">{confirmTarget.oldValue ?? '—'}</Descriptions.Item>
             </Descriptions>
+            {confirmTarget.fieldName === ENTERPRISE_FIELD && enterpriseError ? (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message={'企业主数据加载失败：' + enterpriseError}
+                description="责任单位下拉将为空，不会被本地示例企业替代；此时无法确认责任单位，请先重试。"
+                action={
+                  <Button size="small" onClick={() => void fetchEnterprises()}>
+                    重试
+                  </Button>
+                }
+              />
+            ) : null}
             <Form form={confirmForm} layout="vertical">
               <Form.Item
                 name="newValue"
-                label="纠偏后取值"
+                label={
+                  confirmTarget.fieldName === ENTERPRISE_FIELD
+                    ? '责任单位（企业主数据登记值，编码 + 名称成对写回）'
+                    : '纠偏后取值'
+                }
                 rules={
-                  NUMERIC_FIELDS.has(confirmTarget.fieldName)
+                  confirmTarget.fieldName === ENTERPRISE_FIELD
+                    ? [{ required: true, message: '请从企业主数据里选择责任单位' }]
+                    : NUMERIC_FIELDS.has(confirmTarget.fieldName)
                     ? [
                         { required: true, message: '请填写纠偏后的取值' },
                         {
@@ -492,14 +676,46 @@ const AddressCorrection: React.FC = () => {
                       ]
                     : [{ required: true, message: '请填写纠偏后的取值' }]
                 }
+                extra={
+                  confirmTarget.fieldName === ENTERPRISE_FIELD ? (
+                    <>
+                      当前登记名称：{confirmTarget.oldValue ?? '（空）'}。
+                      这里选的是 <b>enterprise_code</b>，后端会回查 enterprise 表并成对写回
+                      enterprise_code + enterprise_name；编码未登记会被拒绝，不会静默写入。
+                    </>
+                  ) : undefined
+                }
               >
-                <Input
-                  placeholder={
-                    NUMERIC_FIELDS.has(confirmTarget.fieldName)
-                      ? '请输入数字，例如 111.2860'
-                      : '请输入核实后的取值'
-                  }
-                />
+                {confirmTarget.fieldName === ENTERPRISE_FIELD ? (
+                  <Select
+                    showSearch
+                    allowClear
+                    filterOption={false}
+                    loading={enterpriseLoading}
+                    placeholder="输入企业名称或编码搜索（只能从主数据里选）"
+                    onSearch={(kw) => void fetchEnterprises(kw)}
+                    onOpenChange={(open) => {
+                      if (open && enterpriseOptions.length === 0 && !enterpriseLoading) {
+                        void fetchEnterprises();
+                      }
+                    }}
+                    options={enterpriseOptions.map((e) => ({
+                      value: e.enterpriseCode,
+                      label:
+                        e.enterpriseName +
+                        '（' + e.enterpriseCode + '）' +
+                        (e.businessTypeName ? ' · ' + e.businessTypeName : ''),
+                    }))}
+                  />
+                ) : (
+                  <Input
+                    placeholder={
+                      NUMERIC_FIELDS.has(confirmTarget.fieldName)
+                        ? '请输入数字，例如 111.2860'
+                        : '请输入核实后的取值'
+                    }
+                  />
+                )}
               </Form.Item>
               <Form.Item name="basis" label="确认依据">
                 <Input.TextArea rows={3} placeholder="例如：电话核实、现场照片、来源系统回执编号" />

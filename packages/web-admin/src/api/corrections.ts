@@ -3,6 +3,7 @@ import type {
   CloseComplaintRequest,
   CloseComplaintResult,
   ComplaintIdOrNo,
+  CorrectionBatchResult,
   CorrectionConfirmRequest,
   CorrectionGenerateResult,
   CorrectionItem,
@@ -16,11 +17,16 @@ export interface ListResult<T> {
   total: number;
 }
 
+/** 交办轴筛选：dispatched=只看交办过的，undispatched=只看没交办过的，不传=全部 */
+export type DispatchedFilter = 'dispatched' | 'undispatched';
+
 export interface PendingCorrectionParams {
   page?: number;
   size?: number;
   /** 只看某个诉求的待纠偏项 */
   complaintId?: string;
+  /** 只看某条交办轴上的诉求 */
+  dispatched?: DispatchedFilter;
 }
 
 function encode(value: ComplaintIdOrNo): string {
@@ -31,13 +37,21 @@ function encode(value: ComplaintIdOrNo): string {
  * 待纠偏队列（服务端分页）。返回的是**逐字段**的纠偏项，不是"诉求列表"——
  * 一个诉求可能同时有多项待纠偏（企业名称/地址/分类/坐标/摘要/企业处置结果）。
  *
+ * 口径（业主 2026-09-20 裁定）：纠偏覆盖**所有**诉求，与是否交办、是否审批通过无关；
+ * 每条项带 hasDispatch 标记，用于区分"纠偏轴 × 交办轴"的交叉状态。
+ *
  * GET /corrections/pending
  */
 export async function listPendingCorrections(
   params: PendingCorrectionParams = {}
 ): Promise<Paged<CorrectionItem>> {
   return request.get<never, Paged<CorrectionItem>>('/corrections/pending', {
-    params: { page: params.page, size: params.size, complaintId: params.complaintId },
+    params: {
+      page: params.page,
+      size: params.size,
+      complaintId: params.complaintId,
+      dispatched: params.dispatched,
+    },
   });
 }
 
@@ -55,13 +69,13 @@ export async function listComplaintCorrections(idOrNo: ComplaintIdOrNo): Promise
 }
 
 /**
- * 生成纠偏待办。上游触发点是**最终回传之后**（G4 的 task_approved + agreed）；
- * 本按钮用于补生成。
+ * 为单条诉求生成纠偏待办（幂等，可手工补生成）。
+ *
+ * 口径（业主 2026-09-20 裁定）：**只要是诉求就能纠偏**——不再有"必须审批通过""必须有交办单"两道前置，
+ * 没交办过的诉求 assignmentId 为 null，一样进队列。G4 回调只是三个入口之一。
  *
  * **幂等**：已有纠偏项时后端返回 created=false 并带上既有的 items，
  * 调用方必须据此提示「该诉求已有纠偏项」，不得重复生成。
- *
- * 按业主确认的口径：只对**走过督办链路**的诉求生成——「无需交办归库」「误报归库」的诉求不纳入。
  *
  * POST /complaints/:idOrNo/corrections/generate
  */
@@ -69,6 +83,18 @@ export async function generateCorrections(idOrNo: ComplaintIdOrNo): Promise<Corr
   return request.post<never, CorrectionGenerateResult>(
     '/complaints/' + encode(idOrNo) + '/corrections/generate'
   );
+}
+
+/**
+ * 批量补挂：给所有还没有纠偏清单的诉求生成待办（幂等，可反复执行）。
+ * 存量 464 条与新入站尚未被覆盖的诉求都靠这个入口收敛进纠偏口径。
+ *
+ * 调用方**必须看 uncoveredComplaints 与 errors**：不为 0 / 非空就是没补全，不能当成功收口。
+ *
+ * POST /corrections/generate-batch
+ */
+export async function generateCorrectionBatch(): Promise<CorrectionBatchResult> {
+  return request.post<never, CorrectionBatchResult>('/corrections/generate-batch');
 }
 
 /**

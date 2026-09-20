@@ -440,7 +440,13 @@ export interface CorrectionItem {
   id: number;
   correctionId: string;
   complaintId: string;
+  /** 触发本次纠偏清单的交办；**没有交办过的诉求为 null**（纠偏与交办并行，不互为前置） */
   assignmentId: string | null;
+  /**
+   * 该诉求是否交办过（进行中或历史交办都算）。
+   * 只用于在页面上区分"纠偏轴 × 交办轴"的交叉状态，不参与"能不能纠偏"的判断。
+   */
+  hasDispatch: boolean;
   fieldName: string;
   fieldLabel: string | null;
   oldValue: string | null;
@@ -465,10 +471,24 @@ export interface CorrectionRejectRequest {
 
 export interface CorrectionGenerateResult {
   complaintId: string;
-  assignmentId: string;
+  /** 没有交办过的诉求为 null */
+  assignmentId: string | null;
   created: boolean;
   total: number;
   items: CorrectionItem[];
+}
+
+/**
+ * 批量补挂纠偏待办的结果（幂等：已有清单的诉求只跳过、不重复插入）。
+ * uncoveredComplaints 不为 0 或 errors 非空，就代表这次没覆盖全，不能当成功收口。
+ */
+export interface CorrectionBatchResult {
+  totalComplaints: number;
+  createdComplaints: number;
+  skippedComplaints: number;
+  itemsInserted: number;
+  uncoveredComplaints: number;
+  errors: Array<{ complaintId: string; message: string }>;
 }
 
 export interface AnalysisRecordItem {
@@ -700,21 +720,8 @@ export interface CreateDispatchResult {
   order: DispatchOrderDetail;
 }
 
-export interface AssignEnterpriseRequest {
-  enterpriseCode: string;
-  enterpriseName: string;
-  reason?: string;
-}
-
-export interface AssignEnterpriseResult {
-  complaintId: string;
-  assignmentLogId: string;
-  beforeEnterpriseCode: string | null;
-  beforeEnterpriseName: string | null;
-  afterEnterpriseCode: string | null;
-  afterEnterpriseName: string | null;
-  supervisionStatus: string;
-}
+// AssignEnterpriseRequest / AssignEnterpriseResult 已删除：
+// 「匹配单位」入口收敛进纠偏后，前端不再直接调 /complaints/:idOrNo/assignment，留着就是死类型。
 
 export type DispositionKind = 'no_dispatch_needed' | 'false_positive';
 

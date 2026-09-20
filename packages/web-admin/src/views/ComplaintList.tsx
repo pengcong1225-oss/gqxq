@@ -32,13 +32,12 @@ import {
   InboxOutlined,
   SearchOutlined,
   SendOutlined,
-  UserOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import type { Dayjs } from 'dayjs';
 import { listComplaints } from '../api/complaints';
-import { applyDisposition, assignEnterprise } from '../api/complaintActions';
+import { applyDisposition } from '../api/complaintActions';
 import { createDispatch } from '../api/dispatch';
 import { getDictItems } from '../api/dicts';
 import { listEnterprises } from '../api/enterprises';
@@ -255,8 +254,7 @@ const ComplaintList: React.FC = () => {
   const stats = data?.stats;
   const firstLoading = loading && data === null;
 
-  /* ---------- G2：匹配单位 / 发起交办 / 归库 ---------- */
-  const [assignTarget, setAssignTarget] = useState<ComplaintListItem | null>(null);
+  /* ---------- G2：发起交办 / 归库（匹配单位已收敛进纠偏入口，见 AddressCorrection） ---------- */
   const [dispatchTarget, setDispatchTarget] = useState<ComplaintListItem | null>(null);
   const [dispositionTarget, setDispositionTarget] = useState<{
     row: ComplaintListItem;
@@ -264,11 +262,6 @@ const ComplaintList: React.FC = () => {
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [assignForm] = Form.useForm<{
-    enterpriseCode: string;
-    enterpriseName: string;
-    reason?: string;
-  }>();
   const [dispatchForm] = Form.useForm<{
     targetEnterpriseCode: string;
     targetEnterpriseName: string;
@@ -278,7 +271,7 @@ const ComplaintList: React.FC = () => {
   }>();
   const [dispositionForm] = Form.useForm<{ reason: string }>();
 
-  /* ---------- 企业主数据：匹配单位 / 发起交办时的企业选择 ---------- */
+  /* ---------- 企业主数据：发起交办时的企业选择 ---------- */
   // 企业清单来自服务端 GET /enterprises。这里**不做本地兜底**：
   // 手抄 enterprise_code 一旦与登记值不一致，后续交办就匹配不到同一主体。
   const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
@@ -446,32 +439,6 @@ const ComplaintList: React.FC = () => {
   const reload = useCallback(() => {
     void load(params);
   }, [load, params]);
-
-  const handleAssign = useCallback(async () => {
-    if (!assignTarget) return;
-    let values: { enterpriseCode: string; enterpriseName: string; reason?: string };
-    try {
-      values = await assignForm.validateFields();
-    } catch {
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const res = await assignEnterprise(assignTarget.complaintId, {
-        enterpriseCode: values.enterpriseCode.trim(),
-        enterpriseName: values.enterpriseName.trim(),
-        reason: values.reason?.trim() || undefined,
-      });
-      message.success('已匹配责任单位：' + (res.afterEnterpriseName ?? values.enterpriseName.trim()));
-      setAssignTarget(null);
-      assignForm.resetFields();
-      reload();
-    } catch (err) {
-      message.error('匹配责任单位失败：' + ((err as ApiError)?.message ?? '未知错误'));
-    } finally {
-      setSubmitting(false);
-    }
-  }, [assignTarget, assignForm, reload]);
 
   const handleCreateDispatch = useCallback(async () => {
     if (!dispatchTarget) return;
@@ -687,23 +654,8 @@ const ComplaintList: React.FC = () => {
             >
               详情
             </Button>
-            <Button
-              type="link"
-              size="small"
-              icon={<UserOutlined />}
-              onClick={() => {
-                assignForm.resetFields();
-                assignForm.setFieldsValue({
-                  enterpriseCode: r.enterpriseCode ?? '',
-                  enterpriseName: r.enterpriseName ?? '',
-                });
-                clearEnterpriseError();
-                void fetchEnterprises();
-                setAssignTarget(r);
-              }}
-            >
-              匹配单位
-            </Button>
+            {/* 责任单位不再在这里改：2026-09-20 裁定「匹配责任单位」收敛进纠偏入口，
+                总账只留详情 / 交办 / 归库——enterprise_code 与 enterprise_name 由纠偏成对写回。 */}
             {r.activeDispatchId ? (
               // 已有进行中交办：不再提供第二次交办，只能查看
               <Button
@@ -766,7 +718,7 @@ const ComplaintList: React.FC = () => {
         ),
       },
     ],
-    [navigate, assignForm, dispatchForm, dispositionForm, clearEnterpriseError, fetchEnterprises]
+    [navigate, dispatchForm, dispositionForm, clearEnterpriseError, fetchEnterprises]
   );
 
   return (
@@ -978,63 +930,7 @@ const ComplaintList: React.FC = () => {
         )}
       </Card>
 
-      {/* ---------- G2：匹配责任单位 ---------- */}
-      <Modal
-        title={assignTarget ? '匹配责任单位 - ' + assignTarget.complaintNo : '匹配责任单位'}
-        open={assignTarget !== null}
-        onCancel={() => {
-          setAssignTarget(null);
-          assignForm.resetFields();
-        }}
-        onOk={() => void handleAssign()}
-        confirmLoading={submitting}
-        okText="提交"
-        width={540}
-      >
-        {enterpriseErrorAlert}
-        <Form form={assignForm} layout="vertical">
-          <Form.Item
-            name="enterpriseCode"
-            label="责任单位"
-            rules={[{ required: true, message: '请选择责任单位' }]}
-          >
-            <Select
-              showSearch
-              allowClear
-              filterOption={false}
-              loading={enterpriseLoading}
-              placeholder="输入企业名称或编码搜索"
-              onSearch={handleEnterpriseSearch}
-              options={toEnterpriseOptions(
-                withCurrentEnterprise(
-                  enterpriseOptions,
-                  assignTarget?.enterpriseCode,
-                  assignTarget?.enterpriseName
-                )
-              )}
-              onChange={(code: string | undefined) => {
-                const list = withCurrentEnterprise(
-                  enterpriseOptions,
-                  assignTarget?.enterpriseCode,
-                  assignTarget?.enterpriseName
-                );
-                const hit = list.find((e) => e.enterpriseCode === code);
-                assignForm.setFieldsValue({ enterpriseName: hit ? hit.enterpriseName : undefined });
-              }}
-            />
-          </Form.Item>
-          <Form.Item
-            name="enterpriseName"
-            label="企业名称（由所选企业自动带出）"
-            rules={[{ required: true, message: '请先选择责任单位' }]}
-          >
-            <Input disabled placeholder="选择责任单位后自动带出" />
-          </Form.Item>
-          <Form.Item name="reason" label="匹配原因">
-            <Input.TextArea rows={2} placeholder="可选，例如：按所属区域与业务类型匹配" />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {/* 匹配责任单位弹窗已下线（2026-09-20 裁定：收敛进纠偏入口，见 AddressCorrection） */}
 
       {/* ---------- G2：发起交办 ---------- */}
       <Modal

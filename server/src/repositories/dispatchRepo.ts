@@ -341,6 +341,27 @@ export async function findComplaintRefByAnyKey(
 }
 
 /**
+ * 一批诉求里哪些**交办过**（进行中 + 历史交办都算，不按 status 过滤）。
+ * 纠偏列表用它给每条待办打 hasDispatch 标记（业主 2026-09-20 口径：两条轴并行，页面要能区分交叉状态）。
+ * 与 analysisRepo.hasDispatchOrder 同源同口径（都只看 dispatch_order 有没有行），那一个是分析入库的硬条件、
+ * 这是列表用的批量版；两者都从本文件读这张表，不要再另起一处实现。
+ * in 的占位符显式拼接：mysql2 的 execute 不展开数组（见 HANDOVER §6-②），先查后判的写法也一样不可信。
+ */
+export async function findDispatchedComplaintIds(
+  db: Tx | typeof pool,
+  complaintIds: string[]
+): Promise<Set<string>> {
+  const ids = Array.from(new Set(complaintIds.filter((id) => id !== '')));
+  if (ids.length === 0) return new Set();
+  const placeholders = ids.map(() => '?').join(', ');
+  const [rows] = await db.query<Row[]>(
+    'select distinct complaint_id from dispatch_order where complaint_id in (' + placeholders + ')',
+    ids
+  );
+  return new Set((rows as unknown as Array<{ complaint_id: string }>).map((r) => String(r.complaint_id)));
+}
+
+/**
  * 锁住交办单行并只取 status。
  * 撤销必须先锁再判状态，否则两个并发撤销会同时通过状态检查、都执行更新。
  */

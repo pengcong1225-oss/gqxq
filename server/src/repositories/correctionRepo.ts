@@ -1,7 +1,10 @@
 // correction_item（纠偏待办，逐字段一行）。
 //
-// 设计约束（落地计划 G5 / 业主 2026-09-17 确认口径）：
-//   * 只有走过完整督办链路（有 assignment）的诉求才生成纠偏项；
+// 设计约束（业主 2026-09-20 裁定，推翻 2026-09-17 的旧口径）：
+//   * 纠偏是**数据质量轴**，覆盖**所有**诉求，与是否交办、是否审批通过无关；
+//     "只有走过督办链路才生成纠偏项"的旧前提已作废（拆闸见 correctionService.generateCorrectionsInTx）。
+//   * 本仓库同时负责把"该诉求是否交办过"（hasDispatch）带出来——两条轴并行，页面要能区分交叉状态；
+//     是否交办由 dispatch_order 实查，不靠 correction_item.assignment_id（那只是"这条清单由哪次交办触发"的回查线索）。
 //   * 每一项都要人工「确认」或「判定无需纠偏」后才不再 pending；
 //   * **未纠偏不得进入分析库** —— 是否可入库的判断在 service 层的事务里做（见 correctionService），
 //     本仓库只负责读写，不擅自决定业务规则。
@@ -10,17 +13,27 @@ import type { Tx } from '../db/tx';
 import type { CorrectionItem, CorrectionItemStatus } from '../types/api';
 import { cut, type Queryable } from './complaintSourceLogRepo';
 import { toIso } from './complaintMapper';
+import { findDispatchedComplaintIds } from './dispatchRepo';
 
-/** 纠偏字段定义。column 为 null 表示该字段在 complaint 表里没有对应列（如企业处置结果）。 */
+/**
+ * 纠偏字段定义。
+ * column 为 null 表示该字段在 complaint 表里没有对应列（如企业处置结果）。
+ * pairedCodeColumn 非空表示该字段是"主数据编码 + 名称"成对写回的一类：
+ *   newValue 的口径是**企业主数据的登记编码**，写回时由 service 侧查 enterprise 表拿到登记名称，
+ *   两列一并写入（编码匹配不到登记值直接报错）——见 correctionService.writeBackToComplaint。
+ */
 export interface CorrectionFieldDef {
   code: string;
   label: string;
   /** 是否要写回 complaint，以及写到哪一列 */
   column: string | null;
+  /** 与 column 成对写回的编码列（目前只有责任单位一项） */
+  pairedCodeColumn?: string;
 }
 
 export const CORRECTION_FIELD_DEFS: readonly CorrectionFieldDef[] = [
-  { code: 'enterprise_name', label: '企业名称/归属', column: 'enterprise_name' },
+  // 责任单位：确认值填 enterprise.enterprise_code（登记编码），写回 code + name 成对，缺一不可
+  { code: 'enterprise_name', label: '企业名称/归属', column: 'enterprise_name', pairedCodeColumn: 'enterprise_code' },
   { code: 'district_name', label: '归属区域', column: 'district_name' },
   { code: 'address', label: '地址', column: 'address' },
   { code: 'complaint_type', label: '诉求分类', column: 'complaint_type' },
@@ -74,7 +87,11 @@ export interface CorrectionRow {
   createdAt: unknown;
 }
 
-export function rowToCorrectionItem(r: CorrectionRow): CorrectionItem {
+/**
+ * 行 -> 契约。hasDispatch **不是** correction_item 里的列，而是该诉求在 dispatch_order 上有没有
+ * 进行中/历史交办，必须由调用方实查后显式传进来——默认 false 会让"未交办"变成猜出来的。
+ */
+export function rowToCorrectionItem(r: CorrectionRow, hasDispatch: boolean): CorrectionItem {
   const status = String(r.status);
   const def = fieldDef(String(r.fieldName));
   return {
@@ -82,6 +99,7 @@ export function rowToCorrectionItem(r: CorrectionRow): CorrectionItem {
     correctionId: String(r.correctionId),
     complaintId: String(r.complaintId),
     assignmentId: r.assignmentId === null || r.assignmentId === undefined ? null : String(r.assignmentId),
+    hasDispatch,
     fieldName: String(r.fieldName),
     fieldLabel: r.fieldLabel === null || r.fieldLabel === undefined ? (def ? def.label : null) : String(r.fieldLabel),
     oldValue: r.oldValue === null || r.oldValue === undefined ? null : String(r.oldValue),
@@ -141,12 +159,22 @@ export async function listByComplaint(db: Queryable, complaintId: string): Promi
     'select ' + SELECT_COLUMNS + ' from correction_item where complaint_id = ? order by id asc',
     [complaintId]
   );
-  return (rows as unknown as CorrectionRow[]).map(rowToCorrectionItem);
+  const list = rows as unknown as CorrectionRow[];
+  const dispatched = await findDispatchedComplaintIds(db, [complaintId]);
+  const hasDispatch = dispatched.has(complaintId);
+  return list.map((row) => rowToCorrectionItem(row, hasDispatch));
 }
+
+/** 是否只看在某条轴上的诉求：dispatched=已交办、undispatched=未交办、undefined=全部 */
+export type DispatchedFilter = 'dispatched' | 'undispatched';
 
 export interface PendingPageFilter {
   complaintId?: string;
+  dispatched?: DispatchedFilter;
 }
+
+/** 交办轴的子查询：写在 where 里做筛选，不参与 for update，因此不会去锁 dispatch_order */
+const DISPATCH_EXISTS = 'exists (select 1 from dispatch_order d where d.complaint_id = correction_item.complaint_id)';
 
 export async function findPendingPage(
   db: Queryable,
@@ -160,6 +188,8 @@ export async function findPendingPage(
     parts.push('complaint_id = ?');
     params.push(filter.complaintId);
   }
+  if (filter.dispatched === 'dispatched') parts.push(DISPATCH_EXISTS);
+  if (filter.dispatched === 'undispatched') parts.push('not ' + DISPATCH_EXISTS);
   const where = ' where ' + parts.join(' and ');
 
   const [countRows] = await db.query(
@@ -175,7 +205,15 @@ export async function findPendingPage(
       ' order by created_at asc, id asc limit ? offset ?',
     [...params, size, (page - 1) * size]
   );
-  return { content: (rows as unknown as CorrectionRow[]).map(rowToCorrectionItem), total };
+  const list = rows as unknown as CorrectionRow[];
+  const dispatched = await findDispatchedComplaintIds(
+    db,
+    list.map((row) => String(row.complaintId))
+  );
+  return {
+    content: list.map((row) => rowToCorrectionItem(row, dispatched.has(String(row.complaintId)))),
+    total,
+  };
 }
 
 /** 待纠偏项数量。分析入库与办结的前置校验都要用它，必须在同一事务内调用。 */
@@ -234,4 +272,41 @@ export async function countByComplaint(db: Queryable, complaintId: string): Prom
     [complaintId]
   );
   return Number((rows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);
+}
+
+/* ==================== 批量补挂的可复核口径（R2） ==================== */
+
+/** 存活诉求总数（软删不算）。批量补挂用它做分母。 */
+export async function countLiveComplaints(db: Queryable): Promise<number> {
+  const [rows] = await db.query(
+    'select count(*) as total from complaint c where coalesce(c.deleted, 0) = 0'
+  );
+  return Number((rows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);
+}
+
+/** 尚无任何纠偏项的诉求数。补挂完成后必须为 0，非 0 就是没覆盖全。 */
+export async function countComplaintsWithoutCorrections(db: Queryable): Promise<number> {
+  const [rows] = await db.query(
+    'select count(*) as total from complaint c' +
+      " left join correction_item ci on ci.complaint_id = c.complaint_id where ci.id is null" +
+      ' and coalesce(c.deleted, 0) = 0'
+  );
+  return Number((rows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);
+}
+
+/**
+ * 取一批"还没有任何纠偏项"的诉求业务键，按主键升序（顺序稳定 ⇒ 复跑结果可比对）。
+ * 只为补挂服务：生成走的是与入站/回调同一条 generateCorrectionsInTx，不另造一份清单口径。
+ */
+export async function findComplaintIdsWithoutCorrections(
+  db: Queryable,
+  limit: number
+): Promise<string[]> {
+  const [rows] = await db.query(
+    'select c.complaint_id as complaintId from complaint c' +
+      " left join correction_item ci on ci.complaint_id = c.complaint_id where ci.id is null" +
+      ' and coalesce(c.deleted, 0) = 0 order by c.id asc limit ?',
+    [limit]
+  );
+  return (rows as unknown as Array<{ complaintId: string }>).map((r) => String(r.complaintId));
 }
