@@ -22,6 +22,9 @@
     "verify:file-source-adapter": "tsx scripts/verify-file-source-adapter.ts",
     "verify:m1": "node scripts/verify-bind-host.mjs",
     "verify:m3": "node scripts/verify-trust-proxy.mjs",
+    "baseline:intake": "node scripts/intake-baseline.mjs",
+    "verify:m4": "node scripts/verify-intake-baseline.mjs",
+    "verify:hardening": "npm run verify:m1 && npm run verify:m3 && npm run verify:m4",
     "mock:public-utility": "node scripts/mock-public-utility.mjs",
     "mock:public-utility-callback": "node scripts/mock-public-utility-callback.mjs"
   },
