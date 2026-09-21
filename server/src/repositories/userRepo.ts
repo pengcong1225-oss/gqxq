@@ -111,6 +111,44 @@ export async function findByUserId(
   );
 }
 
+/**
+ * 鉴权用的**最小身份视图**（Task #35 收尾补）。
+ *
+ * 为什么需要它：JWT 载荷里带着 `roles` 声明，TTL 8 小时。RBAC 上线后角色就是
+ * 授权依据，如果 requireAuth 只验签名、直接拿令牌里的 roles，那么
+ * PATCH /users 的「禁用」「降级」要等到对方令牌自然过期才生效 ——
+ * 被降级的 admin 在这 8 小时里照样能进 /users。令牌只证明**身份**，
+ * 档位与启停状态必须以这一条查询的结果为准（默认拒绝的延伸：查不到即拒绝）。
+ *
+ * 与 findByUsername/findByUserId 的区别：这里**绝不 select password_hash**
+ * （每个鉴权请求都会走它，不该顺带把哈希读进内存），也不带 permissions（不参与鉴权）。
+ */
+export interface AuthIdentity {
+  userId: string;
+  username: string;
+  roles: string[];
+  status: number;
+}
+
+export async function findAuthIdentity(
+  exec: SqlExecutor,
+  userId: string
+): Promise<AuthIdentity | null> {
+  const rows = await queryRows(
+    exec,
+    'select user_id, username, roles, status from app_user where user_id = ? limit 1',
+    [userId]
+  );
+  const row = rows[0];
+  if (row === undefined) return null;
+  return {
+    userId: toStr(row.user_id),
+    username: toStr(row.username),
+    roles: toStringArray(row.roles),
+    status: toNum(row.status),
+  };
+}
+
 /** 登录成功时记录最近登录时间（写入绝对时刻，按 UTC 落库） */
 export async function touchLastLogin(
   exec: SqlExecutor,
