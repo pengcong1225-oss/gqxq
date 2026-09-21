@@ -1,6 +1,9 @@
 import React from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Result } from 'antd';
 import { useAppStore } from './stores/appStore';
+import { FORBIDDEN_MESSAGE, ROLE_ADMIN, useRoles } from './stores/roleAccess';
+import type { AppRole } from './types/api';
 import MainLayout from './layouts/MainLayout';
 import Dashboard from './views/Dashboard';
 import ComplaintList from './views/ComplaintList';
@@ -34,6 +37,28 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
 };
 
+/**
+ * admin 独占路由的入口守卫（只做体验层，不做权限树/动态路由那套）。
+ *
+ * 菜单已经按档位过滤过，这里是防"手敲 URL 进来看到一堆点了就 403 的按钮"。
+ * 判定本身仍以后端为准（策略表 U1–U3 + requireRole('admin')）：
+ * 就算有人绕过这层，接口也不会给他写成功。
+ */
+const RequireRole: React.FC<{ allowed: AppRole[]; children: React.ReactNode }> = ({ allowed, children }) => {
+  const roles = useRoles();
+  const userInfo = useAppStore((s) => s.userInfo);
+  // 刷新后 userInfo 还在路上（MainLayout 正在拉 /auth/user-info），此刻不判定，避免闪一屏 403
+  if (userInfo === null) return null;
+  if (allowed.some((r) => roles.includes(r))) return <>{children}</>;
+  return (
+    <Result
+      status="403"
+      title={FORBIDDEN_MESSAGE}
+      subTitle="当前账号的角色看不到这个页面。权限由服务端策略表统一判定，需要开通请由系统管理员在「系统管理」里调整角色。"
+    />
+  );
+};
+
 const App: React.FC = () => {
   return (
     <Routes>
@@ -53,8 +78,8 @@ const App: React.FC = () => {
         <Route path="shutdowns" element={<ShutdownList />} />
         <Route path="pipelines" element={<PipelineList />} />
         <Route path="reports" element={<ReportView />} />
-        <Route path="dicts" element={<DictManager />} />
-        <Route path="system/users" element={<UserManager />} />
+        <Route path="dicts" element={<RequireRole allowed={[ROLE_ADMIN]}><DictManager /></RequireRole>} />
+        <Route path="system/users" element={<RequireRole allowed={[ROLE_ADMIN]}><UserManager /></RequireRole>} />
       </Route>
     </Routes>
   );

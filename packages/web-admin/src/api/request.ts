@@ -1,5 +1,7 @@
 import axios from 'axios';
+import { message } from 'antd';
 import type { ApiError, ApiErrorCode, FieldError } from '../types/api';
+import { FORBIDDEN_MESSAGE } from '../stores/roleAccess';
 
 /**
  * Vite 注入的构建期环境变量。
@@ -80,6 +82,16 @@ request.interceptors.response.use(
     // 登录接口自身的 401 不跳转，交给登录页提示；其余 401 仍清 token 并跳 /login
     // 前缀必须跟 BASE_PATH：子路径部署（/gqxq/）下硬跳 '/login' 会跳出挂载点
     const url: string = error?.config?.url ?? '';
+
+    // 403：令牌没问题，是角色不够（后端 enforceRolePolicy / requireRole 给的）。
+    // **不清 token、不跳登录页** —— 跳了等于告诉用户"你被登出了"，而事实是"你没这个权限"。
+    // 真判定在后端，前端的菜单/按钮过滤只是让这一发少出现；出现了就得说清楚该找谁。
+    if (status === 403) {
+      apiError.message = FORBIDDEN_MESSAGE;
+      message.warning(FORBIDDEN_MESSAGE);
+      return Promise.reject(apiError);
+    }
+
     if (status === 401 && !url.includes('/auth/login')) {
       localStorage.removeItem('token');
       window.location.href = `${BASE_PATH}/login`;

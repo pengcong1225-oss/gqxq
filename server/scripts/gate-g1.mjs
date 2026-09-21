@@ -92,6 +92,9 @@ const VIEW_WHITELIST = new Set([
   'DispatchArchive',
   'ReportView',
   'Analysis',
+  // Task #35：系统管理页从 Mock 换成真接口（GET/POST/PATCH /users），
+  // 且旧「操作日志」页签是**撤下**而非留假数据（读审计的接口本批不做，见映射表 §5）。
+  'UserManager',
 ]);
 const DEMO_MARKER = 'DemoDataNotice';
 
@@ -153,8 +156,9 @@ const UPPER_ALLOW = new Set([
   'AGREED', 'DISAGREED', 'RETURNED', 'CONFLICT',
   // Node 进程信号
   'SIGINT', 'SIGTERM', 'SIGHUP', 'SIGKILL', 'SIGQUIT',
-  // 本仓库已知编号前缀（非枚举）。AREQ 是 G2 交办幂等请求号（allocateBizNo 的 prefix 参数）。
-  'GRID', 'CPL', 'ASGN', 'YJJB', 'SZRX', 'WLYQ', 'WG', 'JB', 'CS', 'SD', 'PJ', 'AREQ',
+  // 本仓库已知编号前缀（非枚举）。AREQ 是 G2 交办幂等请求号、USR 是 Task #35 的
+  // app_user.user_id 业务键前缀（均为 allocateBizNo 的 prefix 参数）。
+  'GRID', 'CPL', 'ASGN', 'YJJB', 'SZRX', 'WLYQ', 'WG', 'JB', 'CS', 'SD', 'PJ', 'AREQ', 'USR',
   // 常见环境变量名（不是枚举）
   'PORT', 'HOST', 'HOSTNAME', 'TZ', 'PATH', 'HOME', 'USER', 'SHELL', 'LANG', 'LOG_LEVEL',
 ]);

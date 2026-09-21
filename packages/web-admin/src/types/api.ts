@@ -385,6 +385,56 @@ export interface LoginResult {
   userInfo: UserInfo;
 }
 
+/* ==================== 用户与权限（Task #35 三档 RBAC，镜像 server/src/types/api.ts） ==================== */
+
+/** 三档角色。真源是 server/src/auth/rolePolicy.ts 的 ROLES 与映射表 §1 */
+export type AppRole = 'admin' | 'handler' | 'readonly';
+
+/** 用户管理列表项：**接口永不返回口令**（仓储层不 select password_hash） */
+export interface UserAdminItem {
+  userId: string;
+  username: string;
+  realName: string;
+  /** 本批按单档使用；数组形态保留给未来的多档叠加 */
+  roles: AppRole[];
+  /** 角色中文名，与 roles 同序 —— 由后端给，前端不自建翻译表 */
+  roleNames: string[];
+  /** 1=启用 0=禁用。禁用是唯一的"下线"手段：后端没有删除端点，审计链要留在人身上 */
+  status: 0 | 1;
+  lastLoginAt: string | null;
+  createdAt: string | null;
+}
+
+export interface UserAdminFilter {
+  /** 命中 username 或 real_name */
+  keyword?: string;
+  role?: AppRole;
+  status?: 0 | 1;
+}
+
+export type UserAdminListResult = Paged<UserAdminItem>;
+
+/** POST /users：初始口令只在请求里出现一次，响应不回显 */
+export interface CreateUserRequest {
+  username: string;
+  realName: string;
+  role: AppRole;
+  password: string;
+}
+
+/** PATCH /users/:userId：未传的字段不动。没有 DELETE —— 禁用代替删除 */
+export interface UpdateUserRequest {
+  realName?: string;
+  role?: AppRole;
+  status?: 0 | 1;
+}
+
+/** PATCH /users/:userId 的返回：changed 为空表示提交的内容与库里一致 */
+export interface UpdateUserResult {
+  user: UserAdminItem;
+  changed: string[];
+}
+
 /* ==================== 字典（方案 §5.8） ==================== */
 
 export interface DictItem {
