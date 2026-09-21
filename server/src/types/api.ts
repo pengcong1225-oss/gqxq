@@ -641,3 +641,50 @@ export interface DispositionResult {
   supervisionStatus: string;
 }
 
+
+/* ==================== 用户与权限（Task #35 三档 RBAC） ==================== */
+
+/**
+ * 三档角色。真源是 server/src/auth/rolePolicy.ts 的 ROLES，
+ * 与 docs/2026-09-21-角色权限映射.md §1 逐条对应；前端 types/api.ts 同步一份。
+ */
+export type AppRole = 'admin' | 'handler' | 'readonly';
+
+/** 用户管理列表项：**绝不含 password_hash**（仓储层不 select 它，DTO 也不带） */
+export interface UserAdminItem {
+  userId: string;
+  username: string;
+  realName: string;
+  /** 本批按单档使用；数组形态保留给未来的多档叠加 */
+  roles: AppRole[];
+  /** 角色中文名，与 roles 同序（前端不自建翻译表） */
+  roleNames: string[];
+  /** 1=启用 0=禁用。禁用是唯一的"下线"手段——没有删除端点，审计链要留在人身上 */
+  status: 0 | 1;
+  lastLoginAt: string | null;
+  createdAt: string | null;
+}
+
+export interface UserAdminFilter {
+  /** 命中 username 或 real_name */
+  keyword?: string;
+  role?: AppRole;
+  status?: 0 | 1;
+}
+
+export type UserAdminListResult = Paged<UserAdminItem>;
+
+/** POST /users：初始口令只在请求里出现一次，响应不回显、也不落明文 */
+export interface CreateUserRequest {
+  username: string;
+  realName: string;
+  role: AppRole;
+  password: string;
+}
+
+/** PATCH /users/:userId：字段可选，未传的不动。没有 DELETE —— 禁用代替删除 */
+export interface UpdateUserRequest {
+  realName?: string;
+  role?: AppRole;
+  status?: 0 | 1;
+}

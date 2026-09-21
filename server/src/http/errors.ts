@@ -61,6 +61,10 @@ export class AppError extends Error {
   static unauthenticated(message = '未认证或登录已过期'): AppError {
     return new AppError('UNAUTHENTICATED', message);
   }
+  /** 401 与 403 语义分开：令牌没问题但角色不够，才是这里（见映射表 §4-3） */
+  static forbidden(message = '无权限，请联系管理员'): AppError {
+    return new AppError('FORBIDDEN', message);
+  }
   static conflict(message: string): AppError {
     return new AppError('DUPLICATE_CONFLICT', message);
   }

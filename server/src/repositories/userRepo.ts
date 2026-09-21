@@ -1,7 +1,8 @@
 // app_user 表的数据访问层。
 // 纪律：只写手写参数化 SQL，不引入 ORM，不用 select *（列清单与 M1 迁移逐字对应）。
-// 时间列存 UTC（连接池 timezone 为 Z，写库时传 Date，mysql2 会按 UTC 序列化）。
-import type { UserInfo } from '../types/api';
+// 时间口径以 db/pool.ts 为准：列里存的是 **Asia/Shanghai 墙钟**，连接池 timezone='+08:00'；
+// 写库传 Date 即按墙钟落，读出的 Date 再 toISOString() 得到对外 UTC 串。
+import type { AppRole, UserInfo, UserAdminFilter, UserAdminItem } from '../types/api';
 
 /**
  * 允许在「连接池」或「事务连接」上执行 SQL 的最小接口。
@@ -128,5 +129,211 @@ export function toUserInfo(row: AppUserRow): UserInfo {
     realName: row.realName,
     roles: row.roles,
     permissions: row.permissions,
+  };
+}
+
+/* ==================== 用户管理（Task #35） ====================
+ * 与上面登录路径分开写：登录**必须**读 password_hash，用户管理**绝不**读它。
+ * 因此这里的 SELECT 列表单独一套（ADMIN_USER_COLUMNS 里没有 password_hash），
+ * 不靠"读出来再删掉字段" —— 少一条能把哈希带出仓储层的路径。
+ */
+
+/** SqlExecutor.query 的返回是 unknown；行集在这里统一收窄（与 queryOne 同一口径） */
+async function queryRows(exec: SqlExecutor, sql: string, values?: unknown[]): Promise<Row[]> {
+  const result = (await exec.query(sql, values)) as [unknown, unknown];
+  return Array.isArray(result[0]) ? (result[0] as Row[]) : [];
+}
+
+const ADMIN_USER_COLUMNS =
+  'id, user_id, username, real_name, roles, status, last_login_at, created_at';
+
+/** 管理视图的行：与 AppUserRow 的差别只在没有 password_hash / permissions */
+export interface AdminUserRow {
+  userId: string;
+  username: string;
+  realName: string;
+  roles: string[];
+  status: number;
+  lastLoginAt: Date | null;
+  createdAt: Date | null;
+}
+
+function toBoolStatus(v: number): 0 | 1 {
+  return v === 1 ? 1 : 0;
+}
+
+function mapAdminRow(r: Row): AdminUserRow {
+  return {
+    userId: toStr(r.user_id),
+    username: toStr(r.username),
+    realName: toStr(r.real_name),
+    roles: toStringArray(r.roles),
+    status: toNum(r.status),
+    lastLoginAt: toDateOrNull(r.last_login_at),
+    createdAt: toDateOrNull(r.created_at),
+  };
+}
+
+function buildAdminWhere(filter: UserAdminFilter): { text: string; params: unknown[] } {
+  const parts: string[] = [];
+  const params: unknown[] = [];
+  if (filter.keyword !== undefined) {
+    // 转义 '!' 而不是反斜杠（与 enterpriseRepo / complaintRepo 同口径：
+    // 反斜杠转义在本机 MySQL 的默认 sql_mode 下会报语法错误）
+    const kw = '%' + filter.keyword.replace(/[!%_]/g, (m) => '!' + m) + '%';
+    parts.push("(username like ? escape '!' or real_name like ? escape '!')");
+    params.push(kw, kw);
+  }
+  if (filter.role !== undefined) {
+    // roles 是 json 列；json_contains 对 ["admin"] 这类标量数组成立（MySQL 5.7+/8）
+    parts.push("json_contains(roles, json_quote(?))");
+    params.push(filter.role);
+  }
+  if (filter.status !== undefined) {
+    parts.push('status = ?');
+    params.push(filter.status);
+  }
+  return { text: parts.length > 0 ? ' where ' + parts.join(' and ') : '', params };
+}
+
+/** 分页的**行**（不是 DTO）：roleNames 由服务层补，仓储层不碰展示口径 */
+export type AdminUserPage = {
+  content: AdminUserRow[];
+  total: number;
+  page: number;
+  size: number;
+  totalPages: number;
+};
+
+/** 分页列表（id 倒序 = 新号在前；同 id 不会出现两次，主键自增） */
+export async function listAdminUsers(
+  exec: SqlExecutor,
+  filter: UserAdminFilter,
+  page: number,
+  size: number
+): Promise<AdminUserPage> {
+  const where = buildAdminWhere(filter);
+  const countRows = await queryRows(
+    exec,
+    'select count(*) as total from app_user' + where.text,
+    where.params
+  );
+  const total = Number(countRows[0]?.total ?? 0);
+
+  const rows = await queryRows(
+    exec,
+    'select ' + ADMIN_USER_COLUMNS + ' from app_user' + where.text +
+      ' order by id desc limit ? offset ?',
+    [...where.params, size, (page - 1) * size]
+  );
+  return {
+    content: rows.map(mapAdminRow),
+    total,
+    page,
+    size,
+    totalPages: Math.ceil(total / size),
+  };
+}
+
+/** 建号。user_id 由调用方在事务内发号后传入，本函数不碰发号器。 */
+export async function insertUser(
+  exec: SqlExecutor,
+  input: {
+    userId: string;
+    username: string;
+    passwordHash: string;
+    realName: string;
+    roles: AppRole[];
+    permissions: string[];
+    now: Date;
+  }
+): Promise<void> {
+  await exec.query(
+    'insert into app_user ' +
+      '(user_id, username, password_hash, real_name, roles, permissions, status, created_at, updated_at) ' +
+      'values (?, ?, ?, ?, ?, ?, 1, ?, ?)',
+    [
+      input.userId,
+      input.username,
+      input.passwordHash,
+      input.realName,
+      JSON.stringify(input.roles),
+      JSON.stringify(input.permissions),
+      input.now,
+      input.now,
+    ]
+  );
+}
+
+/** username 是否已占用（建号前置查重，也用来把 ER_DUP_ENTRY 之外的竞态兜住） */
+export async function existsUsername(exec: SqlExecutor, username: string): Promise<boolean> {
+  const rows = await queryRows(exec, 'select 1 from app_user where username = ? limit 1', [username]);
+  return rows.length > 0;
+}
+
+/** 按 user_id 查管理视图（改号前取当前值，用于防呆判定与审计 before/after） */
+export async function findAdminUserByUserId(
+  exec: SqlExecutor,
+  userId: string
+): Promise<AdminUserRow | null> {
+  const rows = await queryRows(
+    exec,
+    'select ' + ADMIN_USER_COLUMNS + ' from app_user where user_id = ? limit 1',
+    [userId]
+  );
+  return rows.length > 0 ? mapAdminRow(rows[0]) : null;
+}
+
+/**
+ * 启用中的 admin 人数。防呆用它：最后一个 admin 不能被禁用或降级，
+ * 否则系统里再没有人能建号 / 改角色 —— 把自己锁死在门外。
+ */
+export async function countEnabledAdmins(exec: SqlExecutor): Promise<number> {
+  const rows = await queryRows(
+    exec,
+    "select count(*) as total from app_user where status = 1 and json_contains(roles, json_quote('admin'))"
+  );
+  return Number(rows[0]?.total ?? 0);
+}
+
+/** 局部更新：real_name / roles / status 各自可缺省，未传的列不进 SET */
+export async function updateUser(
+  exec: SqlExecutor,
+  userId: string,
+  patch: {
+    realName?: string;
+    roles?: AppRole[];
+    status?: 0 | 1;
+    now: Date;
+  }
+): Promise<void> {
+  const sets: string[] = ['updated_at = ?'];
+  const params: unknown[] = [patch.now];
+  if (patch.realName !== undefined) {
+    sets.push('real_name = ?');
+    params.push(patch.realName);
+  }
+  if (patch.roles !== undefined) {
+    sets.push('roles = ?');
+    params.push(JSON.stringify(patch.roles));
+  }
+  if (patch.status !== undefined) {
+    sets.push('status = ?');
+    params.push(patch.status);
+  }
+  params.push(userId);
+  await exec.query('update app_user set ' + sets.join(', ') + ' where user_id = ?', params);
+}
+
+/** 管理视图 DTO（契约真源：types/api.ts 的 UserAdminItem）。roleNames 由服务层补。 */
+export function toAdminUserItem(row: AdminUserRow): Omit<UserAdminItem, 'roleNames'> {
+  return {
+    userId: row.userId,
+    username: row.username,
+    realName: row.realName,
+    roles: row.roles.map((r) => r as AppRole),
+    status: toBoolStatus(row.status),
+    lastLoginAt: row.lastLoginAt === null ? null : row.lastLoginAt.toISOString(),
+    createdAt: row.createdAt === null ? null : row.createdAt.toISOString(),
   };
 }
