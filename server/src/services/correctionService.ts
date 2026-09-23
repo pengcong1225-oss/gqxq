@@ -34,6 +34,7 @@ import {
   fieldDef,
   findComplaintIdsWithoutCorrections,
   findPendingPage,
+  findPendingComplaintPage,
   insertCorrections,
   listByComplaint,
   lockCorrection,
@@ -762,6 +763,18 @@ export async function listPendingCorrections(
     complaintIdRaw === undefined ? undefined : await resolveComplaintId(pool, complaintIdRaw);
   const dispatched = parseDispatchedFilter(query.dispatched);
   const { content, total } = await findPendingPage(pool, { complaintId, dispatched }, page, size);
+  return paged(content, total, page, size);
+}
+
+export async function listPendingComplaintSummaries(
+  query: Record<string, unknown>
+): Promise<Paged<import('../repositories/correctionRepo').PendingComplaintSummary>> {
+  const { page, size } = parsePageQuery(query);
+  const complaintIdRaw = queryText(query.complaintId, 'complaintId', 64);
+  const complaintId =
+    complaintIdRaw === undefined ? undefined : await resolveComplaintId(pool, complaintIdRaw);
+  const dispatched = parseDispatchedFilter(query.dispatched);
+  const { content, total } = await findPendingComplaintPage(pool, { complaintId, dispatched }, page, size);
   return paged(content, total, page, size);
 }
 

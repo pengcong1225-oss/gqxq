@@ -173,6 +173,14 @@ export interface PendingPageFilter {
   dispatched?: DispatchedFilter;
 }
 
+export interface PendingComplaintSummary {
+  complaintId: string;
+  complaintNo: string;
+  title: string;
+  pendingCount: number;
+  hasDispatch: boolean;
+}
+
 /** 交办轴的子查询：写在 where 里做筛选，不参与 for update，因此不会去锁 dispatch_order */
 const DISPATCH_EXISTS = 'exists (select 1 from dispatch_order d where d.complaint_id = correction_item.complaint_id)';
 
@@ -212,6 +220,56 @@ export async function findPendingPage(
   );
   return {
     content: list.map((row) => rowToCorrectionItem(row, dispatched.has(String(row.complaintId)))),
+    total,
+  };
+}
+
+/**
+ * 诉求级待纠偏分页。先按 complaint_id 聚合再分页，确保 total 与 UI 行数都是诉求数；
+ * 不能先分页逐字段行再在前端 group，否则多字段诉求会挤占分页并导致统计错误。
+ */
+export async function findPendingComplaintPage(
+  db: Queryable,
+  filter: PendingPageFilter,
+  page: number,
+  size: number
+): Promise<{ content: PendingComplaintSummary[]; total: number }> {
+  const parts: string[] = ["ci.status = 'pending'"];
+  const params: unknown[] = [];
+  if (filter.complaintId !== undefined) {
+    parts.push('ci.complaint_id = ?');
+    params.push(filter.complaintId);
+  }
+  if (filter.dispatched === 'dispatched') parts.push('exists (select 1 from dispatch_order d where d.complaint_id = ci.complaint_id)');
+  if (filter.dispatched === 'undispatched') parts.push('not exists (select 1 from dispatch_order d where d.complaint_id = ci.complaint_id)');
+  const where = ' where ' + parts.join(' and ');
+
+  const [countRows] = await db.query(
+    'select count(*) as total from (' +
+      'select ci.complaint_id from correction_item ci join complaint c on c.complaint_id = ci.complaint_id' +
+      where + ' group by ci.complaint_id' +
+      ') pending_complaints',
+    params
+  );
+  const total = Number((countRows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);
+
+  const [rows] = await db.query(
+    'select ci.complaint_id as complaintId, c.complaint_no as complaintNo, c.title,' +
+      ' count(*) as pendingCount, exists (select 1 from dispatch_order d where d.complaint_id = ci.complaint_id) as hasDispatch' +
+      ' from correction_item ci join complaint c on c.complaint_id = ci.complaint_id' +
+      where +
+      ' group by ci.complaint_id, c.complaint_no, c.title' +
+      ' order by min(ci.created_at) asc, min(ci.id) asc limit ? offset ?',
+    [...params, size, (page - 1) * size]
+  );
+  return {
+    content: (rows as unknown as Array<Record<string, unknown>>).map((row) => ({
+      complaintId: String(row.complaintId),
+      complaintNo: String(row.complaintNo ?? ''),
+      title: String(row.title ?? ''),
+      pendingCount: Number(row.pendingCount ?? 0),
+      hasDispatch: Number(row.hasDispatch) === 1 || row.hasDispatch === true,
+    })),
     total,
   };
 }

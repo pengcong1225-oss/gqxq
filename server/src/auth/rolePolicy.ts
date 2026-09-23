@@ -56,7 +56,7 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   // ---------- S：身份自查询（三档皆放，只看自己） ----------
   { method: 'GET', path: new RegExp('^/auth/user-info$'), roles: R, desc: 'S1 当前登录用户信息' },
 
-  // ---------- R：读端点（22 条） ----------
+  // ---------- R：读端点（23 条） ----------
   { method: 'GET', path: new RegExp('^/complaints$'), roles: R, desc: 'R1 诉求总账列表' },
   { method: 'GET', path: new RegExp('^/complaints/' + param + '$'), roles: R, desc: 'R2 诉求详情' },
   { method: 'GET', path: new RegExp('^/complaints/' + param + '/timeline$'), roles: R, desc: 'R3 诉求时间线' },
@@ -70,6 +70,7 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   { method: 'GET', path: new RegExp('^/dispatch/orders/' + param + '/push-logs$'), roles: R, desc: 'R11 推送留痕' },
   { method: 'GET', path: new RegExp('^/dispatch/orders/' + param + '/approval-trace$'), roles: R, desc: 'R12 审批轨迹' },
   { method: 'GET', path: new RegExp('^/corrections/pending$'), roles: R, desc: 'R13 待纠偏队列' },
+  { method: 'GET', path: new RegExp('^/corrections/pending-complaints$'), roles: R, desc: 'R23 诉求级待纠偏列表' },
   { method: 'GET', path: new RegExp('^/analysis/records$'), roles: R, desc: 'R14 分析库列表' },
   { method: 'GET', path: new RegExp('^/analysis/records/' + param + '$'), roles: R, desc: 'R15 分析下钻' },
   { method: 'GET', path: new RegExp('^/report-todos$'), roles: R, desc: 'R16 待查报告待办' },

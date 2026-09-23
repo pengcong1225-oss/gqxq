@@ -29,6 +29,14 @@ export interface PendingCorrectionParams {
   dispatched?: DispatchedFilter;
 }
 
+export interface PendingComplaintSummary {
+  complaintId: string;
+  complaintNo: string;
+  title: string;
+  pendingCount: number;
+  hasDispatch: boolean;
+}
+
 function encode(value: ComplaintIdOrNo): string {
   return encodeURIComponent(String(value));
 }
@@ -46,6 +54,20 @@ export async function listPendingCorrections(
   params: PendingCorrectionParams = {}
 ): Promise<Paged<CorrectionItem>> {
   return request.get<never, Paged<CorrectionItem>>('/corrections/pending', {
+    params: {
+      page: params.page,
+      size: params.size,
+      complaintId: params.complaintId,
+      dispatched: params.dispatched,
+    },
+  });
+}
+
+/** 待纠偏队列的诉求级分页，total 也是诉求数。 */
+export async function listPendingCorrectionComplaints(
+  params: PendingCorrectionParams = {}
+): Promise<Paged<PendingComplaintSummary>> {
+  return request.get<never, Paged<PendingComplaintSummary>>('/corrections/pending-complaints', {
     params: {
       page: params.page,
       size: params.size,

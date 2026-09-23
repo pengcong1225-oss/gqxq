@@ -1,0 +1,102 @@
+import React, { useEffect, useState } from 'react';
+import { Button, Input, Select, Space, Typography } from 'antd';
+import type { CorrectionItem, EnterpriseListItem } from '../types/api';
+
+export interface InlineCorrectionFieldProps {
+  item: CorrectionItem;
+  enterpriseOptions: EnterpriseListItem[];
+  enterpriseLoading: boolean;
+  enterpriseError?: string | null;
+  disabled: boolean;
+  saving: boolean;
+  onSearchEnterprises: (keyword: string) => void;
+  onSave: (value: string, basis: string) => void;
+}
+
+/** 待处理字段就地录入；只有点击“保存该项”才交给调用方写入。 */
+const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
+  item, enterpriseOptions, enterpriseLoading, enterpriseError, disabled, saving,
+  onSearchEnterprises, onSave,
+}) => {
+  const isEnterprise = item.fieldName === 'enterprise_name';
+  const label = item.fieldLabel ?? item.fieldName;
+  const [value, setValue] = useState(isEnterprise ? '' : item.newValue ?? item.oldValue ?? '');
+  const [basis, setBasis] = useState(item.basis ?? '');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setValue(isEnterprise ? '' : item.newValue ?? item.oldValue ?? '');
+    setBasis(item.basis ?? '');
+    setError(null);
+  }, [item.correctionId, item.newValue, item.oldValue, item.basis, isEnterprise]);
+
+  const save = () => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setError(isEnterprise ? '请先从企业主数据选择责任单位' : '请填写纠偏后的取值');
+      return;
+    }
+    if (!isEnterprise && trimmed === (item.oldValue ?? '')) {
+      setError('取值与原值相同；如已核实无误，请使用“核验无误”');
+      return;
+    }
+    setError(null);
+    onSave(trimmed, basis.trim());
+  };
+
+  return (
+    <Space direction="vertical" size={6} style={{ width: '100%' }}>
+      {isEnterprise ? (
+        <Select
+          aria-label={'纠偏后取值：' + label}
+          value={value || undefined}
+          showSearch
+          allowClear
+          filterOption={false}
+          disabled={disabled}
+          loading={enterpriseLoading}
+          placeholder="搜索并选择登记企业"
+          onSearch={onSearchEnterprises}
+          onOpenChange={(open) => { if (open && enterpriseOptions.length === 0) onSearchEnterprises(''); }}
+          onChange={(next) => { setValue(next ?? ''); setError(null); }}
+          options={enterpriseOptions.map((enterprise) => ({
+            value: enterprise.enterpriseCode,
+            label: enterprise.enterpriseName + '（' + enterprise.enterpriseCode + '）',
+          }))}
+          style={{ width: '100%' }}
+        />
+      ) : item.fieldName === 'summary' || item.fieldName === 'disposal_result' ? (
+        <Input.TextArea
+          aria-label={'纠偏后取值：' + label}
+          value={value}
+          onChange={(event) => { setValue(event.target.value); setError(null); }}
+          disabled={disabled}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+          placeholder="在此填写核实后的内容"
+        />
+      ) : (
+        <Input
+          aria-label={'纠偏后取值：' + label}
+          value={value}
+          onChange={(event) => { setValue(event.target.value); setError(null); }}
+          disabled={disabled}
+          placeholder="在此填写核实后的取值"
+        />
+      )}
+      <Input
+        aria-label={'核对依据：' + label}
+        value={basis}
+        onChange={(event) => setBasis(event.target.value)}
+        disabled={disabled}
+        placeholder="核对依据（可选）"
+      />
+      {enterpriseError && isEnterprise ? <Typography.Text type="danger">企业主数据加载失败：{enterpriseError}</Typography.Text> : null}
+      {error ? <Typography.Text type="danger" role="alert">{error}</Typography.Text> : null}
+      <Button type="primary" size="small" loading={saving} disabled={disabled || (isEnterprise && Boolean(enterpriseError))} onClick={save}>
+        保存该项
+      </Button>
+    </Space>
+  );
+};
+
+export default InlineCorrectionField;

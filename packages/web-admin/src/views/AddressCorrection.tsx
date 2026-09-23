@@ -3,16 +3,15 @@ import {
   Alert,
   Button,
   Card,
-  Col,
+  Collapse,
   Descriptions,
+  Drawer,
   Empty,
   Form,
   Input,
   Modal,
   Result,
-  Row,
   Segmented,
-  Select,
   Space,
   Table,
   Tag,
@@ -22,7 +21,6 @@ import {
 import {
   CheckOutlined,
   ReloadOutlined,
-  StopOutlined,
   ThunderboltOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
@@ -32,12 +30,15 @@ import {
   generateCorrectionBatch,
   generateCorrections,
   listComplaintCorrections,
-  listPendingCorrections,
-  rejectCorrection,
 } from '../api/corrections';
-import type { DispatchedFilter } from '../api/corrections';
+import { listPendingCorrectionComplaints } from '../api/corrections';
+import type { DispatchedFilter, PendingComplaintSummary } from '../api/corrections';
 import { listEnterprises } from '../api/enterprises';
+import { getComplaint } from '../api/complaints';
 import type { CorrectionItem, EnterpriseListItem } from '../types/api';
+import TiandituLocationPicker from '../components/TiandituLocationPicker';
+import InlineCorrectionField from '../components/InlineCorrectionField';
+import { useWriteAccess, WriteGate } from '../stores/roleAccess';
 
 /**
  * 整体纠偏工作台（真实接口驱动）。
@@ -70,18 +71,7 @@ const STATUS_TAG: Record<string, { color: string; text: string }> = {
 
 const DASH = <span style={{ color: '#bfbfbf' }}>—</span>;
 
-/**
- * 经纬度在库里是 decimal 列。端到端实测：向这两个字段的 confirm 传非数字（例如中文）
- * 会让后端返回 500。所以必须在前端先拦成表单校验错误，而不是让用户撞 500。
- */
-const NUMERIC_FIELDS = new Set(['location_lng', 'location_lat']);
-
-/**
- * 责任单位这一项的特例：确认值是**企业主数据的登记编码**，不是手打的名称。
- * 后端拿这个编码回查 enterprise 表，成对写回 enterprise_code + enterprise_name；
- * 编码没登记就直接报错，不会静默写脏数据——所以这里只能给下拉，不给自由输入。
- */
-const ENTERPRISE_FIELD = 'enterprise_name';
+const POSITION_FIELDS = ['address', 'location_lng', 'location_lat'] as const;
 
 /** 交办轴筛选（两条轴并行，页面要能分别看） */
 const DISPATCHED_OPTIONS: Array<{ label: string; value: DispatchedFilter | 'all' }> = [
@@ -94,7 +84,7 @@ const AddressCorrection: React.FC = () => {
   const [searchParams] = useSearchParams();
   const deepLinkHandledRef = useRef<string | null>(null);
   // ---- 左侧队列 ----
-  const [queue, setQueue] = useState<CorrectionItem[]>([]);
+  const [queue, setQueue] = useState<PendingComplaintSummary[]>([]);
   const [queueTotal, setQueueTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(10);
@@ -117,20 +107,29 @@ const AddressCorrection: React.FC = () => {
 
   // ---- 右侧闭环面板 ----
   const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(null);
+  const [selectedComplaintInfo, setSelectedComplaintInfo] = useState<{ complaintNo: string; title: string } | null>(null);
+  const summarySeqRef = useRef(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [items, setItems] = useState<CorrectionItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
+  const [selectedInfoError, setSelectedInfoError] = useState<string | null>(null);
+  const itemsSeqRef = useRef(0);
 
   // ---- 生成纠偏待办 ----
   const [genId, setGenId] = useState('');
   const [generating, setGenerating] = useState(false);
 
   // ---- 确认 / 无需纠偏 ----
-  const [confirmTarget, setConfirmTarget] = useState<CorrectionItem | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<CorrectionItem | null>(null);
+  const [verifyTarget, setVerifyTarget] = useState<CorrectionItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [confirmForm] = Form.useForm();
-  const [rejectForm] = Form.useForm();
+  const [savingItemId, setSavingItemId] = useState<string | null>(null);
+  const [verifyForm] = Form.useForm<{ basis: string }>();
+  const [positionForm] = Form.useForm();
+  const addressDraft = Form.useWatch('address', positionForm) as string | undefined;
+  const writeAccess = useWriteAccess();
+  const [positionModalOpen, setPositionModalOpen] = useState(false);
+  const [positionResult, setPositionResult] = useState<Array<{ label: string; ok: boolean; detail: string }>>([]);
 
   const fetchEnterprises = useCallback(async (keyword?: string) => {
     const seq = ++enterpriseSeqRef.current;
@@ -162,7 +161,7 @@ const AddressCorrection: React.FC = () => {
       setLoading(true);
       setLoadError(null);
       try {
-        const res = await listPendingCorrections({
+        const res = await listPendingCorrectionComplaints({
           page: p,
           size: s,
           dispatched: d === 'all' ? undefined : d,
@@ -196,26 +195,46 @@ const AddressCorrection: React.FC = () => {
   }, []);
 
   const loadItems = useCallback(async (complaintId: string) => {
+    const seq = ++itemsSeqRef.current;
     setItemsLoading(true);
     setItemsError(null);
     try {
       const res = await listComplaintCorrections(complaintId);
+      if (seq !== itemsSeqRef.current) return;
       setItems(res);
     } catch (err) {
+      if (seq !== itemsSeqRef.current) return;
       setItemsError(errText(err));
       setItems([]);
     } finally {
-      setItemsLoading(false);
+      if (seq === itemsSeqRef.current) setItemsLoading(false);
     }
   }, []);
 
   /** 选中某诉求：加载它的全部纠偏项 */
   const selectComplaint = useCallback(
-    (complaintId: string) => {
+    (complaintId: string, summary?: PendingComplaintSummary) => {
+      const summarySeq = ++summarySeqRef.current;
       setSelectedComplaintId(complaintId);
+      setDrawerOpen(true);
+      const row = summary ?? queue.find((item) => item.complaintId === complaintId);
+      if (row) {
+        setSelectedInfoError(null);
+        setSelectedComplaintInfo({ complaintNo: row.complaintNo, title: row.title });
+      } else {
+        setSelectedInfoError(null);
+        setSelectedComplaintInfo(null);
+        void getComplaint(complaintId).then((detail) => {
+          if (summarySeq !== summarySeqRef.current) return;
+          setSelectedComplaintInfo({ complaintNo: detail.complaintNo, title: detail.title });
+        }).catch((err) => {
+          if (summarySeq !== summarySeqRef.current) return;
+          setSelectedInfoError('诉求基本信息加载失败：' + errText(err));
+        });
+      }
       void loadItems(complaintId);
     },
-    [loadItems]
+    [loadItems, queue]
   );
 
   /** 从规则命中诉求跳转时，自动定位并加载目标诉求；同一个 URL 只处理一次。 */
@@ -298,40 +317,114 @@ const AddressCorrection: React.FC = () => {
     }
   };
 
-  const submitConfirm = async () => {
-    if (!confirmTarget) return;
+  const saveInlineItem = async (item: CorrectionItem, newValue: string, basis: string) => {
+    if (savingItemId !== null) return;
     try {
-      const values = await confirmForm.validateFields();
-      setSubmitting(true);
-      const res = await confirmCorrection(confirmTarget.correctionId, {
-        newValue: values.newValue === undefined ? undefined : String(values.newValue),
-        basis: values.basis === undefined ? undefined : String(values.basis),
+      setSavingItemId(item.correctionId);
+      const res = await confirmCorrection(item.correctionId, {
+        newValue,
+        basis: basis || undefined,
       });
-      setConfirmTarget(null);
-      confirmForm.resetFields();
-      await afterDecision(confirmTarget.complaintId, res && res.analysisEntered === true);
+      await afterDecision(item.complaintId, res.analysisEntered === true);
     } catch (err) {
-      if ((err as { errorFields?: unknown })?.errorFields) return; // 表单校验失败，已就地提示
-      message.error('确认失败：' + errText(err));
+      message.error('保存纠偏失败：' + errText(err));
+    } finally {
+      setSavingItemId(null);
+    }
+  };
+
+  const openVerifyOriginal = (item: CorrectionItem) => {
+    setVerifyTarget(item);
+    verifyForm.setFieldsValue({ basis: '' });
+  };
+
+  const submitVerifyOriginal = async () => {
+    if (!verifyTarget) return;
+    let values: { basis: string };
+    try {
+      values = await verifyForm.validateFields();
+    } catch {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await confirmCorrection(verifyTarget.correctionId, {
+        newValue: verifyTarget.oldValue ?? '',
+        basis: '核验无误：' + values.basis.trim(),
+      });
+      const complaintId = verifyTarget.complaintId;
+      setVerifyTarget(null);
+      verifyForm.resetFields();
+      await afterDecision(complaintId, res.analysisEntered === true);
+    } catch (err) {
+      message.error('核验未完成：' + errText(err));
+      await loadItems(verifyTarget.complaintId);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const submitReject = async () => {
-    if (!rejectTarget) return;
+  const positionItems = POSITION_FIELDS.map((fieldName) => items.find((item) => item.fieldName === fieldName));
+  const canEditPositionGroup = Boolean(selectedComplaintInfo) && positionItems.every(Boolean) && positionItems.some((item) => item?.status === 'pending');
+
+  const openPositionGroup = () => {
+    if (!canEditPositionGroup) return;
+    const [address, lng, lat] = positionItems as [CorrectionItem, CorrectionItem, CorrectionItem];
+    setPositionResult([]);
+    positionForm.setFieldsValue({
+      address: address.newValue ?? address.oldValue ?? '',
+      lng: lng.newValue ?? lng.oldValue ?? '',
+      lat: lat.newValue ?? lat.oldValue ?? '',
+      basis: '',
+    });
+    setPositionModalOpen(true);
+  };
+
+  const savePositionGroup = async () => {
+    let values: { address: string; lng: string; lat: string; basis?: string };
     try {
-      const values = await rejectForm.validateFields();
-      setSubmitting(true);
-      const res = await rejectCorrection(rejectTarget.correctionId, {
-        basis: values.basis === undefined ? undefined : String(values.basis),
-      });
-      setRejectTarget(null);
-      rejectForm.resetFields();
-      await afterDecision(rejectTarget.complaintId, res && res.analysisEntered === true);
-    } catch (err) {
-      if ((err as { errorFields?: unknown })?.errorFields) return;
-      message.error('提交失败：' + errText(err));
+      values = await positionForm.validateFields();
+    } catch {
+      return;
+    }
+    const fields = [
+      { item: positionItems[0] as CorrectionItem, value: values.address.trim() },
+      { item: positionItems[1] as CorrectionItem, value: values.lng.trim() },
+      { item: positionItems[2] as CorrectionItem, value: values.lat.trim() },
+    ].filter(({ item }) => item.status === 'pending');
+    if (fields.length === 0) return;
+    if (fields.every(({ item, value }) => value === (item.oldValue ?? ''))) {
+      message.info('位置组没有任何新值；如原值无误，请逐项点“核验无误”');
+      return;
+    }
+    setSubmitting(true);
+    const outcomes: Array<{ label: string; ok: boolean; detail: string }> = [];
+    try {
+      for (const { item, value } of fields) {
+        const changed = value !== (item.oldValue ?? '');
+        try {
+          await confirmCorrection(item.correctionId, {
+            newValue: value,
+            basis: changed
+              ? values.basis?.trim() || '地图选点并人工核对位置'
+              : '位置组核验无误：' + (values.basis?.trim() || '操作员复核位置'),
+          });
+          outcomes.push({ label: item.fieldLabel ?? item.fieldName, ok: true, detail: changed ? '已保存纠偏' : '已核验原值' });
+        } catch (err) {
+          outcomes.push({ label: item.fieldLabel ?? item.fieldName, ok: false, detail: errText(err) });
+        }
+      }
+      setPositionResult(outcomes);
+      await loadItems(selectedComplaintId ?? fields[0].item.complaintId);
+      await loadQueue(page, size, dispatched);
+      setPositionModalOpen(false);
+      positionForm.resetFields();
+      const successCount = outcomes.filter((outcome) => outcome.ok).length;
+      if (successCount === fields.length) {
+        message.success('本次提交的 ' + fields.length + ' 项位置字段均已处理完成');
+      } else {
+        message.warning('位置组已逐项提交：成功 ' + successCount + '/' + fields.length + '，失败 ' + (fields.length - successCount) + ' 项。已刷新服务端状态，失败项仍可从位置组继续处理。', 8);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -350,20 +443,8 @@ const AddressCorrection: React.FC = () => {
       <Alert
         type="info"
         showIcon
-        style={{ marginBottom: 16 }}
-        message="纠偏是数据质量轴，覆盖所有诉求；与交办轴并行"
-        description={
-          <>
-            任何诉求都会逐字段生成纠偏项（企业名称/归属、地址、分类、坐标、摘要、企业处置结果），
-            <b>与是否交办、是否审批通过无关</b>；列表里的「已交办 / 未交办」只是标出这条件在另一条轴上的状态。
-            <br />
-            责任单位现在<b>只在这里确认</b>（总账的「匹配单位」按钮已下线）：取值从企业主数据里选，
-            后端成对写回 enterprise_code + enterprise_name，编码未登记会被拒绝。
-            <br />
-            纠偏全部确认或判定无需后，该诉求才满足进入分析库的前置条件之一；分析库口径未变——
-            未交办、误报归库的件仍不纳入分析。无法确认的请留在待纠偏，不要勉强确认。
-          </>
-        }
+        style={{ marginBottom: 12 }}
+        message="打开诉求后，直接在字段行填写纠偏后取值并保存；原值无误则点“核验无误”。"
       />
 
       <Card size="small" style={{ marginBottom: 16 }}>
@@ -373,37 +454,42 @@ const AddressCorrection: React.FC = () => {
             value={dispatched}
             onChange={(v) => applyDispatchedFilter(v as DispatchedFilter | 'all')}
           />
-          <Input
-            placeholder="诉求编号或 ID（用于补生成纠偏项）"
-            value={genId}
-            onChange={(e) => setGenId(e.target.value)}
-            style={{ width: 300 }}
-            allowClear
-          />
-          <Button
-            type="primary"
-            icon={<ThunderboltOutlined />}
-            loading={generating}
-            onClick={() => void doGenerate()}
-          >
-            生成纠偏待办
-          </Button>
-          <Tooltip title="幂等：只给「还没有任何纠偏项」的诉求补挂清单，已有清单的诉求不受影响。存量与新入站都靠它收敛进纠偏口径。">
-            <Button icon={<TeamOutlined />} loading={batching} onClick={() => void doBatchGenerate()}>
-              补齐全部诉求纠偏待办
-            </Button>
-          </Tooltip>
           <Tooltip title="重新加载待纠偏队列">
             <Button icon={<ReloadOutlined />} onClick={() => void loadQueue(page, size, dispatched)}>
               刷新
             </Button>
           </Tooltip>
         </Space>
+        <Collapse
+          ghost
+          style={{ marginTop: 8 }}
+          items={[{
+            key: 'maintenance',
+            label: '维护工具',
+            children: (
+              <Space wrap>
+                <Input
+                  placeholder="诉求编号或 ID（补生成纠偏项）"
+                  value={genId}
+                  onChange={(e) => setGenId(e.target.value)}
+                  style={{ width: 300 }}
+                  allowClear
+                />
+                <Button type="primary" icon={<ThunderboltOutlined />} loading={generating} onClick={() => void doGenerate()}>
+                  生成纠偏待办
+                </Button>
+                <Tooltip title="只给尚无纠偏清单的诉求补挂，重复执行会跳过已有清单。">
+                  <Button icon={<TeamOutlined />} loading={batching} onClick={() => void doBatchGenerate()}>
+                    补齐全部诉求纠偏待办
+                  </Button>
+                </Tooltip>
+              </Space>
+            ),
+          }]}
+        />
       </Card>
 
-      <Row gutter={16}>
-        <Col span={13}>
-          <Card title={'待纠偏项（共 ' + queueTotal + ' 项）'} size="small">
+      <Card title={'待纠偏诉求（共 ' + queueTotal + ' 件）'} size="small">
             {loadError ? (
               <Result
                 status="error"
@@ -416,8 +502,8 @@ const AddressCorrection: React.FC = () => {
                 }
               />
             ) : (
-              <Table<CorrectionItem>
-                rowKey="correctionId"
+              <Table<PendingComplaintSummary>
+                rowKey="complaintId"
                 size="middle"
                 loading={loading}
                 dataSource={queue}
@@ -432,76 +518,69 @@ const AddressCorrection: React.FC = () => {
                     <span />
                   ),
                 }}
-                rowClassName={(r) => (r.complaintId === selectedComplaintId ? 'ant-table-row-selected' : '')}
-                onRow={(record) => ({ onClick: () => selectComplaint(record.complaintId) })}
+                onRow={(record) => ({ onClick: () => selectComplaint(record.complaintId, record) })}
                 pagination={{
                   current: page,
                   pageSize: size,
                   total: queueTotal,
                   showSizeChanger: true,
-                  showTotal: (t) => '共 ' + t + ' 项',
+                  showTotal: (t) => '共 ' + t + ' 件诉求',
                   onChange: (p, s) => {
                     setPage(p);
                     setSize(s);
                   },
                 }}
                 columns={[
-                  { title: '诉求', dataIndex: 'complaintId', width: 175, ellipsis: true },
+                  {
+                    title: '诉求编号',
+                    dataIndex: 'complaintNo',
+                    width: 160,
+                    render: (value: string, row: PendingComplaintSummary) => value || row.complaintId,
+                  },
+                  { title: '诉求内容', dataIndex: 'title', ellipsis: true },
                   {
                     // 两条轴并行的交叉状态：交办与否不影响这条件不该进纠偏队列
-                    title: '交办',
+                    title: '待处理字段',
+                    dataIndex: 'pendingCount',
+                    width: 112,
+                    render: (count: number) => <Tag color="warning">{count} 项待处理</Tag>,
+                  },
+                  {
+                    title: '交办轴',
                     dataIndex: 'hasDispatch',
-                    width: 78,
+                    width: 100,
                     render: (v: boolean) =>
                       v ? <Tag color="processing">已交办</Tag> : <Tag>未交办</Tag>,
                   },
                   {
-                    title: '字段',
-                    dataIndex: 'fieldLabel',
-                    width: 110,
-                    render: (v: string | null, r: CorrectionItem) => v ?? r.fieldName,
-                  },
-                  {
-                    title: '旧值',
-                    dataIndex: 'oldValue',
-                    ellipsis: true,
-                    render: (v: string | null) => (v === null || v === '' ? DASH : v),
-                  },
-                  {
-                    title: '建议新值',
-                    dataIndex: 'newValue',
-                    ellipsis: true,
-                    render: (v: string | null) => (v === null || v === '' ? DASH : v),
-                  },
-                  {
-                    title: '状态',
-                    dataIndex: 'status',
-                    width: 92,
-                    render: (v: string, r: CorrectionItem) => {
-                      const m = STATUS_TAG[v] ?? { color: 'default', text: r.statusName };
-                      return <Tag color={m.color}>{r.statusName || m.text}</Tag>;
-                    },
+                    title: '操作',
+                    width: 100,
+                    render: (_: unknown, row: PendingComplaintSummary) => (
+                      <Button type="link" onClick={() => selectComplaint(row.complaintId, row)}>打开纠偏</Button>
+                    ),
                   },
                 ]}
               />
             )}
-          </Card>
-        </Col>
+      </Card>
 
-        <Col span={11}>
-          <Card
-            title={selectedComplaintId ? '纠偏闭环 · ' + selectedComplaintId : '纠偏闭环'}
-            size="small"
-            extra={
-              selectedComplaintId ? (
-                <Button size="small" onClick={() => void loadItems(selectedComplaintId)}>
-                  刷新
-                </Button>
-              ) : null
-            }
-          >
+      <Drawer
+        title={
+          selectedComplaintId
+            ? '诉求纠偏 · ' +
+              (selectedComplaintInfo?.complaintNo || selectedComplaintId)
+            : '诉求纠偏'
+        }
+        open={drawerOpen}
+        width="min(1120px, 96vw)"
+        onClose={() => setDrawerOpen(false)}
+        extra={selectedComplaintId ? (
+          <Button size="small" onClick={() => void loadItems(selectedComplaintId)}>刷新</Button>
+        ) : null}
+      >
+            {selectedInfoError ? <Alert type="error" showIcon style={{ marginBottom: 12 }} message={selectedInfoError} /> : null}
             {!selectedComplaintId ? (
-              <Empty description="请从左侧选择一条待纠偏项，查看该诉求的全部纠偏项" />
+              <Empty description="请先从诉求列表选择一件" />
             ) : itemsError ? (
               <Result
                 status="error"
@@ -515,8 +594,14 @@ const AddressCorrection: React.FC = () => {
               />
             ) : (
               <>
-                <Descriptions size="small" column={1} bordered style={{ marginBottom: 12 }}>
-                  <Descriptions.Item label="诉求">{selectedComplaintId}</Descriptions.Item>
+                <Descriptions size="small" column={{ xs: 1, sm: 2 }} bordered style={{ marginBottom: 12 }}>
+                  <Descriptions.Item label="诉求编号">
+                    {selectedComplaintInfo?.complaintNo || selectedComplaintId}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="诉求 ID">{selectedComplaintId}</Descriptions.Item>
+                  <Descriptions.Item label="诉求内容" span={2}>
+                    {selectedComplaintInfo?.title || '正在读取…'}
+                  </Descriptions.Item>
                   <Descriptions.Item label="交办轴">
                     {selectedHasDispatch === null ? (
                       DASH
@@ -544,6 +629,44 @@ const AddressCorrection: React.FC = () => {
                   />
                 )}
 
+                {positionItems.some(Boolean) && (
+                  <Card size="small" title="位置组：地址与经纬度" style={{ marginBottom: 16 }}>
+                    <Alert
+                      type="info"
+                      showIcon
+                      style={{ marginBottom: 12 }}
+                      message="地址、经度、纬度作为一组核对"
+                      description="可在位置窗体输入地址搜索并选择地点，自动定位地图、回填待处理的地址与坐标；也可直接点地图。确认后再保存，搜索本身不会修改诉求。"
+                    />
+                    <Space wrap>
+                      <WriteGate allowed={writeAccess.can && canEditPositionGroup} tip={!selectedComplaintInfo ? '正在读取诉求编号与标题' : writeAccess.tip || '位置字段需全部存在且仍有待处理项'}>
+                        <Button type="primary" onClick={openPositionGroup}>打开位置组纠偏</Button>
+                      </WriteGate>
+                      {!canEditPositionGroup ? (
+                        <span style={{ color: '#8c8c8c' }}>位置字段需完整且仍有待处理项，才能保存未完成部分。</span>
+                      ) : null}
+                    </Space>
+                    {positionResult.length > 0 ? (
+                      <div style={{ marginTop: 12 }}>
+                        <Alert
+                          type={positionResult.every((result) => result.ok) ? 'success' : 'warning'}
+                          showIcon
+                          message="位置组逐项提交结果"
+                          description={
+                            <Space direction="vertical" size={0}>
+                              {positionResult.map((result) => (
+                                <span key={result.label}>
+                                  {result.ok ? '✓' : '✗'} {result.label}：{result.detail}
+                                </span>
+                              ))}
+                            </Space>
+                          }
+                        />
+                      </div>
+                    ) : null}
+                  </Card>
+                )}
+
                 <Table<CorrectionItem>
                   rowKey="correctionId"
                   size="small"
@@ -559,12 +682,26 @@ const AddressCorrection: React.FC = () => {
                       render: (v: string | null, r: CorrectionItem) => v ?? r.fieldName,
                     },
                     {
-                      title: '旧值 → 新值',
-                      width: 200,
+                      title: '原值 / 纠偏后取值',
+                      width: 430,
                       render: (_: unknown, r: CorrectionItem) => (
                         <div style={{ lineHeight: 1.6 }}>
-                          <div style={{ color: '#8c8c8c' }}>{r.oldValue ?? '—'}</div>
-                          <div>{r.newValue ?? '—'}</div>
+                          <div><b>原值：</b>{r.oldValue ?? '—'}</div>
+                          {r.newValue && r.status !== 'pending' ? <div><b>确认值：</b>{r.newValue}</div> : null}
+                          {r.status === 'pending' && !POSITION_FIELDS.includes(r.fieldName as typeof POSITION_FIELDS[number]) ? (
+                            <div style={{ marginTop: 8 }}>
+                              <InlineCorrectionField
+                                item={r}
+                                enterpriseOptions={enterpriseOptions}
+                                enterpriseLoading={enterpriseLoading}
+                                enterpriseError={enterpriseError}
+                                disabled={!writeAccess.can || !selectedComplaintInfo}
+                                saving={savingItemId === r.correctionId}
+                                onSearchEnterprises={(keyword) => void fetchEnterprises(keyword)}
+                                onSave={(value, basis) => void saveInlineItem(r, value, basis)}
+                              />
+                            </div>
+                          ) : null}
                         </div>
                       ),
                     },
@@ -574,9 +711,17 @@ const AddressCorrection: React.FC = () => {
                       width: 92,
                       render: (v: string, r: CorrectionItem) => {
                         const m = STATUS_TAG[v] ?? { color: 'default', text: r.statusName };
+                        const statusText =
+                          v === 'confirmed' &&
+                          r.newValue === r.oldValue &&
+                          (r.basis?.startsWith('核验无误：') || r.basis?.startsWith('位置组核验无误：'))
+                            ? '核验无误'
+                            : v === 'confirmed' && r.newValue !== r.oldValue
+                            ? '已纠偏'
+                            : r.statusName || m.text;
                         return (
                           <Space direction="vertical" size={0}>
-                            <Tag color={m.color}>{r.statusName || m.text}</Tag>
+                            <Tag color={m.color}>{statusText}</Tag>
                             {r.confirmerName && (
                               <span style={{ fontSize: 12, color: '#8c8c8c' }}>{r.confirmerName}</span>
                             )}
@@ -586,39 +731,24 @@ const AddressCorrection: React.FC = () => {
                     },
                     {
                       title: '操作',
-                      width: 150,
+                      width: 155,
                       render: (_: unknown, r: CorrectionItem) =>
                         r.status === 'pending' ? (
                           <Space size={0}>
+                            <WriteGate allowed={writeAccess.can && Boolean(selectedComplaintInfo)} tip={selectedComplaintInfo ? writeAccess.tip : '正在读取诉求编号与标题'}>
                             <Button
                               type="link"
                               size="small"
                               icon={<CheckOutlined />}
-                              onClick={() => {
-                                setConfirmTarget(r);
-                                confirmForm.setFieldsValue({
-                                  // 责任单位：确认值是主数据编码，只能重选，不能拿旧名称回显（旧值是名称，会直接被判为未登记）
-                                  newValue:
-                                    r.fieldName === ENTERPRISE_FIELD
-                                      ? ''
-                                      : r.newValue ?? r.oldValue ?? '',
-                                  basis: r.basis ?? '',
-                                });
-                              }}
+                              loading={submitting}
+                              onClick={() => openVerifyOriginal(r)}
                             >
-                              确认
+                              核验无误
                             </Button>
-                            <Button
-                              type="link"
-                              size="small"
-                              icon={<StopOutlined />}
-                              onClick={() => {
-                                setRejectTarget(r);
-                                rejectForm.setFieldsValue({ basis: r.basis ?? '' });
-                              }}
-                            >
-                              无需纠偏
-                            </Button>
+                            </WriteGate>
+                            {POSITION_FIELDS.includes(r.fieldName as typeof POSITION_FIELDS[number]) ? (
+                              <Tag color="blue">位置组处理</Tag>
+                            ) : null}
                           </Space>
                         ) : (
                           <span style={{ color: '#8c8c8c' }}>
@@ -628,152 +758,100 @@ const AddressCorrection: React.FC = () => {
                     },
                   ]}
                 />
-              </>
-            )}
-          </Card>
-        </Col>
-      </Row>
+        </>
+      )}
+      </Drawer>
 
       <Modal
-        title={confirmTarget ? '确认纠偏 · ' + (confirmTarget.fieldLabel ?? confirmTarget.fieldName) : '确认纠偏'}
-        open={!!confirmTarget}
-        onCancel={() => {
-          setConfirmTarget(null);
-          confirmForm.resetFields();
-        }}
-        onOk={() => void submitConfirm()}
+        title={'位置组纠偏 · ' + (selectedComplaintInfo?.complaintNo || selectedComplaintId || '诉求')}
+        open={positionModalOpen}
+        onCancel={() => setPositionModalOpen(false)}
+        onOk={() => void savePositionGroup()}
         confirmLoading={submitting}
-        okText="确认"
+        okText="保存位置组"
+        width={1000}
+        destroyOnClose
+      >
+        <Form form={positionForm} layout="vertical">
+          <Descriptions size="small" column={1} bordered style={{ marginBottom: 12 }}>
+            <Descriptions.Item label="诉求 ID">{selectedComplaintId}</Descriptions.Item>
+            <Descriptions.Item label="诉求标题">{selectedComplaintInfo?.title || '正在读取…'}</Descriptions.Item>
+          </Descriptions>
+          <Form.Item name="address" label="核实后的地址" rules={positionItems[0]?.status === 'pending' ? [{ required: true, whitespace: true, message: '请输入核实后的地址' }] : []}>
+            <Input disabled={positionItems[0]?.status !== 'pending'} placeholder="人工核对后填写地址" />
+          </Form.Item>
+          <Space style={{ display: 'flex' }} align="start" size={16}>
+            <Form.Item
+              name="lng"
+              label="经度"
+              style={{ flex: 1 }}
+              rules={positionItems[1]?.status === 'pending' ? [
+                { required: true, message: '请选择或输入经度' },
+                { pattern: /^-?\d+(\.\d+)?$/, message: '请输入有效经度' },
+                { validator: async (_, value) => { const n = Number(value); if (Number.isFinite(n) && n >= -180 && n <= 180) return; throw new Error('经度范围应为 -180 至 180'); } },
+              ] : []}
+            ><Input disabled={positionItems[1]?.status !== 'pending'} /></Form.Item>
+            <Form.Item
+              name="lat"
+              label="纬度"
+              style={{ flex: 1 }}
+              rules={positionItems[2]?.status === 'pending' ? [
+                { required: true, message: '请选择或输入纬度' },
+                { pattern: /^-?\d+(\.\d+)?$/, message: '请输入有效纬度' },
+                { validator: async (_, value) => { const n = Number(value); if (Number.isFinite(n) && n >= -90 && n <= 90) return; throw new Error('纬度范围应为 -90 至 90'); } },
+              ] : []}
+            ><Input disabled={positionItems[2]?.status !== 'pending'} /></Form.Item>
+          </Space>
+          <TiandituLocationPicker
+            address={addressDraft}
+            lng={String(positionItems[1]?.newValue ?? positionItems[1]?.oldValue ?? '')}
+            lat={String(positionItems[2]?.newValue ?? positionItems[2]?.oldValue ?? '')}
+            onPick={(point) => {
+              const values: { lng?: string; lat?: string } = {};
+              if (positionItems[1]?.status === 'pending') values.lng = point.lng;
+              if (positionItems[2]?.status === 'pending') values.lat = point.lat;
+              positionForm.setFieldsValue(values);
+            }}
+            onUseAddressSuggestion={positionItems[0]?.status === 'pending'
+              ? (address) => positionForm.setFieldsValue({ address })
+              : undefined}
+          />
+          <Form.Item name="basis" label="核对依据（可选）" style={{ marginTop: 12 }}>
+            <Input.TextArea rows={2} placeholder="例如：地图定位、现场核对、来电确认" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="核验原值无误"
+        open={verifyTarget !== null}
+        onCancel={() => { setVerifyTarget(null); verifyForm.resetFields(); }}
+        onOk={() => void submitVerifyOriginal()}
+        confirmLoading={submitting}
+        okText="提交核验"
+        cancelText="取消"
         width={560}
         destroyOnClose
       >
-        {confirmTarget && (
+        {verifyTarget ? (
           <>
             <Descriptions size="small" column={1} bordered style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="诉求">{confirmTarget.complaintId}</Descriptions.Item>
-              <Descriptions.Item label="原值">{confirmTarget.oldValue ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="诉求编号">{selectedComplaintInfo?.complaintNo || verifyTarget.complaintId}</Descriptions.Item>
+              <Descriptions.Item label="诉求标题">{selectedComplaintInfo?.title || '正在读取…'}</Descriptions.Item>
+              <Descriptions.Item label="字段">{verifyTarget.fieldLabel ?? verifyTarget.fieldName}</Descriptions.Item>
+              <Descriptions.Item label="当前原值">
+                {verifyTarget.oldValue === null || verifyTarget.oldValue === '' ? '当前为空' : verifyTarget.oldValue}
+              </Descriptions.Item>
             </Descriptions>
-            {confirmTarget.fieldName === ENTERPRISE_FIELD && enterpriseError ? (
-              <Alert
-                type="warning"
-                showIcon
-                style={{ marginBottom: 12 }}
-                message={'企业主数据加载失败：' + enterpriseError}
-                description="责任单位下拉将为空，不会被本地示例企业替代；此时无法确认责任单位，请先重试。"
-                action={
-                  <Button size="small" onClick={() => void fetchEnterprises()}>
-                    重试
-                  </Button>
-                }
-              />
-            ) : null}
-            <Form form={confirmForm} layout="vertical">
-              <Form.Item
-                name="newValue"
-                label={
-                  confirmTarget.fieldName === ENTERPRISE_FIELD
-                    ? '责任单位（企业主数据登记值，编码 + 名称成对写回）'
-                    : '纠偏后取值'
-                }
-                rules={
-                  confirmTarget.fieldName === ENTERPRISE_FIELD
-                    ? [{ required: true, message: '请从企业主数据里选择责任单位' }]
-                    : NUMERIC_FIELDS.has(confirmTarget.fieldName)
-                    ? [
-                        { required: true, message: '请填写纠偏后的取值' },
-                        {
-                          pattern: /^-?\d+(\.\d+)?$/,
-                          message: '该字段是数值（经纬度），请填写数字，例如 111.2860',
-                        },
-                      ]
-                    : [{ required: true, message: '请填写纠偏后的取值' }]
-                }
-                extra={
-                  confirmTarget.fieldName === ENTERPRISE_FIELD ? (
-                    <>
-                      当前登记名称：{confirmTarget.oldValue ?? '（空）'}。
-                      这里选的是 <b>enterprise_code</b>，后端会回查 enterprise 表并成对写回
-                      enterprise_code + enterprise_name；编码未登记会被拒绝，不会静默写入。
-                    </>
-                  ) : undefined
-                }
-              >
-                {confirmTarget.fieldName === ENTERPRISE_FIELD ? (
-                  <Select
-                    showSearch
-                    allowClear
-                    filterOption={false}
-                    loading={enterpriseLoading}
-                    placeholder="输入企业名称或编码搜索（只能从主数据里选）"
-                    onSearch={(kw) => void fetchEnterprises(kw)}
-                    onOpenChange={(open) => {
-                      if (open && enterpriseOptions.length === 0 && !enterpriseLoading) {
-                        void fetchEnterprises();
-                      }
-                    }}
-                    options={enterpriseOptions.map((e) => ({
-                      value: e.enterpriseCode,
-                      label:
-                        e.enterpriseName +
-                        '（' + e.enterpriseCode + '）' +
-                        (e.businessTypeName ? ' · ' + e.businessTypeName : ''),
-                    }))}
-                  />
-                ) : (
-                  <Input
-                    placeholder={
-                      NUMERIC_FIELDS.has(confirmTarget.fieldName)
-                        ? '请输入数字，例如 111.2860'
-                        : '请输入核实后的取值'
-                    }
-                  />
-                )}
-              </Form.Item>
-              <Form.Item name="basis" label="确认依据">
-                <Input.TextArea rows={3} placeholder="例如：电话核实、现场照片、来源系统回执编号" />
+            <Form form={verifyForm} layout="vertical">
+              <Form.Item name="basis" label="核验依据" rules={[{ required: true, whitespace: true, max: 500, message: '请填写核验依据（最多 500 字）' }]}>
+                <Input.TextArea rows={3} placeholder="例如：电话核实、现场核对、来源系统原始报文" maxLength={500} showCount />
               </Form.Item>
             </Form>
           </>
-        )}
+        ) : null}
       </Modal>
 
-      <Modal
-        title="判定无需纠偏"
-        open={!!rejectTarget}
-        onCancel={() => {
-          setRejectTarget(null);
-          rejectForm.resetFields();
-        }}
-        onOk={() => void submitReject()}
-        confirmLoading={submitting}
-        okText="提交"
-        width={520}
-        destroyOnClose
-      >
-        {rejectTarget && (
-          <>
-            <Alert
-              type="warning"
-              showIcon
-              style={{ marginBottom: 16 }}
-              message="确认这不是「跳过」"
-              description="「无需纠偏」表示经核对自动生成的建议不成立，该判定会连同依据一并留痕。"
-            />
-            <Descriptions size="small" column={1} bordered style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="诉求">{rejectTarget.complaintId}</Descriptions.Item>
-              <Descriptions.Item label="字段">
-                {rejectTarget.fieldLabel ?? rejectTarget.fieldName}
-              </Descriptions.Item>
-              <Descriptions.Item label="建议新值">{rejectTarget.newValue ?? '—'}</Descriptions.Item>
-            </Descriptions>
-            <Form form={rejectForm} layout="vertical">
-              <Form.Item name="basis" label="判定依据">
-                <Input.TextArea rows={3} placeholder="例如：与来源系统原始报文一致，无需调整" />
-              </Form.Item>
-            </Form>
-          </>
-        )}
-      </Modal>
     </div>
   );
 };

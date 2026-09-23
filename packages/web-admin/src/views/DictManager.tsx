@@ -32,6 +32,7 @@ import {
   previewSensitiveRescan,
   updateSensitiveWord,
 } from '../api/sensitiveWords';
+import { listComplaints } from '../api/complaints';
 import type {
   ApiError,
   ManagedSensitiveWord,
@@ -97,6 +98,7 @@ function errorText(error: unknown): string {
 export const SensitiveWordManager: React.FC = () => {
   const [rows, setRows] = useState<ManagedSensitiveWord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentSensitiveCount, setCurrentSensitiveCount] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ManagedSensitiveWord | null>(null);
@@ -117,12 +119,21 @@ export const SensitiveWordManager: React.FC = () => {
     }
   }, []);
 
+  const loadCurrentSensitiveCount = useCallback(async () => {
+    try {
+      const result = await listComplaints({ page: 1, size: 1, isSensitive: 1 });
+      setCurrentSensitiveCount(result.stats?.sensitiveCount ?? result.total);
+    } catch {
+      setCurrentSensitiveCount(null);
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadCurrentSensitiveCount();
+  }, [load, loadCurrentSensitiveCount]);
 
   const enabledCount = rows.filter((row) => row.status === 'enabled').length;
-  const hitCount = rows.reduce((total, row) => total + row.hitCount, 0);
   const filtered = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
     if (!term) return rows;
@@ -210,7 +221,7 @@ export const SensitiveWordManager: React.FC = () => {
       const result = await executeSensitiveRescan(preview.previewToken);
       message.success(`历史重扫完成，更新 ${result.updated} 条诉求`);
       setPreview(null);
-      await load();
+      await Promise.all([load(), loadCurrentSensitiveCount()]);
     } catch (error) {
       message.error(errorText(error));
     } finally {
@@ -230,7 +241,7 @@ export const SensitiveWordManager: React.FC = () => {
         </Tag>
       ),
     },
-    { title: '历史命中证据', dataIndex: 'hitCount', width: 140 },
+    { title: '历史证据行数', dataIndex: 'hitCount', width: 140 },
     {
       title: '操作',
       width: 180,
@@ -259,13 +270,13 @@ export const SensitiveWordManager: React.FC = () => {
         showIcon
         style={{ marginBottom: 16 }}
         message="规则说明"
-        description="启用词条会对新进入的诉求标题、内容和地址做包含匹配。词条不物理删除，停用后仍保留历史命中证据；历史数据只有在预览并再次确认后才会更新敏感标记。"
+        description="“当前敏感诉求”按 isSensitive=1 统计诉求数；表格中的历史证据行数按词条统计，可能因一件命中多个词而多于诉求数，停用词的历史证据仍保留。"
       />
 
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={8}><Card size="small"><Statistic title="词条总数" value={rows.length} /></Card></Col>
         <Col xs={24} sm={8}><Card size="small"><Statistic title="当前启用" value={enabledCount} /></Card></Col>
-        <Col xs={24} sm={8}><Card size="small"><Statistic title="历史命中证据" value={hitCount} /></Card></Col>
+        <Col xs={24} sm={8}><Card size="small"><Statistic title="当前敏感诉求" value={currentSensitiveCount ?? '—'} /></Card></Col>
       </Row>
 
       <Space wrap style={{ marginBottom: 16 }}>
@@ -278,7 +289,7 @@ export const SensitiveWordManager: React.FC = () => {
           allowClear
         />
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增敏感词</Button>
-        <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void Promise.all([load(), loadCurrentSensitiveCount()])} loading={loading}>刷新</Button>
         <Tag>共 {filtered.length} 条</Tag>
       </Space>
 

@@ -7,6 +7,7 @@ import {
   generateCorrections,
   generateCorrectionsForAllComplaints,
   listComplaintCorrections,
+  listPendingComplaintSummaries,
   listPendingCorrections,
   rejectCorrection,
 } from '../services/correctionService';
@@ -36,6 +37,15 @@ function ctxOf(req: Request): OperatorContext {
 correctionsRouter.get('/corrections/pending', async (req, res, next) => {
   try {
     ok(res, await listPendingCorrections(req.query as Record<string, unknown>));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** 待纠偏诉求级列表：服务端先按诉求分组再分页，避免前端分组错计数。 */
+correctionsRouter.get('/corrections/pending-complaints', async (req, res, next) => {
+  try {
+    ok(res, await listPendingComplaintSummaries(req.query as Record<string, unknown>));
   } catch (err) {
     next(err);
   }

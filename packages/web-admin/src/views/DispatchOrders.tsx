@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Descriptions,
+  DatePicker,
   Empty,
   Form,
   Input,
@@ -39,7 +40,11 @@ import {
   repushDispatch,
 } from '../api/dispatch';
 import { listComplaints } from '../api/complaints';
+import { createDispatch } from '../api/dispatch';
+import { listEnterprises } from '../api/enterprises';
 import { getDictItems } from '../api/dicts';
+import type { Dayjs } from 'dayjs';
+import { useWriteAccess, WriteGate } from '../stores/roleAccess';
 import type {
   ApiError,
   ApprovalTraceItem,
@@ -55,6 +60,7 @@ import type {
   FieldError,
   Paged,
   PushDispatchResult,
+  EnterpriseListItem,
 } from '../types/api';
 
 /**
@@ -65,7 +71,7 @@ import type {
  *  - 列表来自 GET /dispatch/orders 真查表，不是按敏感诉求现场生成。
  *  - 推送 / 重推 已接入真实接口（G3）；审批轨迹与推送记录在详情内展示（G4）。
  *  - 归档仍属 G5：disabled + Tooltip 说明批次，不弹假成功。
- *  - **不提供第二次新建交办**：交办一律在诉求总账发起（设计文档第 2 节）。
+ *  - 规则命中诉求可在工作台直接发起敏感交办；复用同一幂等创建接口，创建后打开交办详情。
  */
 
 /** 仅用于 Tag 配色；文案一律取服务端 statusName。 */
@@ -248,7 +254,7 @@ interface SensitiveComplaintMatchesProps {
 
 /**
  * 规则命中诉求与正式交办单是两个阶段：前者来自 complaint.is_sensitive，
- * 后者来自 dispatch_order。本面板只呈现规则命中事实，不自动替用户生成交办单。
+ * 后者来自 dispatch_order。本面板提供人工创建入口，规则命中本身不会自动生成交办单。
  */
 const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ onOpenOrder }) => {
   const navigate = useNavigate();
@@ -260,6 +266,18 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const seqRef = useRef(0);
+  const [dispatchTarget, setDispatchTarget] = useState<ComplaintListItem | null>(null);
+  const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
+  const [enterpriseLoading, setEnterpriseLoading] = useState(false);
+  const [dispatchForm] = Form.useForm<{
+    targetEnterpriseCode: string;
+    targetEnterpriseName: string;
+    deadline?: Dayjs;
+    requirement?: string;
+    reason?: string;
+  }>();
+  const writeAccess = useWriteAccess();
 
   const params = useMemo(
     () => buildSensitiveComplaintParams(page, size, keyword),
@@ -281,6 +299,62 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
       if (seq === seqRef.current) setLoading(false);
     }
   }, []);
+
+  const fetchEnterpriseOptions = useCallback(async (keyword?: string) => {
+    setEnterpriseLoading(true);
+    try {
+      const result = await listEnterprises({ keyword: keyword?.trim() || undefined, size: 100 });
+      setEnterpriseOptions(result.content);
+    } catch (cause) {
+      message.error('企业主数据加载失败：' + ((cause as ApiError)?.message ?? '未知错误'));
+      setEnterpriseOptions([]);
+    } finally {
+      setEnterpriseLoading(false);
+    }
+  }, []);
+
+  const openDispatchForm = (row: ComplaintListItem) => {
+    dispatchForm.resetFields();
+    dispatchForm.setFieldsValue({
+      targetEnterpriseCode: row.enterpriseCode ?? undefined,
+      targetEnterpriseName: row.enterpriseName ?? undefined,
+    });
+    setDispatchTarget(row);
+    if (enterpriseOptions.length === 0) void fetchEnterpriseOptions();
+  };
+
+  const handleCreateDispatch = async () => {
+    if (!dispatchTarget) return;
+    let values: { targetEnterpriseCode: string; targetEnterpriseName: string; deadline?: Dayjs; requirement?: string; reason?: string };
+    try {
+      values = await dispatchForm.validateFields();
+    } catch {
+      return;
+    }
+    setDispatchSubmitting(true);
+    try {
+      const result = await createDispatch({
+        complaintId: dispatchTarget.complaintId,
+        targetEnterpriseCode: values.targetEnterpriseCode.trim(),
+        targetEnterpriseName: values.targetEnterpriseName.trim(),
+        requirement: values.requirement?.trim() || undefined,
+        reason: values.reason?.trim() || undefined,
+        deadline: values.deadline ? values.deadline.format('YYYY-MM-DDTHH:mm:ssZ') : undefined,
+        dispatchType: 'manual',
+        triggerType: 'sensitive_word',
+      });
+      if (result.created) message.success('已创建交办 ' + result.order.orderNo);
+      else message.warning('该诉求已有交办（' + result.order.orderNo + '），未重复创建');
+      setDispatchTarget(null);
+      dispatchForm.resetFields();
+      await load(params);
+      onOpenOrder(result.order.assignmentId);
+    } catch (cause) {
+      message.error('创建交办失败：' + ((cause as ApiError)?.message ?? '未知错误'));
+    } finally {
+      setDispatchSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     void load(params);
@@ -372,28 +446,31 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
                 >
                   整体纠偏
                 </Button>
-                <Button type="link" size="small" onClick={() => navigate('/complaints')}>
-                  去诉求管理
-                </Button>
+                <WriteGate allowed={writeAccess.can} tip={writeAccess.tip}>
+                  <Button type="primary" size="small" onClick={() => openDispatchForm(row)}>
+                    创建交办
+                  </Button>
+                </WriteGate>
               </>
             )}
           </Space>
         ),
       },
     ],
-    [navigate, onOpenOrder]
+    [navigate, onOpenOrder, writeAccess.can, writeAccess.tip]
   );
 
   const firstLoading = loading && data === null;
 
   return (
+    <>
     <Card>
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
         message="这里展示规则命中的敏感诉求，不等于已经生成交办单"
-        description="数据按服务端 isSensitive=1 筛选；命中词来自入站规则引擎。责任单位未明确时先到「整体纠偏」确认，再由「诉求管理」人工决定是否交办。"
+        description="数据按服务端 isSensitive=1 筛选；命中词来自入站规则引擎。业务经办或管理员可在本表直接发起交办，已有有效交办会直接打开记录。"
       />
       <Space style={{ marginBottom: 16 }} wrap>
         <Input.Search
@@ -452,7 +529,60 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
           }}
         />
       )}
-    </Card>
+      </Card>
+      <Modal
+        title={dispatchTarget ? '发起交办 · ' + dispatchTarget.complaintNo : '发起交办'}
+        open={dispatchTarget !== null}
+        onCancel={() => { setDispatchTarget(null); dispatchForm.resetFields(); }}
+        onOk={() => void handleCreateDispatch()}
+        confirmLoading={dispatchSubmitting}
+        okText="创建交办"
+        width={560}
+        destroyOnClose
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="同一诉求已有有效交办时会复用现有记录"
+          description="提交使用现有幂等接口；并发下命中已有交办时不会重复创建，并会直接打开对应交办详情。"
+        />
+        <Form form={dispatchForm} layout="vertical">
+          <Form.Item name="targetEnterpriseCode" label="交办企业" rules={[{ required: true, message: '请选择交办企业' }]}>
+            <Select
+              showSearch
+              allowClear
+              filterOption={false}
+              loading={enterpriseLoading}
+              placeholder="输入企业名称或编码搜索"
+              onSearch={(value) => void fetchEnterpriseOptions(value)}
+              onOpenChange={(open) => { if (open && enterpriseOptions.length === 0 && !enterpriseLoading) void fetchEnterpriseOptions(); }}
+              options={[
+                ...(dispatchTarget?.enterpriseCode && dispatchTarget.enterpriseName &&
+                  !enterpriseOptions.some((e) => e.enterpriseCode === dispatchTarget.enterpriseCode)
+                  ? [{ value: dispatchTarget.enterpriseCode, label: dispatchTarget.enterpriseName + '（当前责任企业）' }]
+                  : []),
+                ...enterpriseOptions.map((enterprise) => ({
+                  value: enterprise.enterpriseCode,
+                  label: enterprise.enterpriseName + '（' + enterprise.enterpriseCode + '）',
+                })),
+              ]}
+              onChange={(code) => {
+                const enterprise = enterpriseOptions.find((item) => item.enterpriseCode === code);
+                const current = dispatchTarget && dispatchTarget.enterpriseCode === code ? dispatchTarget.enterpriseName : undefined;
+                dispatchForm.setFieldsValue({ targetEnterpriseName: enterprise?.enterpriseName ?? current ?? undefined });
+              }}
+            />
+          </Form.Item>
+          <Form.Item name="targetEnterpriseName" label="交办企业名称（自动带出）" rules={[{ required: true, message: '请先选择交办企业' }]}>
+            <Input disabled placeholder="选择交办企业后自动带出" />
+          </Form.Item>
+          <Form.Item name="deadline" label="截止时间"><DatePicker showTime style={{ width: '100%' }} placeholder="可选" /></Form.Item>
+          <Form.Item name="requirement" label="交办要求"><Input.TextArea rows={2} placeholder="可选，例如：请核实情况并填报企业处置结果。" /></Form.Item>
+          <Form.Item name="reason" label="交办原因"><Input.TextArea rows={2} placeholder="可选" /></Form.Item>
+        </Form>
+      </Modal>
+      </>
   );
 };
 
@@ -1002,8 +1132,8 @@ const DispatchOrders: React.FC = () => {
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
-            message="交办一律在诉求总账发起"
-            description="本列表只展示已产生的交办记录及其进度，不提供第二次新建交办。如需交办，请到「诉求管理」对目标诉求操作。"
+            message="这里展示已生成的交办记录及其进度"
+            description="新交办从上方「规则命中诉求」发起；已有交办记录可在此查询、推送或查看详情。"
           />
 
           {dictError && (
