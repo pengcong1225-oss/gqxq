@@ -185,6 +185,13 @@ export interface ComplaintListItem {
 }
 
 /** 详情（方案 §5.5：完整记录，含 sourcePayload、三轴、closed*、responsible*、analysis*） */
+export interface AddressCandidateView {
+  value: string;
+  evidence: string;
+  sourceField: 'title' | 'content';
+  extractorVersion: string;
+}
+
 export interface ComplaintDetail extends ComplaintListItem {
   content: string | null;
   address: string | null;
@@ -194,6 +201,7 @@ export interface ComplaintDetail extends ComplaintListItem {
 
   ruleConfidence: number | null;
   ruleVersion: string | null;
+  addressCandidate: AddressCandidateView | null;
 
   /** 原始报文快照 */
   sourcePayload: Record<string, unknown> | null;

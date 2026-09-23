@@ -13,6 +13,8 @@ import type {
 } from '../types/api';
 import { labelOf } from '../domain/enums';
 import { rowToDetail, rowToListItem } from '../repositories/complaintMapper';
+import { findAddressCandidate } from '../repositories/addressCandidateRepo';
+import { pool } from '../db/pool';
 import {
   findByIdOrNo,
   findPage,
@@ -219,7 +221,15 @@ export async function listComplaints(query: Record<string, unknown>): Promise<Co
 export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetail> {
   const row = await findByIdOrNo(idOrNo);
   if (!row) throw AppError.notFound('诉求不存在');
-  return rowToDetail(row);
+  const candidate = await findAddressCandidate(pool, String(row.complaint_id));
+  const detail = rowToDetail(row);
+  detail.addressCandidate = candidate ? {
+    value: candidate.value,
+    evidence: candidate.evidence,
+    sourceField: candidate.sourceField,
+    extractorVersion: candidate.extractorVersion,
+  } : null;
+  return detail;
 }
 
 export interface TimelineResult {

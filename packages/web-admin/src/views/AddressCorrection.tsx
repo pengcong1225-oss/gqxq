@@ -35,7 +35,7 @@ import { listPendingCorrectionComplaints } from '../api/corrections';
 import type { DispatchedFilter, PendingComplaintSummary } from '../api/corrections';
 import { listEnterprises } from '../api/enterprises';
 import { getComplaint } from '../api/complaints';
-import type { CorrectionItem, EnterpriseListItem } from '../types/api';
+import type { AddressCandidateView, ComplaintDetail, CorrectionItem, EnterpriseListItem } from '../types/api';
 import TiandituLocationPicker from '../components/TiandituLocationPicker';
 import InlineCorrectionField from '../components/InlineCorrectionField';
 import { useWriteAccess, WriteGate } from '../stores/roleAccess';
@@ -73,6 +73,25 @@ const STATUS_TAG: Record<string, { color: string; text: string }> = {
 };
 
 const DASH = <span style={{ color: '#bfbfbf' }}>—</span>;
+
+export const AddressCandidateCorrection: React.FC<{
+  sourceAddress: string | null;
+  candidate: AddressCandidateView | null;
+  pending: boolean;
+  onUse: () => void;
+}> = ({ sourceAddress, candidate, pending, onUse }) => (
+  <Descriptions size="small" column={1} bordered>
+    <Descriptions.Item label="来源地址">{sourceAddress || '—'}</Descriptions.Item>
+    <Descriptions.Item label="机器地址候选">
+      {candidate ? <>
+        <Tag color="warning">待核实</Tag> {candidate.value}
+        <div>提取来源：{candidate.sourceField === 'title' ? '标题' : '正文'}；规则：{candidate.extractorVersion}</div>
+        <div>证据：{candidate.evidence}</div>
+        {pending && <Button size="small" onClick={onUse}>填入待核实地址</Button>}
+      </> : '无候选'}
+    </Descriptions.Item>
+  </Descriptions>
+);
 
 const POSITION_FIELDS = ['address', 'location_lng', 'location_lat'] as const;
 
@@ -187,6 +206,7 @@ const AddressCorrection: React.FC = () => {
   // ---- 右侧闭环面板 ----
   const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(null);
   const [selectedComplaintInfo, setSelectedComplaintInfo] = useState<{ complaintNo: string; title: string } | null>(null);
+  const [selectedComplaintDetail, setSelectedComplaintDetail] = useState<ComplaintDetail | null>(null);
   const summarySeqRef = useRef(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [items, setItems] = useState<CorrectionItem[]>([]);
@@ -298,19 +318,21 @@ const AddressCorrection: React.FC = () => {
       setSelectedComplaintId(complaintId);
       setDrawerOpen(true);
       const row = summary ?? queue.find((item) => item.complaintId === complaintId);
+      setSelectedComplaintDetail(null);
+      void getComplaint(complaintId).then((detail) => {
+        if (summarySeq !== summarySeqRef.current) return;
+        setSelectedComplaintDetail(detail);
+        if (!row) setSelectedComplaintInfo({ complaintNo: detail.complaintNo, title: detail.title });
+      }).catch((err) => {
+        if (summarySeq !== summarySeqRef.current) return;
+        if (!row) setSelectedInfoError('诉求基本信息加载失败：' + errText(err));
+      });
       if (row) {
         setSelectedInfoError(null);
         setSelectedComplaintInfo({ complaintNo: row.complaintNo, title: row.title });
       } else {
         setSelectedInfoError(null);
         setSelectedComplaintInfo(null);
-        void getComplaint(complaintId).then((detail) => {
-          if (summarySeq !== summarySeqRef.current) return;
-          setSelectedComplaintInfo({ complaintNo: detail.complaintNo, title: detail.title });
-        }).catch((err) => {
-          if (summarySeq !== summarySeqRef.current) return;
-          setSelectedInfoError('诉求基本信息加载失败：' + errText(err));
-        });
       }
       void loadItems(complaintId);
     },
@@ -699,6 +721,14 @@ const AddressCorrection: React.FC = () => {
                   <Descriptions.Item label="待确认项">{pendingCount}</Descriptions.Item>
                   <Descriptions.Item label="全部项">{items.length}</Descriptions.Item>
                 </Descriptions>
+                <div style={{ marginBottom: 16 }}>
+                  <AddressCandidateCorrection
+                    sourceAddress={selectedComplaintDetail?.address ?? null}
+                    candidate={selectedComplaintDetail?.addressCandidate ?? null}
+                    pending={false}
+                    onUse={() => undefined}
+                  />
+                </div>
 
                 {pendingCount === 0 && items.length > 0 && (
                   <Alert
@@ -862,6 +892,18 @@ const AddressCorrection: React.FC = () => {
             <Descriptions.Item label="诉求 ID">{selectedComplaintId}</Descriptions.Item>
             <Descriptions.Item label="诉求标题">{selectedComplaintInfo?.title || '正在读取…'}</Descriptions.Item>
           </Descriptions>
+          <div style={{ marginBottom: 12 }}>
+            <AddressCandidateCorrection
+              sourceAddress={selectedComplaintDetail?.address ?? null}
+              candidate={selectedComplaintDetail?.addressCandidate ?? null}
+              pending={positionItems[0]?.status === 'pending'}
+              onUse={() => {
+                if (positionItems[0]?.status === 'pending' && selectedComplaintDetail?.addressCandidate) {
+                  positionForm.setFieldsValue({ address: selectedComplaintDetail.addressCandidate.value });
+                }
+              }}
+            />
+          </div>
           <Form.Item name="address" label="核实后的地址" rules={positionItems[0]?.status === 'pending' ? [{ required: true, whitespace: true, message: '请输入核实后的地址' }] : []}>
             <Input disabled={positionItems[0]?.status !== 'pending'} placeholder="人工核对后填写地址" />
           </Form.Item>

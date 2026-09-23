@@ -220,3 +220,33 @@ test('存量地址候选先预览，取消不执行，确认后才调用执行 A
     assert.equal(await screen.findByText(/新增 2/).then(() => true), true);
   } finally { ui.unmount(); cleanup(); message.success = originalSuccess; }
 });
+
+test('地址候选分开展示来源与候选，待处理时经办点击才允许填入', async () => {
+  const module = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
+  const Candidate = module.AddressCandidateCorrection as React.ComponentType<{
+    sourceAddress: string | null; candidate: { value: string; evidence: string; sourceField: 'title' | 'content'; extractorVersion: string } | null;
+    pending: boolean; onUse: () => void;
+  }>;
+  const { render, screen, fireEvent, cleanup } = await import('@testing-library/react');
+  let copies = 0;
+  const candidate = { value: '点军区联棚乡示例小区18号1301', evidence: '点军区联棚乡示例小区18号1301', sourceField: 'content' as const, extractorVersion: 'address-extract.v1' };
+  const ui = render(<Candidate sourceAddress="来源地址原值" candidate={candidate} pending onUse={() => copies++} />);
+  try {
+    assert.match(ui.container.textContent ?? '', /来源地址原值/);
+    assert.match(ui.container.textContent ?? '', /待核实/);
+    assert.match(ui.container.textContent ?? '', /address-extract\.v1/);
+    fireEvent.click(screen.getByRole('button', { name: '填入待核实地址' }));
+    assert.equal(copies, 1);
+    ui.rerender(<Candidate sourceAddress="来源地址原值" candidate={candidate} pending={false} onUse={() => copies++} />);
+    assert.equal(screen.queryByRole('button', { name: '填入待核实地址' }), null);
+    assert.equal(copies, 1);
+  } finally { ui.unmount(); cleanup(); }
+});
+
+test('敏感词规则分值明确为固定规则分值且空词表不可用', async () => {
+  const module = await vite.ssrLoadModule('/src/views/ComplaintDetail.tsx');
+  const label = module.sensitiveRuleScoreLabel as ((confidence: number | null, version: string | null) => string) | undefined;
+  assert.equal(typeof label, 'function');
+  assert.equal(label?.(0.72, 'classify.v1+sensitive_word/3'), '敏感词规则分值：未命中固定 72%（非地址准确度）');
+  assert.equal(label?.(0.72, 'classify.v1+sensitive_word/0'), '敏感词规则分值：词表为空，判定不可用');
+});

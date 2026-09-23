@@ -102,6 +102,14 @@ function isNotFound(err: ApiError): boolean {
   return err?.code === 404 || err?.code === 'NOT_FOUND' || err?.status === 404;
 }
 
+export function sensitiveRuleScoreLabel(confidence: number | null, version: string | null): string {
+  if (version?.includes('sensitive_word/0')) return '敏感词规则分值：词表为空，判定不可用';
+  if (confidence == null) return '敏感词规则分值：—';
+  const fixed = Math.round(confidence * 100);
+  const outcome = fixed === 72 ? '未命中' : fixed === 88 ? '命中' : '规则结果';
+  return '敏感词规则分值：' + outcome + '固定 ' + fixed + '%（非地址准确度）';
+}
+
 const ComplaintDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -646,12 +654,14 @@ const ComplaintDetail: React.FC = () => {
               <Descriptions.Item label="填报状态">
                 <Tag>{detail.reportingStatusName}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="规则预处理">
-                {detail.ruleConfidence != null
-                  ? '置信度 ' + Math.round(detail.ruleConfidence * 100) + '%'
-                  : '—'}
+              <Descriptions.Item label="敏感词规则分值">
+                {sensitiveRuleScoreLabel(detail.ruleConfidence, detail.ruleVersion)}
                 {detail.ruleVersion ? '（规则 ' + detail.ruleVersion + '）' : ''}
               </Descriptions.Item>
+              {detail.addressCandidate && <Descriptions.Item label="地址候选">
+                <Tag color="warning">待核实</Tag> {detail.addressCandidate.value}
+                <Typography.Text type="secondary">（{detail.addressCandidate.sourceField === 'title' ? '标题' : '正文'} · {detail.addressCandidate.extractorVersion}；证据：{detail.addressCandidate.evidence}）</Typography.Text>
+              </Descriptions.Item>}
               <Descriptions.Item label="原始地址">{detail.address ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="纠偏后地址">{detail.correctedAddress ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="诉求时间">{fmtDateTime(detail.createdAt)}</Descriptions.Item>

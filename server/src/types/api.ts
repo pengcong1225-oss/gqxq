@@ -74,6 +74,13 @@ export interface ComplaintListItem {
   createdAt: string | null;
 }
 
+export interface AddressCandidateView {
+  value: string;
+  evidence: string;
+  sourceField: 'title' | 'content';
+  extractorVersion: string;
+}
+
 export interface ComplaintDetail extends ComplaintListItem {
   content: string | null;
   address: string | null;
@@ -83,6 +90,8 @@ export interface ComplaintDetail extends ComplaintListItem {
 
   ruleConfidence: number | null;
   ruleVersion: string | null;
+  /** Optional on mapper-only projections; getComplaintDetail always supplies the field (including null). */
+  addressCandidate?: AddressCandidateView | null;
 
   sourcePayload: Record<string, unknown> | null;
   sourcePayloadHash: string | null;
