@@ -39,6 +39,9 @@ import type { CorrectionItem, EnterpriseListItem } from '../types/api';
 import TiandituLocationPicker from '../components/TiandituLocationPicker';
 import InlineCorrectionField from '../components/InlineCorrectionField';
 import { useWriteAccess, WriteGate } from '../stores/roleAccess';
+import { useAdminAccess } from '../stores/roleAccess';
+import { previewAddressBackfill, executeAddressBackfill } from '../api/addressCandidates';
+import type { AddressBackfillSummary } from '../api/addressCandidates';
 
 /**
  * 整体纠偏工作台（真实接口驱动）。
@@ -128,8 +131,37 @@ const AddressCorrection: React.FC = () => {
   const [positionForm] = Form.useForm();
   const addressDraft = Form.useWatch('address', positionForm) as string | undefined;
   const writeAccess = useWriteAccess();
+  const adminAccess = useAdminAccess();
+  const [candidatePreview, setCandidatePreview] = useState<AddressBackfillSummary | null>(null);
+  const [candidateBackfill, setCandidateBackfill] = useState<AddressBackfillSummary | null>(null);
+  const [candidatePreviewLoading, setCandidatePreviewLoading] = useState(false);
+  const [candidateExecuteLoading, setCandidateExecuteLoading] = useState(false);
   const [positionModalOpen, setPositionModalOpen] = useState(false);
   const [positionResult, setPositionResult] = useState<Array<{ label: string; ok: boolean; detail: string }>>([]);
+
+  const doCandidatePreview = async () => {
+    setCandidatePreviewLoading(true);
+    setCandidateBackfill(null);
+    try { setCandidatePreview(await previewAddressBackfill()); }
+    catch (err) { setCandidatePreview(null); message.error('预览存量地址候选失败：' + errText(err)); }
+    finally { setCandidatePreviewLoading(false); }
+  };
+
+  const doCandidateExecute = () => {
+    if (!candidatePreview || !adminAccess.can || candidateExecuteLoading) return;
+    const expectedWrites = candidatePreview.created + candidatePreview.updated + candidatePreview.removed;
+    Modal.confirm({
+      title: '确认执行存量地址候选补提取？',
+      content: '预览范围共 ' + candidatePreview.total + ' 条，预计写入或移除 ' + expectedWrites + ' 条。执行后仅更新机器候选，并记录操作审计。',
+      okText: '确认执行', cancelText: '取消',
+      onOk: async () => {
+        setCandidateExecuteLoading(true);
+        try { setCandidateBackfill(await executeAddressBackfill()); message.success('存量地址候选处理完成'); }
+        catch (err) { message.error('执行存量地址候选失败：' + errText(err)); }
+        finally { setCandidateExecuteLoading(false); }
+      },
+    });
+  };
 
   const fetchEnterprises = useCallback(async (keyword?: string) => {
     const seq = ++enterpriseSeqRef.current;
@@ -462,12 +494,31 @@ const AddressCorrection: React.FC = () => {
         </Space>
         <Collapse
           ghost
+          defaultActiveKey={['maintenance']}
           style={{ marginTop: 8 }}
           items={[{
             key: 'maintenance',
             label: '维护工具',
+            forceRender: true,
             children: (
-              <Space wrap>
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Space wrap>
+                  <Tooltip title={!adminAccess.can ? adminAccess.tip : undefined}>
+                    <Button disabled={!adminAccess.can} loading={candidatePreviewLoading} onClick={() => void doCandidatePreview()}>预览存量地址候选</Button>
+                  </Tooltip>
+                  <Tooltip title={!candidatePreview ? '请先完成预览' : undefined}>
+                    <Button type="primary" danger disabled={!adminAccess.can || !candidatePreview || candidateExecuteLoading} loading={candidateExecuteLoading}
+                      onClick={doCandidateExecute}>确认执行存量补提取</Button>
+                  </Tooltip>
+                  {candidatePreview && <Descriptions size="small" column={4} title="预览结果">
+                    <Descriptions.Item label="总数">{candidatePreview.total}</Descriptions.Item>
+                    <Descriptions.Item label="可提取">{candidatePreview.extractable}</Descriptions.Item>
+                    <Descriptions.Item label="无候选">{candidatePreview.noCandidate}</Descriptions.Item>
+                    <Descriptions.Item label="预计写入/移除">{candidatePreview.created + candidatePreview.updated + candidatePreview.removed}</Descriptions.Item>
+                  </Descriptions>}
+                  {candidateBackfill && <Alert type={candidateBackfill.failed ? 'warning' : 'success'} showIcon message="执行结果" description={'新增 ' + candidateBackfill.created + '，更新 ' + candidateBackfill.updated + '，未变 ' + candidateBackfill.unchanged + '，移除 ' + candidateBackfill.removed + '，失败 ' + candidateBackfill.failed} />}
+                </Space>
+                <Space wrap>
                 <Input
                   placeholder="诉求编号或 ID（补生成纠偏项）"
                   value={genId}
@@ -483,6 +534,7 @@ const AddressCorrection: React.FC = () => {
                     补齐全部诉求纠偏待办
                   </Button>
                 </Tooltip>
+                </Space>
               </Space>
             ),
           }]}

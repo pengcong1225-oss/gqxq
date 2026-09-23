@@ -17,6 +17,7 @@ import { sourceRouter } from './source';
 import { complaintActionsRouter } from './complaintActions';
 import { enterprisesRouter } from './enterprises';
 import { usersRouter } from './users';
+import { addressCandidatesRouter } from './addressCandidates';
 import { requireAuth } from '../middleware/requireAuth';
 import { enforceRolePolicy } from '../middleware/requireRole';
 
@@ -46,6 +47,7 @@ export function buildRouter(): Router {
   root.use(requireAuth);
   // 全局角色闸门：必须在 requireAuth 之后、所有业务 router 之前
   root.use(enforceRolePolicy());
+  root.use(addressCandidatesRouter);
   root.use(complaintsRouter);
   root.use(complaintActionsRouter);
   root.use(enterprisesRouter);

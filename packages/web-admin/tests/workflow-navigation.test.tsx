@@ -54,6 +54,16 @@ test('整体纠偏页用覆盖全部字段的名称呈现', async () => {
   assert.doesNotMatch(html, />纠偏待办</);
 });
 
+test('存量地址候选入口明确提供预览，执行前按钮保持禁用', async () => {
+  const { default: AddressCorrection } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
+  const html = renderWithRouter(<AddressCorrection />, '/address-correction');
+  assert.match(html, /预览存量地址候选/);
+  assert.match(html, /确认执行存量补提取/);
+  const executeButton = html.match(/<button[^>]*>[\s\S]*?确认执行存量补提取[\s\S]*?<\/button>/)?.[0];
+  assert.ok(executeButton);
+  assert.match(executeButton, /disabled=""/);
+});
+
 test('待纠偏字段在抽屉中直接呈现可编辑值和逐项保存入口', async () => {
   const module = await vite.ssrLoadModule('/src/components/InlineCorrectionField.tsx').catch(() => ({}));
   const InlineCorrectionField = module.default as React.ComponentType<{

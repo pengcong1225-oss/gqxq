@@ -105,6 +105,8 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   { method: 'PATCH', path: new RegExp('^/dicts/sensitive-words/' + param + '$'), roles: A, desc: 'D3 编辑/启停敏感词' },
   { method: 'POST', path: new RegExp('^/dicts/sensitive-words/rescan-preview$'), roles: A, desc: 'D4 历史重扫预览' },
   { method: 'POST', path: new RegExp('^/dicts/sensitive-words/rescan$'), roles: A, desc: 'D5 确认历史重扫' },
+  { method: 'POST', path: new RegExp('^/address-candidates/backfill-preview$'), roles: A, desc: '地址候选存量预览' },
+  { method: 'POST', path: new RegExp('^/address-candidates/backfill$'), roles: A, desc: '地址候选存量补提取' },
   { method: 'POST', path: new RegExp('^/external/tianbao/status-callback$'), roles: A, desc: 'X1 旧轮询回调（501 桩；它在 requireAuth 之后，仍需 Bearer）' },
 ];
 
