@@ -11,11 +11,11 @@ export interface ExtractedAddressCandidate {
 
 type AddressInput = { title: string; content: string | null };
 
-const ADDRESS_PATTERN = /[\u4e00-\u9fff]{2,}(?:区|县|市)[\u4e00-\u9fff]{1,8}(?:乡|镇|街道|街)[\u4e00-\u9fff]{0,15}(?:小区|社区|村)[\u4e00-\u9fff\d号栋幢单元室楼座-]{0,18}?\d{1,4}号\d{1,4}(?:室)?/g;
+const ADDRESS_PATTERN = /(?<![\u4e00-\u9fff])[\u4e00-\u9fff]{2,}(?:区|县|市)[\u4e00-\u9fff]{1,8}(?:乡|镇|街道|街)[\u4e00-\u9fff]{0,15}(?:小区|社区|村)[\u4e00-\u9fff\d号栋幢单元室楼座-]{0,18}?\d{1,4}号\d{1,4}(?:室)?/g;
 const STOP_MARKERS = /(?:的居民|的住户|居民反映|住户反映|，|。|；|;|\n|\r)/;
 
 function candidatesIn(value: string): string[] {
-  const cleaned = value.replace(/(?:我是|我家在|我住在|地址是|位于|住在)/g, '');
+  const cleaned = value.replace(/(?:我是|我家在|我住在|地址是|位于|住在|请处理)/g, '');
   const matches = [...cleaned.matchAll(ADDRESS_PATTERN)].map((match) => match[0].trim());
   return [...new Set(matches)];
 }

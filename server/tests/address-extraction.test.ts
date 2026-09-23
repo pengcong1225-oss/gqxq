@@ -43,12 +43,24 @@ test('extracts a bounded residential address and stops at resident narrative', (
   assert.equal(result?.sourceField, 'content');
 });
 
+test('starts the candidate at the address boundary after request wording', () => {
+  const result = extractAddressCandidate({
+    title: '地址诉求',
+    content: '请处理点军区联棚乡示例小区18号1301的居民诉求。',
+  });
+  assert.equal(result?.value, '点军区联棚乡示例小区18号1301');
+});
+
 test('returns no candidate when there is no reliable address or multiple distinct addresses', () => {
   assert.equal(extractAddressCandidate({ title: '报装催办', content: '何时可以安装？' }), null);
+  const first = '点军区联棚乡示例小区18号1301';
+  const second = '伍家岗区虚构乡另一个示例小区2号501';
+  assert.equal(extractAddressCandidate({ title: '单地址', content: first })?.value, first);
+  assert.equal(extractAddressCandidate({ title: '单地址', content: second })?.value, second);
   assert.equal(
     extractAddressCandidate({
       title: '两个地址',
-      content: '点军区联棚乡示例小区18号和伍家岗区虚构大道2号。',
+      content: `${first}，${second}`,
     }),
     null
   );
