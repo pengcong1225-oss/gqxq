@@ -248,13 +248,13 @@ function loadPolicy() {
   return import(pathToFileURL(join(SERVER, 'dist', 'auth', 'rolePolicy.js')).href);
 }
 
-/** 文档表格行编号：P 段是不走 role 的公开/机器端点，S/R/W/U/X 段应逐条对应策略表 */
+/** 文档表格行编号：P 段是不走 role 的公开/机器端点，S/R/W/U/D/X 段应逐条对应策略表 */
 function docEndpointIds() {
   const text = readFileSync(DOC, 'utf8');
   const ids = [];
   const pids = [];
   for (const line of text.split(/\r?\n/)) {
-    const m = /^\|\s*([PSRWUX]\d+)\s*\|/.exec(line.trim());
+    const m = /^\|\s*([DPSRWUX]\d+)\s*\|/.exec(line.trim());
     if (m === null) continue;
     (m[1][0] === 'P' ? pids : ids).push(m[1]);
   }
@@ -293,7 +293,7 @@ const WRITE_PROBES = [
  * 模式 B 的探测集（6 个端点，均在 /api/v1 私有前缀内）：
  * 它可能打**真实库**，而每一次 readonly 越权都会留一条 ACCESS_DENIED 审计，
  * 所以这里刻意压到最小集——3 读 + 2 写 + 1 管理面，够覆盖三档差异，
- * 又不像模式 A 那样把 40 条策略全 sweep 一遍。
+ * 又不像模式 A 那样把 45 条策略全 sweep 一遍。
  */
 const LIVE_READ_PROBES = ['/complaints?page=1&size=5', '/dashboard/overview', '/dispatch/orders?page=1&size=5'];
 const LIVE_WRITE_PROBES = [
@@ -507,7 +507,7 @@ async function runIsolated() {
   const policy = await loadPolicy();
   const { ids, pids } = docEndpointIds();
   pLines.push(sub() + 'ROLE_POLICY 条目 = ' + policy.ROLE_POLICY.length +
-    '；文档 S/R/W/U/X 端点行 = ' + ids.length + '；P 段（不走 role）= ' + pids.length);
+    '；文档 S/R/W/U/D/X 端点行 = ' + ids.length + '；P 段（不走 role）= ' + pids.length);
   const dupIds = ids.length !== new Set(ids).size;
   pLines.push(sub() + '文档编号重复 = ' + (dupIds ? '有（FAIL）' : '无'));
   const undeclaredHandler = policy.isAllowed({ id: 'X', username: 'x', roles: ['handler'] }, 'POST', '/brand-new-endpoint');

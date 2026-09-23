@@ -10,7 +10,7 @@ import {
   TeamOutlined, AppstoreOutlined, FireOutlined, PauseCircleOutlined,
   ToolOutlined, FilePdfOutlined, DatabaseOutlined, SettingOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined, LogoutOutlined, UserOutlined,
-  EnvironmentOutlined, FolderOpenOutlined
+  AuditOutlined, FolderOpenOutlined
 } from '@ant-design/icons';
 
 const { Header, Sider, Content } = Layout;
@@ -29,7 +29,7 @@ const R_ADMIN: AppRole[] = [ROLE_ADMIN];
 
 /**
  * 菜单档位口径（docs/2026-09-21-角色权限映射.md §1、§3.4、§3.5）：
- *   * 纯操作入口（地址纠偏 / 敏感交办 / 交办归档）只读档看不到；
+ *   * 纯操作入口（整体纠偏 / 敏感交办 / 交办归档）只读档看不到；
  *   * 字典管理与系统管理 admin 独占；
  *   * 其余是读页面，三档都留。
  *
@@ -40,7 +40,7 @@ const R_ADMIN: AppRole[] = [ROLE_ADMIN];
 const menuEntries: MenuEntry[] = [
   { key: '/dashboard', icon: <DashboardOutlined />, label: '数据大屏', roles: R_ALL },
   { key: '/complaints', icon: <FileTextOutlined />, label: '诉求管理', roles: R_ALL },
-  { key: '/address-correction', icon: <EnvironmentOutlined />, label: '地址纠偏', roles: R_WRITE },
+  { key: '/address-correction', icon: <AuditOutlined />, label: '整体纠偏', roles: R_WRITE },
   { key: '/analysis', icon: <BarChartOutlined />, label: '数据分析', roles: R_ALL },
   { key: '/dispatch', icon: <WarningOutlined />, label: '敏感交办', roles: R_WRITE },
   { key: '/dispatch/archive', icon: <FolderOpenOutlined />, label: '交办归档', roles: R_WRITE },

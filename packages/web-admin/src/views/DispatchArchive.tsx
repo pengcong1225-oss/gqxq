@@ -319,7 +319,7 @@ const DispatchArchive: React.FC = () => {
               navigate('/address-correction');
             }}
           >
-            前往纠偏待办
+            前往整体纠偏
           </Button>,
         ]}
         width={520}

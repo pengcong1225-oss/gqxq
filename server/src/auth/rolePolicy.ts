@@ -1,6 +1,6 @@
 // 角色 × 路由 × 方法 策略表 —— 后端鉴权的**唯一真源**。
 //
-// 与 docs/2026-09-21-角色权限映射.md 逐条对应（编号 P/S/R/W/U/X 保留在 desc 里，
+// 与 docs/2026-09-21-角色权限映射.md 逐条对应（编号 P/S/R/W/U/D/X 保留在 desc 里，
 // 便于文档与代码互相定位）。verify:rbac 会断言本表的条目数与文档端点数一致。
 //
 // 交付纪律（红线，改动前必读）：
@@ -64,7 +64,7 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   { method: 'GET', path: new RegExp('^/enterprises$'), roles: R, desc: 'R5 企业主数据列表' },
   { method: 'GET', path: new RegExp('^/enterprises/' + param + '$'), roles: R, desc: 'R6 企业详情' },
   { method: 'GET', path: new RegExp('^/dashboard/overview$'), roles: R, desc: 'R7 数据大屏' },
-  { method: 'GET', path: new RegExp('^/dicts/' + param + '/items$'), roles: R, desc: 'R8 字典项（只读；写接口本批不存在）' },
+  { method: 'GET', path: new RegExp('^/dicts/' + param + '/items$'), roles: R, desc: 'R8 通用字典项只读查询' },
   { method: 'GET', path: new RegExp('^/dispatch/orders$'), roles: R, desc: 'R9 交办列表' },
   { method: 'GET', path: new RegExp('^/dispatch/orders/' + param + '$'), roles: R, desc: 'R10 交办详情' },
   { method: 'GET', path: new RegExp('^/dispatch/orders/' + param + '/push-logs$'), roles: R, desc: 'R11 推送留痕' },
@@ -99,6 +99,11 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   { method: 'GET', path: new RegExp('^/users$'), roles: A, desc: 'U1 用户列表（原 501 桩已摘除）' },
   { method: 'POST', path: new RegExp('^/users$'), roles: A, desc: 'U2 建号（bcrypt 入库，口令不回显）' },
   { method: 'PATCH', path: new RegExp('^/users/' + param + '$'), roles: A, desc: 'U3 改角色/姓名/启停（无删除端点）' },
+  { method: 'GET', path: new RegExp('^/dicts/sensitive-words$'), roles: A, desc: 'D1 敏感词管理列表' },
+  { method: 'POST', path: new RegExp('^/dicts/sensitive-words$'), roles: A, desc: 'D2 新增敏感词' },
+  { method: 'PATCH', path: new RegExp('^/dicts/sensitive-words/' + param + '$'), roles: A, desc: 'D3 编辑/启停敏感词' },
+  { method: 'POST', path: new RegExp('^/dicts/sensitive-words/rescan-preview$'), roles: A, desc: 'D4 历史重扫预览' },
+  { method: 'POST', path: new RegExp('^/dicts/sensitive-words/rescan$'), roles: A, desc: 'D5 确认历史重扫' },
   { method: 'POST', path: new RegExp('^/external/tianbao/status-callback$'), roles: A, desc: 'X1 旧轮询回调（501 桩；它在 requireAuth 之后，仍需 Bearer）' },
 ];
 

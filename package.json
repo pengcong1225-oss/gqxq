@@ -6,9 +6,11 @@
   "scripts": {
     "typecheck": "npm --prefix server run typecheck && npm --prefix packages/web-admin run typecheck",
     "gate": "node server/scripts/gate-g1.mjs",
-    "verify": "npm run typecheck && npm run gate",
+    "verify": "npm run typecheck && npm run gate && npm run verify:sensitive-words && npm run verify:workflow-navigation",
     "verify:hardening": "npm --prefix server run verify:hardening",
     "verify:rbac": "npm --prefix server run verify:rbac",
+    "verify:workflow-navigation": "npm --prefix server run verify:workflow-navigation",
+    "verify:sensitive-words": "npm --prefix server run test:sensitive-words",
     "migrate:latest": "npm --prefix server run migrate:latest"
   }
 }

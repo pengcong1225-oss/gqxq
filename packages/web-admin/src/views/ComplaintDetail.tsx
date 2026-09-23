@@ -849,7 +849,7 @@ const ComplaintDetail: React.FC = () => {
             ) : (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="无定位信息（该诉求未提供坐标，可在地址纠偏中补全）"
+                description="无定位信息（该诉求未提供坐标，可在整体纠偏中补全）"
               />
             )}
           </Card>

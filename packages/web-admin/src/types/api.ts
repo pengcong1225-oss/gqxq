@@ -442,6 +442,38 @@ export interface DictItem {
   label: string;
 }
 
+export type SensitiveWordStatus = 'enabled' | 'disabled';
+
+export interface ManagedSensitiveWord {
+  itemId: string;
+  word: string;
+  label: string;
+  status: SensitiveWordStatus;
+  hitCount: number;
+}
+
+export interface SensitiveRescanSummary {
+  total: number;
+  wouldBecomeSensitive: number;
+  wouldBecomeNonSensitive: number;
+  keywordsChanged: number;
+  unchanged: number;
+}
+
+export interface SensitiveRescanPreview {
+  previewToken: string;
+  expiresAt: string;
+  fingerprint: string;
+  enabledWords: string[];
+  summary: SensitiveRescanSummary;
+}
+
+export interface SensitiveRescanExecution {
+  fingerprint: string;
+  updated: number;
+  summary: SensitiveRescanSummary;
+}
+
 /** 服务端已支持（未知名 404）；如后端新增字典类型，在此扩展即可 */
 
 /* ==================== G2 分配与分流（与 server/src/types/api.ts 对齐） ==================== */

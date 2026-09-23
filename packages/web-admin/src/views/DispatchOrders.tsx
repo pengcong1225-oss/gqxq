@@ -13,6 +13,7 @@ import {
   Space,
   Table,
   Tag,
+  Tabs,
   Timeline,
   Tooltip,
   Typography,
@@ -37,11 +38,15 @@ import {
   pushDispatch,
   repushDispatch,
 } from '../api/dispatch';
+import { listComplaints } from '../api/complaints';
 import { getDictItems } from '../api/dicts';
 import type {
   ApiError,
   ApprovalTraceItem,
   DictItem,
+  ComplaintListItem,
+  ComplaintListParams,
+  ComplaintListResult,
   DispatchOrderDetail,
   DispatchOrderListItem,
   DispatchOrderParams,
@@ -53,7 +58,7 @@ import type {
 } from '../types/api';
 
 /**
- * 敏感交办（真实接口驱动）。
+ * 敏感交办工作台（真实接口驱动）。
  *
  * 设计纪律：
  *  - 删除页面内本地 25 条 Mock 交办数组与所有假成功提示。
@@ -220,9 +225,243 @@ function fmtDateOnly(iso: string | null | undefined): string {
   return iso ? new Date(iso).toLocaleDateString('zh-CN') : '—';
 }
 
+/**
+ * “规则命中诉求”必须由服务端 is_sensitive 口径筛选。
+ * 这个构造器单独导出，是为了把最容易回退的边界（漏传 isSensitive）锁进自动化测试。
+ */
+export function buildSensitiveComplaintParams(
+  page: number,
+  size: number,
+  keyword?: string
+): ComplaintListParams {
+  return {
+    page,
+    size,
+    keyword: keyword === undefined || keyword.trim() === '' ? undefined : keyword.trim(),
+    isSensitive: 1,
+  };
+}
+
+interface SensitiveComplaintMatchesProps {
+  onOpenOrder: (assignmentId: string) => void;
+}
+
+/**
+ * 规则命中诉求与正式交办单是两个阶段：前者来自 complaint.is_sensitive，
+ * 后者来自 dispatch_order。本面板只呈现规则命中事实，不自动替用户生成交办单。
+ */
+const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ onOpenOrder }) => {
+  const navigate = useNavigate();
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(20);
+  const [keywordInput, setKeywordInput] = useState('');
+  const [keyword, setKeyword] = useState<string | undefined>();
+  const [data, setData] = useState<ComplaintListResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  const seqRef = useRef(0);
+
+  const params = useMemo(
+    () => buildSensitiveComplaintParams(page, size, keyword),
+    [page, size, keyword]
+  );
+
+  const load = useCallback(async (p: ComplaintListParams) => {
+    const seq = ++seqRef.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await listComplaints(p);
+      if (seq !== seqRef.current) return;
+      setData(res);
+    } catch (err) {
+      if (seq !== seqRef.current) return;
+      setError(err as ApiError);
+    } finally {
+      if (seq === seqRef.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load(params);
+  }, [load, params]);
+
+  const columns: ColumnsType<ComplaintListItem> = useMemo(
+    () => [
+      {
+        title: '诉求编号',
+        dataIndex: 'complaintNo',
+        width: 160,
+        fixed: 'left',
+        render: (value: string, row) => (
+          <a onClick={() => navigate('/complaints/' + row.id)}>{value}</a>
+        ),
+      },
+      {
+        title: '诉求标题',
+        dataIndex: 'title',
+        ellipsis: true,
+        render: (value: string) => <Tooltip title={value}>{value}</Tooltip>,
+      },
+      {
+        title: '命中敏感词',
+        dataIndex: 'sensitiveKeywords',
+        width: 220,
+        render: (words: string[]) =>
+          words.length > 0
+            ? words.map((word) => (
+                <Tag color="red" key={word}>
+                  {word}
+                </Tag>
+              ))
+            : DASH,
+      },
+      {
+        title: '紧急程度',
+        dataIndex: 'urgencyLevelName',
+        width: 100,
+        render: (value: string, row) => (
+          <Tag color={row.urgencyLevelCode === 'critical' ? 'red' : row.urgencyLevelCode === 'urgent' ? 'orange' : 'blue'}>
+            {value}
+          </Tag>
+        ),
+      },
+      {
+        title: '责任企业',
+        dataIndex: 'enterpriseName',
+        width: 180,
+        ellipsis: true,
+        render: (value: string | null) =>
+          value ? <Tooltip title={value}>{value}</Tooltip> : <Tag color="warning">待匹配</Tag>,
+      },
+      {
+        title: '督办状态',
+        dataIndex: 'supervisionStatusName',
+        width: 120,
+        render: (value: string, row) => (
+          <Tag color={row.supervisionStatusCode === 'pending_match' ? 'warning' : 'processing'}>
+            {value}
+          </Tag>
+        ),
+      },
+      {
+        title: '受理时间',
+        dataIndex: 'sourceReportedAt',
+        width: 165,
+        render: (value: string | null, row) => fmtDateTime(value ?? row.receivedAt),
+      },
+      {
+        title: '操作',
+        width: 250,
+        fixed: 'right',
+        render: (_: unknown, row) => (
+          <Space size={4} wrap>
+            <Button type="link" size="small" onClick={() => navigate('/complaints/' + row.id)}>
+              查看诉求
+            </Button>
+            {row.activeDispatchId ? (
+              <Button type="link" size="small" onClick={() => onOpenOrder(row.activeDispatchId as string)}>
+                查看交办
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => navigate('/address-correction?complaintId=' + encodeURIComponent(row.complaintId))}
+                >
+                  整体纠偏
+                </Button>
+                <Button type="link" size="small" onClick={() => navigate('/complaints')}>
+                  去诉求管理
+                </Button>
+              </>
+            )}
+          </Space>
+        ),
+      },
+    ],
+    [navigate, onOpenOrder]
+  );
+
+  const firstLoading = loading && data === null;
+
+  return (
+    <Card>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="这里展示规则命中的敏感诉求，不等于已经生成交办单"
+        description="数据按服务端 isSensitive=1 筛选；命中词来自入站规则引擎。责任单位未明确时先到「整体纠偏」确认，再由「诉求管理」人工决定是否交办。"
+      />
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Input.Search
+          placeholder="搜索诉求编号、标题或内容"
+          prefix={<SearchOutlined />}
+          value={keywordInput}
+          allowClear
+          style={{ width: 300 }}
+          onChange={(event) => {
+            setKeywordInput(event.target.value);
+            if (event.target.value === '') {
+              setKeyword(undefined);
+              setPage(1);
+            }
+          }}
+          onSearch={(value) => {
+            setKeyword(value.trim() === '' ? undefined : value.trim());
+            setPage(1);
+          }}
+        />
+        <Button icon={<ReloadOutlined />} onClick={() => void load(params)} loading={loading}>
+          刷新
+        </Button>
+      </Space>
+
+      {error ? (
+        <Result
+          status="error"
+          title="规则命中诉求加载失败"
+          subTitle={error.message}
+          extra={<Button type="primary" onClick={() => void load(params)}>重试</Button>}
+        />
+      ) : (
+        <Table<ComplaintListItem>
+          rowKey="complaintId"
+          columns={columns}
+          dataSource={data?.content ?? []}
+          loading={loading}
+          size="middle"
+          scroll={{ x: 1420 }}
+          locale={{ emptyText: firstLoading ? <span /> : <Empty description="暂无规则命中的敏感诉求" /> }}
+          pagination={{
+            current: page,
+            pageSize: size,
+            total: data?.total ?? 0,
+            showSizeChanger: true,
+            showTotal: (total) => '共 ' + total + ' 条规则命中诉求',
+            onChange: (nextPage, nextSize) => {
+              if (nextSize !== size) {
+                setSize(nextSize);
+                setPage(1);
+              } else {
+                setPage(nextPage);
+              }
+            },
+          }}
+        />
+      )}
+    </Card>
+  );
+};
+
 const DispatchOrders: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [activeView, setActiveView] = useState<'matches' | 'orders'>(
+    searchParams.get('assignmentId') ? 'orders' : 'matches'
+  );
 
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(20);
@@ -383,6 +622,7 @@ const DispatchOrders: React.FC = () => {
   const assignmentFromUrl = searchParams.get('assignmentId');
   useEffect(() => {
     if (assignmentFromUrl && assignmentFromUrl !== detailId) {
+      setActiveView('orders');
       void openDetail(assignmentFromUrl);
     }
   }, [assignmentFromUrl, detailId, openDetail]);
@@ -732,106 +972,132 @@ const DispatchOrders: React.FC = () => {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 16 }}>敏感诉求交办</h2>
-
+      <h2 style={{ marginBottom: 8 }}>敏感交办工作台</h2>
       <Alert
         type="info"
         showIcon
-        style={{ marginBottom: 16 }}
-        message="交办一律在诉求总账发起"
-        description="本页只展示已产生的交办记录及其进度，不提供第二次新建交办（设计文档第 2 节：进入敏感交办表示已完成交办决定）。如需交办，请到「诉求管理」对目标诉求操作。"
+        style={{ marginBottom: 12 }}
+        message="规则命中与正式交办分开呈现"
+        description="「规则命中诉求」按敏感规则筛选候选；「交办记录」只展示已经人工决定并生成的交办单。规则命中不会自动替代人工交办。"
+      />
+      <Tabs
+        activeKey={activeView}
+        onChange={(key) => setActiveView(key as 'matches' | 'orders')}
+        items={[
+          { key: 'matches', label: '规则命中诉求' },
+          { key: 'orders', label: '交办记录' },
+        ]}
       />
 
-      {dictError && (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={'状态字典加载失败：' + dictError}
-          description="状态筛选下拉的文案来自服务端字典；加载失败时下拉回退显示状态码本身，表格数据不受影响。"
+      {activeView === 'matches' ? (
+        <SensitiveComplaintMatches
+          onOpenOrder={(assignmentId) => {
+            setActiveView('orders');
+            void openDetail(assignmentId);
+          }}
         />
-      )}
+      ) : (
+        <>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="交办一律在诉求总账发起"
+            description="本列表只展示已产生的交办记录及其进度，不提供第二次新建交办。如需交办，请到「诉求管理」对目标诉求操作。"
+          />
 
-      <Card>
-        <Space style={{ marginBottom: 16 }} wrap>
-          <Input.Search
-            placeholder="搜索交办单号/诉求编号/标题"
-            prefix={<SearchOutlined />}
-            value={keywordInput}
-            allowClear
-            style={{ width: 280 }}
-            onChange={(e) => {
-              setKeywordInput(e.target.value);
-              if (e.target.value === '') {
-                setKeyword(undefined);
-                setPage(1);
-              }
-            }}
-            onSearch={(v) => {
-              setKeyword(v.trim() === '' ? undefined : v.trim());
-              setPage(1);
-            }}
-          />
-          <Select
-            mode="multiple"
-            placeholder="状态（可多选）"
-            allowClear
-            style={{ minWidth: 260 }}
-            options={statusFilterOptions}
-            value={statusFilter}
-            onChange={(v: DispatchOrderStatus[]) => {
-              setStatusFilter(v && v.length > 0 ? v : undefined);
-              setPage(1);
-            }}
-          />
-          <Button icon={<ReloadOutlined />} onClick={() => void load(params)} loading={loading}>
-            刷新
-          </Button>
-        </Space>
+          {dictError && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={'状态字典加载失败：' + dictError}
+              description="状态筛选下拉的文案来自服务端字典；加载失败时下拉回退显示状态码本身，表格数据不受影响。"
+            />
+          )}
 
-        {error ? (
-          <Result
-            status="error"
-            title="交办列表加载失败"
-            subTitle={error.message}
-            extra={
-              <Space>
-                <Button type="primary" onClick={() => void load(params)}>
-                  重试
-                </Button>
-                <Button onClick={() => navigate('/complaints')}>去诉求管理</Button>
-              </Space>
-            }
-          />
-        ) : (
-          <Table<DispatchOrderListItem>
-            rowKey="assignmentId"
-            columns={columns}
-            dataSource={data?.content ?? []}
-            loading={loading}
-            size="middle"
-            scroll={{ x: 1900 }}
-            locale={{
-              emptyText: firstLoading ? <span /> : <Empty description="暂无交办记录" />,
-            }}
-            pagination={{
-              current: page,
-              pageSize: size,
-              total: data?.total ?? 0,
-              showSizeChanger: true,
-              showTotal: (total) => '共 ' + total + ' 条交办单',
-              onChange: (nextPage, nextSize) => {
-                if (nextSize !== size) {
-                  setSize(nextSize);
+          <Card>
+            <Space style={{ marginBottom: 16 }} wrap>
+              <Input.Search
+                placeholder="搜索交办单号/诉求编号/标题"
+                prefix={<SearchOutlined />}
+                value={keywordInput}
+                allowClear
+                style={{ width: 280 }}
+                onChange={(e) => {
+                  setKeywordInput(e.target.value);
+                  if (e.target.value === '') {
+                    setKeyword(undefined);
+                    setPage(1);
+                  }
+                }}
+                onSearch={(v) => {
+                  setKeyword(v.trim() === '' ? undefined : v.trim());
                   setPage(1);
-                } else {
-                  setPage(nextPage);
+                }}
+              />
+              <Select
+                mode="multiple"
+                placeholder="状态（可多选）"
+                allowClear
+                style={{ minWidth: 260 }}
+                options={statusFilterOptions}
+                value={statusFilter}
+                onChange={(v: DispatchOrderStatus[]) => {
+                  setStatusFilter(v && v.length > 0 ? v : undefined);
+                  setPage(1);
+                }}
+              />
+              <Button icon={<ReloadOutlined />} onClick={() => void load(params)} loading={loading}>
+                刷新
+              </Button>
+            </Space>
+
+            {error ? (
+              <Result
+                status="error"
+                title="交办列表加载失败"
+                subTitle={error.message}
+                extra={
+                  <Space>
+                    <Button type="primary" onClick={() => void load(params)}>
+                      重试
+                    </Button>
+                    <Button onClick={() => navigate('/complaints')}>去诉求管理</Button>
+                  </Space>
                 }
-              },
-            }}
-          />
-        )}
-      </Card>
+              />
+            ) : (
+              <Table<DispatchOrderListItem>
+                rowKey="assignmentId"
+                columns={columns}
+                dataSource={data?.content ?? []}
+                loading={loading}
+                size="middle"
+                scroll={{ x: 1900 }}
+                locale={{
+                  emptyText: firstLoading ? <span /> : <Empty description="暂无交办记录" />,
+                }}
+                pagination={{
+                  current: page,
+                  pageSize: size,
+                  total: data?.total ?? 0,
+                  showSizeChanger: true,
+                  showTotal: (total) => '共 ' + total + ' 条交办单',
+                  onChange: (nextPage, nextSize) => {
+                    if (nextSize !== size) {
+                      setSize(nextSize);
+                      setPage(1);
+                    } else {
+                      setPage(nextPage);
+                    }
+                  },
+                }}
+              />
+            )}
+          </Card>
+        </>
+      )}
 
       {/* ---------- 详情 ---------- */}
       <Modal

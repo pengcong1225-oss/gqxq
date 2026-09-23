@@ -26,6 +26,7 @@ import {
   ThunderboltOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
+import { useSearchParams } from 'react-router-dom';
 import {
   confirmCorrection,
   generateCorrectionBatch,
@@ -39,7 +40,7 @@ import { listEnterprises } from '../api/enterprises';
 import type { CorrectionItem, EnterpriseListItem } from '../types/api';
 
 /**
- * 纠偏待办（真实接口驱动）。
+ * 整体纠偏工作台（真实接口驱动）。
  *
  * 口径（业主 2026-09-20 裁定，纠偏与交办是**并行两条轴**）：
  *  - 纠偏是**数据质量轴**，覆盖**所有**诉求，与是否交办、是否审批通过无关；
@@ -90,6 +91,8 @@ const DISPATCHED_OPTIONS: Array<{ label: string; value: DispatchedFilter | 'all'
 ];
 
 const AddressCorrection: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const deepLinkHandledRef = useRef<string | null>(null);
   // ---- 左侧队列 ----
   const [queue, setQueue] = useState<CorrectionItem[]>([]);
   const [queueTotal, setQueueTotal] = useState(0);
@@ -215,6 +218,15 @@ const AddressCorrection: React.FC = () => {
     [loadItems]
   );
 
+  /** 从规则命中诉求跳转时，自动定位并加载目标诉求；同一个 URL 只处理一次。 */
+  const complaintFromUrl = searchParams.get('complaintId');
+  useEffect(() => {
+    if (!complaintFromUrl || deepLinkHandledRef.current === complaintFromUrl) return;
+    deepLinkHandledRef.current = complaintFromUrl;
+    setGenId(complaintFromUrl);
+    selectComplaint(complaintFromUrl);
+  }, [complaintFromUrl, selectComplaint]);
+
   /** 确认/无需纠偏之后：刷新该诉求的纠偏项与左侧队列；若已闭环则提示进入分析库 */
   const afterDecision = useCallback(
     async (complaintId: string, analysisEntered?: boolean) => {
@@ -334,7 +346,7 @@ const AddressCorrection: React.FC = () => {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 8 }}>纠偏待办</h2>
+      <h2 style={{ marginBottom: 8 }}>整体纠偏</h2>
       <Alert
         type="info"
         showIcon
