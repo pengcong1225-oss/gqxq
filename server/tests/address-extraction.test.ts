@@ -70,6 +70,24 @@ test('keeps introduction wording out of the value and evidence without splicing 
   assert.equal(result?.evidence, '点军区联棚乡示例小区18号1301');
 });
 
+test('skips greeting and punctuation before an introduction', () => {
+  const result = extractAddressCandidate({
+    title: '地址诉求',
+    content: '您好，我是点军区联棚乡示例小区18号1301的居民',
+  });
+  assert.equal(result?.value, '点军区联棚乡示例小区18号1301');
+  assert.equal(result?.evidence, '点军区联棚乡示例小区18号1301');
+});
+
+test('skips leading whitespace before an introduction', () => {
+  const result = extractAddressCandidate({
+    title: '地址诉求',
+    content: '  我是点军区联棚乡示例小区18号1301的居民',
+  });
+  assert.equal(result?.value, '点军区联棚乡示例小区18号1301');
+  assert.equal(result?.evidence, '点军区联棚乡示例小区18号1301');
+});
+
 test('returns no candidate when there is no reliable address or multiple distinct addresses', () => {
   assert.equal(extractAddressCandidate({ title: '报装催办', content: '何时可以安装？' }), null);
   const first = '点军区联棚乡示例小区18号1301';

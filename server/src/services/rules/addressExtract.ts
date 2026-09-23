@@ -13,7 +13,7 @@ type AddressInput = { title: string; content: string | null };
 
 const ADDRESS_PATTERN = /(?<![\u4e00-\u9fff])[\u4e00-\u9fff]{2,}(?:区|县|市)[\u4e00-\u9fff]{1,8}(?:乡|镇|街道|街)[\u4e00-\u9fff]{0,15}(?:小区|社区|村)[\u4e00-\u9fff\d号栋幢单元室楼座-]{0,18}?\d{1,4}号\d{1,4}(?:室)?/g;
 const DOOR_REFERENCE_PATTERN = /\d{1,4}号\d{1,4}(?:室)?/g;
-const LEADING_INTRODUCTION = /^(?:本人居住在|本人住在|本人家住|本人居住于|本人住于|我是|我家在|我住在|家住|地址是|位于|住在|请处理)/;
+const LEADING_INTRODUCTION = /^\s*(?:(?:您好|你好)[，,、：:\s]*)?(?:本人居住在|本人住在|本人家住|本人居住于|本人住于|我是|我家在|我住在|家住|地址是|位于|住在|请处理)/;
 
 interface AddressMatch {
   value: string;
