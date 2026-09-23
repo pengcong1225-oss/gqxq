@@ -228,7 +228,9 @@ export function rowToListItem(r: ComplaintRow): ComplaintListItem {
   };
 }
 
-export function rowToDetail(r: ComplaintRow): ComplaintDetail {
+export type ComplaintDetailProjection = Omit<ComplaintDetail, 'addressCandidate'>;
+
+export function rowToDetail(r: ComplaintRow): ComplaintDetailProjection {
   return {
     ...rowToListItem(r),
     content: toStr(r.content),

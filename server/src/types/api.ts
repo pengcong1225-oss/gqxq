@@ -90,8 +90,7 @@ export interface ComplaintDetail extends ComplaintListItem {
 
   ruleConfidence: number | null;
   ruleVersion: string | null;
-  /** Optional on mapper-only projections; getComplaintDetail always supplies the field (including null). */
-  addressCandidate?: AddressCandidateView | null;
+  addressCandidate: AddressCandidateView | null;
 
   sourcePayload: Record<string, unknown> | null;
   sourcePayloadHash: string | null;

@@ -114,6 +114,10 @@ export function addressBackfillOutcome(summary: Pick<AddressBackfillSummary, 'to
   return 'partial';
 }
 
+export function positionItemsMatchSelection(itemsLoading: boolean, itemsComplaintId: string | null, selectedComplaintId: string | null): boolean {
+  return !itemsLoading && selectedComplaintId !== null && itemsComplaintId === selectedComplaintId;
+}
+
 export const AddressCandidateBackfillControls: React.FC<AddressCandidateBackfillControlsProps> = ({
   adminAccess: accessOverride, previewApi = previewAddressBackfill, executeApi = executeAddressBackfill,
 }) => {
@@ -210,6 +214,7 @@ const AddressCorrection: React.FC = () => {
   const summarySeqRef = useRef(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [items, setItems] = useState<CorrectionItem[]>([]);
+  const [itemsComplaintId, setItemsComplaintId] = useState<string | null>(null);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
   const [selectedInfoError, setSelectedInfoError] = useState<string | null>(null);
@@ -296,6 +301,8 @@ const AddressCorrection: React.FC = () => {
 
   const loadItems = useCallback(async (complaintId: string) => {
     const seq = ++itemsSeqRef.current;
+    setItems([]);
+    setItemsComplaintId(complaintId);
     setItemsLoading(true);
     setItemsError(null);
     try {
@@ -317,6 +324,10 @@ const AddressCorrection: React.FC = () => {
       const summarySeq = ++summarySeqRef.current;
       setSelectedComplaintId(complaintId);
       setDrawerOpen(true);
+      setItems([]);
+      setItemsComplaintId(null);
+      setPositionModalOpen(false);
+      positionForm.resetFields();
       const row = summary ?? queue.find((item) => item.complaintId === complaintId);
       setSelectedComplaintDetail(null);
       void getComplaint(complaintId).then((detail) => {
@@ -336,7 +347,7 @@ const AddressCorrection: React.FC = () => {
       }
       void loadItems(complaintId);
     },
-    [loadItems, queue]
+    [loadItems, queue, positionForm]
   );
 
   /** 从规则命中诉求跳转时，自动定位并加载目标诉求；同一个 URL 只处理一次。 */
@@ -467,7 +478,8 @@ const AddressCorrection: React.FC = () => {
   };
 
   const positionItems = POSITION_FIELDS.map((fieldName) => items.find((item) => item.fieldName === fieldName));
-  const canEditPositionGroup = Boolean(selectedComplaintInfo) && positionItems.every(Boolean) && positionItems.some((item) => item?.status === 'pending');
+  const positionItemsReady = positionItemsMatchSelection(itemsLoading, itemsComplaintId, selectedComplaintId);
+  const canEditPositionGroup = positionItemsReady && Boolean(selectedComplaintInfo) && positionItems.every(Boolean) && positionItems.some((item) => item?.status === 'pending');
 
   const openPositionGroup = () => {
     if (!canEditPositionGroup) return;
@@ -896,9 +908,9 @@ const AddressCorrection: React.FC = () => {
             <AddressCandidateCorrection
               sourceAddress={selectedComplaintDetail?.address ?? null}
               candidate={selectedComplaintDetail?.addressCandidate ?? null}
-              pending={positionItems[0]?.status === 'pending'}
-              onUse={() => {
-                if (positionItems[0]?.status === 'pending' && selectedComplaintDetail?.addressCandidate) {
+                    pending={positionItemsReady && positionItems[0]?.status === 'pending'}
+                    onUse={() => {
+                if (positionItemsReady && positionItems[0]?.status === 'pending' && selectedComplaintDetail?.addressCandidate) {
                   positionForm.setFieldsValue({ address: selectedComplaintDetail.addressCandidate.value });
                 }
               }}

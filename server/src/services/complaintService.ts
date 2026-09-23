@@ -222,14 +222,15 @@ export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetai
   const row = await findByIdOrNo(idOrNo);
   if (!row) throw AppError.notFound('诉求不存在');
   const candidate = await findAddressCandidate(pool, String(row.complaint_id));
-  const detail = rowToDetail(row);
-  detail.addressCandidate = candidate ? {
-    value: candidate.value,
-    evidence: candidate.evidence,
-    sourceField: candidate.sourceField,
-    extractorVersion: candidate.extractorVersion,
-  } : null;
-  return detail;
+  return {
+    ...rowToDetail(row),
+    addressCandidate: candidate ? {
+      value: candidate.value,
+      evidence: candidate.evidence,
+      sourceField: candidate.sourceField,
+      extractorVersion: candidate.extractorVersion,
+    } : null,
+  };
 }
 
 export interface TimelineResult {

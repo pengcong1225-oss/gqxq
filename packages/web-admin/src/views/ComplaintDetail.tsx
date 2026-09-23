@@ -106,6 +106,7 @@ export function sensitiveRuleScoreLabel(confidence: number | null, version: stri
   if (version?.includes('sensitive_word/0')) return '敏感词规则分值：词表为空，判定不可用';
   if (confidence == null) return '敏感词规则分值：—';
   const fixed = Math.round(confidence * 100);
+  if (fixed !== 72 && fixed !== 88) return '敏感词规则分值：历史数值 ' + fixed + '%（规则口径不可确认）';
   const outcome = fixed === 72 ? '未命中' : fixed === 88 ? '命中' : '规则结果';
   return '敏感词规则分值：' + outcome + '固定 ' + fixed + '%（非地址准确度）';
 }

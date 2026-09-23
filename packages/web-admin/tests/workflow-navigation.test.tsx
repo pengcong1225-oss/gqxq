@@ -249,4 +249,14 @@ test('敏感词规则分值明确为固定规则分值且空词表不可用', as
   assert.equal(typeof label, 'function');
   assert.equal(label?.(0.72, 'classify.v1+sensitive_word/3'), '敏感词规则分值：未命中固定 72%（非地址准确度）');
   assert.equal(label?.(0.72, 'classify.v1+sensitive_word/0'), '敏感词规则分值：词表为空，判定不可用');
+  assert.equal(label?.(0.6, 'historical-unknown'), '敏感词规则分值：历史数值 60%（规则口径不可确认）');
+});
+
+test('旧诉求的位置项不匹配新选择或仍在加载时不可用于候选采用', async () => {
+  const module = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
+  const matches = module.positionItemsMatchSelection as ((loading: boolean, itemsComplaintId: string | null, selectedId: string | null) => boolean) | undefined;
+  assert.equal(typeof matches, 'function');
+  assert.equal(matches?.(false, 'A', 'B'), false);
+  assert.equal(matches?.(true, 'B', 'B'), false);
+  assert.equal(matches?.(false, 'B', 'B'), true);
 });
