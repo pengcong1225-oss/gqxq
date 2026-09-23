@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
+import { JSDOM } from 'jsdom';
 import { createServer, type ViteDevServer } from 'vite';
 import type { CorrectionItem } from '../src/types/api';
 
@@ -21,6 +22,7 @@ globalThis.localStorage = {
 } as Storage;
 
 let vite: ViteDevServer;
+let dom: JSDOM;
 
 before(async () => {
   const webRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -54,15 +56,24 @@ test('整体纠偏页用覆盖全部字段的名称呈现', async () => {
   assert.doesNotMatch(html, />纠偏待办</);
 });
 
-test('存量地址候选入口明确提供预览，执行前按钮保持禁用', async () => {
-  const { default: AddressCorrection } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
-  const html = renderWithRouter(<AddressCorrection />, '/address-correction');
-  assert.match(html, /预览存量地址候选/);
-  assert.match(html, /确认执行存量补提取/);
-  const executeButton = html.match(/<button[^>]*>[\s\S]*?确认执行存量补提取[\s\S]*?<\/button>/)?.[0];
-  assert.ok(executeButton);
-  assert.match(executeButton, /disabled=""/);
-});
+function installDom(): void {
+  dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+  const globals: Record<string, unknown> = {
+    window: dom.window, document: dom.window.document, navigator: dom.window.navigator,
+    Element: dom.window.Element, HTMLElement: dom.window.HTMLElement, SVGElement: dom.window.SVGElement,
+    ShadowRoot: dom.window.ShadowRoot, Node: dom.window.Node,
+    MutationObserver: dom.window.MutationObserver, getComputedStyle: dom.window.getComputedStyle,
+    IS_REACT_ACT_ENVIRONMENT: true,
+    ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
+  };
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  }
+  dom.window.matchMedia = (() => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return false; } })) as typeof dom.window.matchMedia;
+  const computedStyle = dom.window.getComputedStyle.bind(dom.window);
+  dom.window.getComputedStyle = ((element: Element) => computedStyle(element)) as typeof dom.window.getComputedStyle;
+  Object.defineProperty(globalThis, 'getComputedStyle', { configurable: true, writable: true, value: dom.window.getComputedStyle });
+}
 
 test('待纠偏字段在抽屉中直接呈现可编辑值和逐项保存入口', async () => {
   const module = await vite.ssrLoadModule('/src/components/InlineCorrectionField.tsx').catch(() => ({}));
@@ -174,4 +185,38 @@ test('敏感词管理展示真实维护与安全重扫入口', async () => {
   assert.match(html, /历史证据行数/);
   assert.match(html, />预览历史重扫</);
   assert.doesNotMatch(html, /演示数据/);
+});
+
+test('存量地址候选先预览，取消不执行，确认后才调用执行 API', { concurrency: false }, async () => {
+  installDom();
+  const { render, screen, fireEvent, waitFor, cleanup } = await import('@testing-library/react');
+  const { message } = await import('antd');
+  const originalSuccess = message.success;
+  message.success = (() => Promise.resolve()) as typeof message.success;
+  const { AddressCandidateBackfillControls, addressBackfillOutcome } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
+  assert.equal(addressBackfillOutcome({ total: 4, failed: 0, errors: { scan: 0, row: 0, audit: 0 } }), 'success');
+  assert.equal(addressBackfillOutcome({ total: 4, failed: 1, errors: { scan: 0, row: 1, audit: 0 } }), 'partial');
+  assert.equal(addressBackfillOutcome({ total: 4, failed: 4, errors: { scan: 0, row: 2, audit: 2 } }), 'failed');
+  const preview = async () => ({ total: 4, extractable: 3, noCandidate: 1, created: 2, updated: 0, unchanged: 1, removed: 0, failed: 0,
+    errors: { scan: 0, row: 0, audit: 0 },
+    samples: [{ item: 1, action: 'create', sourceField: 'content', value: '[地址已脱敏]' }] });
+  const execute = async () => ({ total: 4, extractable: 3, noCandidate: 1, created: 2, updated: 0, unchanged: 2, removed: 0, failed: 0,
+    errors: { scan: 0, row: 0, audit: 0 } });
+  let executeCalls = 0;
+  const runExecute = async () => { executeCalls++; return execute(); };
+  const ui = render(<AddressCandidateBackfillControls adminAccess={{ can: true, tip: '' }} previewApi={preview} executeApi={runExecute} />);
+  try {
+    const executeButton = screen.getByRole('button', { name: '确认执行存量补提取' });
+    assert.equal((executeButton as HTMLButtonElement).disabled, true);
+    fireEvent.click(screen.getByRole('button', { name: '预览存量地址候选' }));
+    await screen.findByText(/预计写入\/移除/);
+    assert.equal((executeButton as HTMLButtonElement).disabled, false);
+    fireEvent.click(executeButton);
+    fireEvent.click(await screen.findByRole('button', { name: '取 消' }));
+    assert.equal(executeCalls, 0);
+    fireEvent.click(executeButton);
+    fireEvent.click(await screen.findByRole('button', { name: '确认执行', exact: true }));
+    await waitFor(() => assert.equal(executeCalls, 1));
+    assert.equal(await screen.findByText(/新增 2/).then(() => true), true);
+  } finally { ui.unmount(); cleanup(); message.success = originalSuccess; }
 });

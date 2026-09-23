@@ -41,7 +41,7 @@ import InlineCorrectionField from '../components/InlineCorrectionField';
 import { useWriteAccess, WriteGate } from '../stores/roleAccess';
 import { useAdminAccess } from '../stores/roleAccess';
 import { previewAddressBackfill, executeAddressBackfill } from '../api/addressCandidates';
-import type { AddressBackfillSummary } from '../api/addressCandidates';
+import type { AddressBackfillPreview, AddressBackfillSummary } from '../api/addressCandidates';
 
 /**
  * 整体纠偏工作台（真实接口驱动）。
@@ -82,6 +82,82 @@ const DISPATCHED_OPTIONS: Array<{ label: string; value: DispatchedFilter | 'all'
   { label: '已交办', value: 'dispatched' },
   { label: '未交办', value: 'undispatched' },
 ];
+
+interface AddressCandidateBackfillControlsProps {
+  adminAccess?: { can: boolean; tip: string };
+  previewApi?: () => Promise<AddressBackfillPreview>;
+  executeApi?: () => Promise<AddressBackfillSummary>;
+}
+
+export function addressBackfillOutcome(summary: Pick<AddressBackfillSummary, 'total' | 'failed' | 'errors'>): 'success' | 'partial' | 'failed' {
+  if (summary.failed === 0) return 'success';
+  if (summary.total === 0 || summary.errors.row + summary.errors.audit >= summary.total) return 'failed';
+  return 'partial';
+}
+
+export const AddressCandidateBackfillControls: React.FC<AddressCandidateBackfillControlsProps> = ({
+  adminAccess: accessOverride, previewApi = previewAddressBackfill, executeApi = executeAddressBackfill,
+}) => {
+  const hookAccess = useAdminAccess();
+  const adminAccess = accessOverride ?? hookAccess;
+  const [preview, setPreview] = useState<AddressBackfillPreview | null>(null);
+  const [execution, setExecution] = useState<AddressBackfillSummary | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [executeLoading, setExecuteLoading] = useState(false);
+
+  const doPreview = async () => {
+    setPreviewLoading(true);
+    setPreview(null);
+    setExecution(null);
+    try { setPreview(await previewApi()); }
+    catch (err) { setPreview(null); message.error('预览存量地址候选失败：' + errText(err)); }
+    finally { setPreviewLoading(false); }
+  };
+
+  const doExecute = () => {
+    if (!preview || !adminAccess.can || executeLoading) return;
+    const expectedWrites = preview.created + preview.updated + preview.removed;
+    Modal.confirm({
+      title: '确认执行存量地址候选补提取？',
+      content: '预览范围共 ' + preview.total + ' 条，预计写入或移除 ' + expectedWrites + ' 条。执行后仅更新机器候选，并记录操作审计。',
+      okText: '确认执行', cancelText: '取消',
+      onOk: async () => {
+        setExecuteLoading(true);
+        try {
+          const result = await executeApi();
+          setExecution(result);
+          const outcome = addressBackfillOutcome(result);
+          if (outcome === 'success') message.success('存量地址候选处理完成');
+          else if (outcome === 'failed') message.error('存量地址候选处理失败，共 ' + result.failed + ' 项');
+          else message.warning('存量地址候选部分完成，失败 ' + result.failed + ' 项');
+        } catch (err) { message.error('执行存量地址候选失败：' + errText(err)); }
+        finally { setExecuteLoading(false); }
+      },
+    });
+  };
+
+  return (
+    <Space direction="vertical" style={{ width: '100%' }}>
+      <Space wrap>
+        <Tooltip title={!adminAccess.can ? adminAccess.tip : undefined}>
+          <Button disabled={!adminAccess.can} loading={previewLoading} onClick={() => void doPreview()}>预览存量地址候选</Button>
+        </Tooltip>
+        <Tooltip title={!preview ? '请先完成预览' : !adminAccess.can ? adminAccess.tip : undefined}>
+          <Button type="primary" danger disabled={!adminAccess.can || !preview || executeLoading} loading={executeLoading}
+            onClick={doExecute}>确认执行存量补提取</Button>
+        </Tooltip>
+        {preview && <Descriptions size="small" column={4} title="预览结果">
+          <Descriptions.Item label="总数">{preview.total}</Descriptions.Item>
+          <Descriptions.Item label="可提取">{preview.extractable}</Descriptions.Item>
+          <Descriptions.Item label="无候选">{preview.noCandidate}</Descriptions.Item>
+          <Descriptions.Item label="预计写入/移除">{preview.created + preview.updated + preview.removed}</Descriptions.Item>
+        </Descriptions>}
+      </Space>
+      {preview?.samples.map((sample) => <span key={sample.item}>示例 {sample.item}：{sample.action}；来源 {sample.sourceField ?? '无'}；{sample.value}</span>)}
+      {execution && <Alert type={addressBackfillOutcome(execution) === 'success' ? 'success' : addressBackfillOutcome(execution) === 'failed' ? 'error' : 'warning'} showIcon message="执行结果" description={'新增 ' + execution.created + '，更新 ' + execution.updated + '，未变 ' + execution.unchanged + '，移除 ' + execution.removed + '，失败 ' + execution.failed + '（扫描 ' + execution.errors.scan + '，单条处理 ' + execution.errors.row + '，审计 ' + execution.errors.audit + '）'} />}
+    </Space>
+  );
+};
 
 const AddressCorrection: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -132,36 +208,8 @@ const AddressCorrection: React.FC = () => {
   const addressDraft = Form.useWatch('address', positionForm) as string | undefined;
   const writeAccess = useWriteAccess();
   const adminAccess = useAdminAccess();
-  const [candidatePreview, setCandidatePreview] = useState<AddressBackfillSummary | null>(null);
-  const [candidateBackfill, setCandidateBackfill] = useState<AddressBackfillSummary | null>(null);
-  const [candidatePreviewLoading, setCandidatePreviewLoading] = useState(false);
-  const [candidateExecuteLoading, setCandidateExecuteLoading] = useState(false);
   const [positionModalOpen, setPositionModalOpen] = useState(false);
   const [positionResult, setPositionResult] = useState<Array<{ label: string; ok: boolean; detail: string }>>([]);
-
-  const doCandidatePreview = async () => {
-    setCandidatePreviewLoading(true);
-    setCandidateBackfill(null);
-    try { setCandidatePreview(await previewAddressBackfill()); }
-    catch (err) { setCandidatePreview(null); message.error('预览存量地址候选失败：' + errText(err)); }
-    finally { setCandidatePreviewLoading(false); }
-  };
-
-  const doCandidateExecute = () => {
-    if (!candidatePreview || !adminAccess.can || candidateExecuteLoading) return;
-    const expectedWrites = candidatePreview.created + candidatePreview.updated + candidatePreview.removed;
-    Modal.confirm({
-      title: '确认执行存量地址候选补提取？',
-      content: '预览范围共 ' + candidatePreview.total + ' 条，预计写入或移除 ' + expectedWrites + ' 条。执行后仅更新机器候选，并记录操作审计。',
-      okText: '确认执行', cancelText: '取消',
-      onOk: async () => {
-        setCandidateExecuteLoading(true);
-        try { setCandidateBackfill(await executeAddressBackfill()); message.success('存量地址候选处理完成'); }
-        catch (err) { message.error('执行存量地址候选失败：' + errText(err)); }
-        finally { setCandidateExecuteLoading(false); }
-      },
-    });
-  };
 
   const fetchEnterprises = useCallback(async (keyword?: string) => {
     const seq = ++enterpriseSeqRef.current;
@@ -502,22 +550,7 @@ const AddressCorrection: React.FC = () => {
             forceRender: true,
             children: (
               <Space direction="vertical" style={{ width: '100%' }}>
-                <Space wrap>
-                  <Tooltip title={!adminAccess.can ? adminAccess.tip : undefined}>
-                    <Button disabled={!adminAccess.can} loading={candidatePreviewLoading} onClick={() => void doCandidatePreview()}>预览存量地址候选</Button>
-                  </Tooltip>
-                  <Tooltip title={!candidatePreview ? '请先完成预览' : undefined}>
-                    <Button type="primary" danger disabled={!adminAccess.can || !candidatePreview || candidateExecuteLoading} loading={candidateExecuteLoading}
-                      onClick={doCandidateExecute}>确认执行存量补提取</Button>
-                  </Tooltip>
-                  {candidatePreview && <Descriptions size="small" column={4} title="预览结果">
-                    <Descriptions.Item label="总数">{candidatePreview.total}</Descriptions.Item>
-                    <Descriptions.Item label="可提取">{candidatePreview.extractable}</Descriptions.Item>
-                    <Descriptions.Item label="无候选">{candidatePreview.noCandidate}</Descriptions.Item>
-                    <Descriptions.Item label="预计写入/移除">{candidatePreview.created + candidatePreview.updated + candidatePreview.removed}</Descriptions.Item>
-                  </Descriptions>}
-                  {candidateBackfill && <Alert type={candidateBackfill.failed ? 'warning' : 'success'} showIcon message="执行结果" description={'新增 ' + candidateBackfill.created + '，更新 ' + candidateBackfill.updated + '，未变 ' + candidateBackfill.unchanged + '，移除 ' + candidateBackfill.removed + '，失败 ' + candidateBackfill.failed} />}
-                </Space>
+                <AddressCandidateBackfillControls adminAccess={adminAccess} />
                 <Space wrap>
                 <Input
                   placeholder="诉求编号或 ID（补生成纠偏项）"
