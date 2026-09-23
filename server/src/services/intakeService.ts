@@ -19,6 +19,7 @@ import { insertSourceLog, type Queryable, type IntakeResultCode } from '../repos
 import { insertFieldVersions, toFieldText, type FieldVersionEntry } from '../repositories/complaintFieldVersionRepo';
 import { insertAudit } from '../repositories/auditLogRepo';
 import { recordSensitiveHits } from '../repositories/sensitiveHitRepo';
+import { syncAddressCandidate } from '../repositories/addressCandidateRepo';
 import { buildRuleText, classify, CLASSIFY_RULE_VERSION, type Classification } from './rules/classify';
 import { detectSensitive, type SensitiveResult } from './rules/sensitive';
 import type { IntakeResponse } from '../types/api';
@@ -347,6 +348,8 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
     throw err;
   }
 
+  await syncAddressCandidate(tx, complaintId, { title: cmd.title, content: cmd.content });
+
   const message = buildMessage([unknownFieldNotice(cmd.payload, KNOWN_REQUEST_KEYS)]);
   await insertSourceLog(tx, {
     sourceSystem: cmd.sourceSystem,
@@ -542,6 +545,10 @@ async function applyRedelivery(
   } else {
     // 报文变了但白名单列无实际变化：只对齐 updated_at，不做其它写入
     await tx.execute('update complaint set updated_at = ? where complaint_id = ?', [receivedAt, complaintId]);
+  }
+
+  if (changedColumns.includes('title') || changedColumns.includes('content')) {
+    await syncAddressCandidate(tx, complaintId, { title: cmd.title, content: cmd.content });
   }
 
   const insertedVersions = await insertFieldVersions(tx, fieldVersions);
