@@ -5,6 +5,22 @@ export interface AddressCandidate extends ExtractedAddressCandidate {
   inputHash: string;
 }
 
+export type AddressCandidateSyncResult = 'created' | 'updated' | 'unchanged' | 'removed' | 'none';
+
+export function classifyAddressCandidateChange(
+  existing: AddressCandidate | null,
+  extracted: ExtractedAddressCandidate | null,
+  inputHash: string
+): AddressCandidateSyncResult {
+  if (!extracted) return existing ? 'removed' : 'none';
+  if (!existing) return 'created';
+  return existing.inputHash === inputHash && existing.extractorVersion === extracted.extractorVersion &&
+    existing.value === extracted.value && existing.evidence === extracted.evidence &&
+    existing.sourceField === extracted.sourceField && existing.districtCode === extracted.districtCode &&
+    existing.parentMatch === extracted.parentMatch && existing.snapshotId === extracted.snapshotId
+    ? 'unchanged' : 'updated';
+}
+
 interface AddressCandidateRow extends Record<string, unknown> {
   complaintId: unknown;
   candidateText: unknown;
@@ -50,23 +66,20 @@ export async function syncAddressCandidate(
   db: Queryable,
   complaintId: string,
   input: { title: string; content: string | null }
-): Promise<'created' | 'updated' | 'unchanged' | 'removed' | 'none'> {
+): Promise<AddressCandidateSyncResult> {
   const extracted = extractAddressCandidate(input);
   const existing = await findAddressCandidate(db, complaintId);
-  if (!extracted) {
-    if (!existing) return 'none';
+  const inputHash = addressInputHash(input);
+  const change = classifyAddressCandidateChange(existing, extracted, inputHash);
+  if (change === 'none' || change === 'unchanged') return change;
+  if (change === 'removed') {
     await db.execute('delete from complaint_address_candidate where complaint_id = ?', [complaintId]);
     return 'removed';
   }
-  const inputHash = addressInputHash(input);
-  const same = existing?.inputHash === inputHash && existing.extractorVersion === extracted.extractorVersion &&
-    existing.value === extracted.value && existing.evidence === extracted.evidence && existing.sourceField === extracted.sourceField &&
-    existing.districtCode === extracted.districtCode && existing.parentMatch === extracted.parentMatch &&
-    existing.snapshotId === extracted.snapshotId;
-  if (same) return 'unchanged';
+  if (!extracted) throw new Error('address candidate classification requires an extracted candidate');
   const values = [complaintId, extracted.value, extracted.evidence, extracted.sourceField, extracted.extractorVersion, inputHash,
     extracted.districtCode, extracted.parentMatch, extracted.snapshotId];
-  if (!existing) {
+  if (change === 'created') {
     await db.execute(
       'insert into complaint_address_candidate ' +
       '(complaint_id, candidate_text, evidence_text, source_field, extractor_version, input_hash, district_code, parent_match, snapshot_id)' +

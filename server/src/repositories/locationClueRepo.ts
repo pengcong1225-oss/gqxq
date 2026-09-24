@@ -66,6 +66,16 @@ function sameMachineSet(before: LocationClueRow[], next: ExtractedLocationClue[]
   });
 }
 
+export function classifyLocationClueChange(
+  before: LocationClueRow[], next: ExtractedLocationClue[], inputHash: string
+): LocationSyncResult {
+  if (!before.length && !next.length) return 'none';
+  if (sameMachineSet(before, next, inputHash)) return 'unchanged';
+  if (!before.length) return 'created';
+  if (!next.length) return 'removed';
+  return 'updated';
+}
+
 async function insertMachineClue(
   db: Queryable,
   complaintId: string,
@@ -89,9 +99,9 @@ export async function syncLocationClues(
   const next = extractLocation(input).clues;
   const inputHash = addressInputHash(input);
   const before = await findLocationClues(db, complaintId);
-  if (!before.length && !next.length) return 'none';
-  if (sameMachineSet(before, next, inputHash)) return 'unchanged';
+  const change = classifyLocationClueChange(before, next, inputHash);
+  if (change === 'none' || change === 'unchanged') return change;
   await db.execute('delete from complaint_location_clue where complaint_id = ?', [complaintId]);
   for (const clue of next) await insertMachineClue(db, complaintId, clue, inputHash);
-  return before.length ? (next.length ? 'updated' : 'removed') : (next.length ? 'created' : 'none');
+  return change;
 }

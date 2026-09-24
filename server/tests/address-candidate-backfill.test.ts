@@ -75,15 +75,22 @@ test('audit insertion failure rolls back that row candidate and increments audit
   const { executeAddressCandidateBackfill } = await import('../src/services/addressCandidateBackfillService');
   const { pool } = await import('../src/db/pool');
   const db = new BackfillFake();
-  db.failAudit = true;
+  db.rows = [
+    { complaintId: 'C1', title: '燃气安装', content: '点军区联棚乡示例小区18号1301的居民反映进度。' },
+    { complaintId: 'C2', title: '核查', content: '联棚乡居民来电。' },
+  ];
+  db.failAuditFor = 'C1';
   const restore = installFake(pool, db);
   try {
     const result = await executeAddressCandidateBackfill({ userId: 'a1', userName: 'Admin', clientIp: null });
     assert.equal(db.candidates.has('C1'), false);
-    assert.equal(db.clues.length, 0);
-    assert.equal(db.audits.length, 0);
+    assert.equal(db.clues.some((clue) => clue.complaintId === 'C1'), false);
+    assert.ok(db.clues.some((clue) => clue.complaintId === 'C2' && clue.value === '联棚乡'));
+    assert.equal(db.audits.length, 1);
+    assert.equal(db.audits[0][6], 'C2');
     assert.equal(result.failed, 1);
     assert.deepEqual(result.errors, { scan: 0, row: 0, audit: 1 });
+    assert.equal(result.clueCreated, 1);
   } finally { restore(); }
 });
 
@@ -176,6 +183,58 @@ test('a version or snapshot change is counted as a planned recomputation', { con
   } finally { restore(); }
 });
 
+test('a complaint deleted after scan is accounted as an isolated row failure', { concurrency: false }, async () => {
+  const { executeAddressCandidateBackfill } = await import('../src/services/addressCandidateBackfillService');
+  const { pool } = await import('../src/db/pool');
+  const db = new BackfillFake();
+  db.rows = [{ complaintId: 'C1', title: '燃气安装', content: '点军区联棚乡示例小区18号1301的居民反映进度。' }];
+  db.deletedBeforeLockId = 'C1';
+  const restore = installFake(pool, db);
+  try {
+    const result = await executeAddressCandidateBackfill({ userId: 'a1', userName: 'Admin', clientIp: null });
+    assert.equal(result.total, 1);
+    assert.equal(result.failed, 1);
+    assert.equal(result.errors.row, 1);
+    assert.equal(result.created + result.updated + result.unchanged + result.removed, 0);
+    assert.equal(result.clueCreated + result.clueUpdated + result.clueUnchanged + result.clueRemoved, 0);
+  } finally { restore(); }
+});
+
+test('obsolete address candidate is counted for version recomputation even when the new extractor removes it', { concurrency: false }, async () => {
+  const { previewAddressCandidateBackfill } = await import('../src/services/addressCandidateBackfillService');
+  const { pool } = await import('../src/db/pool');
+  const db = new BackfillFake();
+  const input = { title: '核查', content: '请尽快处理。' };
+  db.rows = [{ complaintId: 'C1', ...input }];
+  db.candidates.set('C1', {
+    complaintId: 'C1', candidateText: '旧候选地址', evidenceText: '旧候选地址', sourceField: 'content',
+    extractorVersion: 'old-address-version', inputHash: addressInputHash(input), districtCode: null,
+    parentMatch: 'unresolved', snapshotId: 'old-snapshot',
+  });
+  const restore = installFake(pool, db);
+  try {
+    const preview = await previewAddressCandidateBackfill();
+    assert.equal(preview.removed, 1);
+    assert.equal(preview.recomputedForVersion, 1);
+  } finally { restore(); }
+});
+
+test('preview and repository synchronization share address and clue action classification', { concurrency: false }, async () => {
+  const { classifyAddressCandidateChange } = await import('../src/repositories/addressCandidateRepo');
+  const { classifyLocationClueChange } = await import('../src/repositories/locationClueRepo');
+  const { extractAddressCandidate } = await import('../src/services/rules/addressExtract');
+  const { extractLocation } = await import('../src/services/rules/locationExtract');
+  const input = { title: '核查', content: '点军区联棚乡示例小区18号1301的居民反映进度。' };
+  const hash = addressInputHash(input);
+  const address = extractAddressCandidate(input)!;
+  assert.equal(classifyAddressCandidateChange({ ...address, inputHash: hash }, address, hash), 'unchanged');
+  assert.equal(classifyAddressCandidateChange({ ...address, value: '另一个旧候选', inputHash: hash }, address, hash), 'updated');
+  const clues = extractLocation(input).clues;
+  const stored = clues.map((clue) => ({ ...clue, inputHash: hash }));
+  assert.equal(classifyLocationClueChange(stored, clues, hash), 'unchanged');
+  assert.equal(classifyLocationClueChange(stored, clues, 'stale-hash'), 'updated');
+});
+
 function installFake(pool: import('mysql2/promise').Pool, db: BackfillFake): () => void {
   const originalConnection = pool.getConnection;
   const originalQuery = pool.query;
@@ -200,6 +259,8 @@ class BackfillFake {
   failAfterFirstScan = false;
   scanCalls = 0;
   failAudit = false;
+  failAuditFor: string | null = null;
+  deletedBeforeLockId: string | null = null;
   transactionCandidates: Map<string, Record<string, unknown>> | null = null;
   transactionSnapshot: { candidates: Map<string, Record<string, unknown>>; clues: Array<Record<string, unknown>>; audits: unknown[][] } | null = null;
   async beginTransaction() { this.transactionCandidates = new Map(this.candidates); this.transactionSnapshot = {
@@ -226,9 +287,11 @@ class BackfillFake {
     if (sql.includes('from complaint where complaint_id =') && sql.includes('for update')) {
       if (this.updateBeforeLock && !this.updated) this.updated = true;
       const id = String(values[0]);
-      return [[{ complaintId: id, title: '燃气安装', content: id === 'C1'
-        ? (this.updated ? '点军区联棚乡示例小区19号1301的居民反映进度。' : '点军区联棚乡示例小区18号1301的居民反映进度。')
-        : '请尽快处理。' }], []];
+      if (id === this.deletedBeforeLockId) return [[], []];
+      const row = this.rows.find((candidate) => candidate.complaintId === id);
+      if (!row) return [[], []];
+      return [[{ ...row, content: id === 'C1' && this.updated
+        ? '点军区联棚乡示例小区19号1301的居民反映进度。' : row.content }], []];
     }
     if (sql.includes('from complaint_address_candidate')) {
       return [this.candidates.has(String(values[0])) ? [this.candidates.get(String(values[0]))] : [], []];
@@ -245,7 +308,7 @@ class BackfillFake {
   async execute(sql: string, values: unknown[] = []): Promise<[unknown, unknown]> {
     this.writes++;
     if (sql.includes('insert into operation_audit_log')) {
-      if (this.failAudit) throw new Error('audit insert failed');
+      if (this.failAudit || values[6] === this.failAuditFor) throw new Error('audit insert failed');
       this.audits.push(values);
     }
     if (sql.includes('insert into complaint_address_candidate')) this.candidates.set(String(values[0]), {
