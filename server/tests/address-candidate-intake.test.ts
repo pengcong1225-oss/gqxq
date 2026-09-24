@@ -11,7 +11,7 @@ class MemoryConnection {
   candidateWrites = 0;
   clueWrites = 0;
   failCandidateWrite = false;
-  failClueWrite = false;
+  failClueWriteAfterMutation = false;
   snapshot: { complaint: Record<string, unknown> | null; candidate: Record<string, unknown> | null; clues: Array<Record<string, unknown>> } | null = null;
 
   async beginTransaction(): Promise<void> {
@@ -78,7 +78,6 @@ class MemoryConnection {
     }
     if (sql.includes('complaint_location_clue')) {
       this.clueWrites++;
-      if (this.failClueWrite) throw new Error('clue write failed');
       if (sql.startsWith('delete')) this.clues = [];
       else if (sql.startsWith('insert')) {
         this.clues.push({
@@ -86,6 +85,10 @@ class MemoryConnection {
           start: values[5], end: values[6], townshipCode: values[7], districtCode: values[8], parentMatch: values[9],
           extractorVersion: values[10], snapshotId: values[11], inputHash: values[12],
         });
+        if (this.failClueWriteAfterMutation) {
+          this.failClueWriteAfterMutation = false;
+          throw new Error('clue write failed after insert');
+        }
       }
       return [{ affectedRows: 1 }, []];
     }
@@ -145,6 +148,7 @@ test('changed redelivery updates or clears candidate without touching source or 
   }), { receivedAt: new Date('2026-09-23T04:02:00Z') });
   assert.equal(connection.candidate?.candidateText, '点军区联棚乡示例小区19号1301');
   assert.equal(connection.clues.some((clue) => clue.kind === 'settlement' && clue.value === '示例小区19号1301'), true);
+  assert.equal(connection.clues.some((clue) => clue.kind === 'settlement' && clue.value === '示例小区18号1301'), false);
   assert.equal(connection.complaint?.address, sourceAddress);
   assert.equal(connection.complaint?.corrected_address, '人工纠偏地址');
   await intakeAppeal(command({ title: '燃气安装', content: '什么时候可以安装？', payloadHash: 'redelivery-without-address' }),
@@ -157,16 +161,22 @@ test('changed redelivery updates or clears candidate without touching source or 
 
 test('clue write failure rolls back complaint, candidate, and clue changes', async () => {
   const { intakeAppeal } = await import('../src/services/intakeService');
+  connection.clues = [{
+    complaintId: String(connection.complaint!.complaint_id), kind: 'township', value: '联棚乡', evidence: '联棚乡',
+    sourceField: 'content', start: 0, end: 3, townshipCode: '420504202', districtCode: '420504',
+    parentMatch: 'unique_township', extractorVersion: 'location-extract.v1', snapshotId: 'official-20260923',
+    inputHash: 'prior-clue-hash',
+  }];
   const originalComplaint = { ...connection.complaint! };
   const originalCandidate = connection.candidate ? { ...connection.candidate } : null;
   const originalClues = connection.clues.map((clue) => ({ ...clue }));
-  connection.failClueWrite = true;
+  assert.notDeepEqual(originalClues, []);
+  connection.failClueWriteAfterMutation = true;
   await assert.rejects(
     intakeAppeal(command({ title: '新增投诉', content: '点军区联棚乡示例小区20号1301的居民反映。', payloadHash: 'rollback-test' }),
       { receivedAt: new Date('2026-09-23T04:04:00Z') }),
-    /clue write failed/
+    /clue write failed after insert/
   );
-  connection.failClueWrite = false;
   assert.deepEqual(connection.complaint, originalComplaint);
   assert.deepEqual(connection.candidate, originalCandidate);
   assert.deepEqual(connection.clues, originalClues);
