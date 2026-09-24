@@ -114,11 +114,25 @@ test('does not accept intervening complaint prose as part of a settlement name',
   assert.equal(result.clues.some((candidate) => candidate.kind === 'settlement'), false);
 });
 
+test('does not accept clause prose before a township-associated settlement suffix', () => {
+  const result = extractLocation({ title: '地址核查', content: '我是联棚乡群众告知示例家园18号1301' });
+  assert.equal(result.clues.some((candidate) => candidate.kind === 'settlement'), false);
+});
+
 test('recognizes a directly bounded settlement name following a township', () => {
   const result = extractLocation({ title: '地址核查', content: '我是联棚乡示例家园18号1301' });
   const settlement = result.clues.find((candidate) => candidate.kind === 'settlement');
   assert.equal(settlement?.evidence, '示例家园18号1301');
   assert.equal(settlement?.townshipCode, '420504202');
+});
+
+test('extracts an unparented settlement after the supported 我住在 introduction', () => {
+  const text = '我住在示例社区';
+  const result = extractLocation({ title: '地址核查', content: text });
+  const settlement = result.clues.find((candidate) => candidate.kind === 'settlement');
+  assert.equal(settlement?.evidence, '示例社区');
+  assert.equal(text.slice(settlement!.start, settlement!.end), '示例社区');
+  assert.equal(settlement?.parentMatch, 'unresolved');
 });
 
 test('does not treat a district mentioned elsewhere in the field as the township parent', () => {

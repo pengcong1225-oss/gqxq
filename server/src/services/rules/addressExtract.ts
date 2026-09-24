@@ -15,8 +15,7 @@ export interface ExtractedAddressCandidate {
 
 export interface AddressInput { title: string; content: string | null }
 
-const SETTLEMENT_PROSE = '居民|投诉|反映|举报|催促|要求|请求|希望|请问|询问|表示|已经|尽快|安装|维修|办理|处理|问题|诉求|报装|居住在|住在|所在|地址';
-const SETTLEMENT = `(?:(?!(?:${SETTLEMENT_PROSE}))[\\u4e00-\\u9fff]){1,12}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)`;
+const SETTLEMENT = '[\\u4e00-\\u9fff]{1,2}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)';
 const DOOR = '(?:[0-9一二三四五六七八九十百]{1,5}号[0-9]{1,4}(?:室)?|[0-9]{1,4}栋[0-9]{1,4}(?:单元)?[0-9]{1,4}室)';
 const RESIDENT_CONNECTOR = '(?:居民)?(?:居住在|住在)';
 const DOOR_REFERENCE_PATTERN = /\d{1,4}号\d{1,4}(?:室)?/g;
@@ -46,7 +45,8 @@ function addressPattern(): RegExp {
   const explicit = `(?:${counties.join('|')})(?:${names})(?:${RESIDENT_CONNECTOR}${townshipSuffix}|${townshipSuffix})`;
   const unique = `(?:${names})(?:${RESIDENT_CONNECTOR}${townshipSuffix}|${townshipSuffix})`;
   const fallback = `(?:${counties.join('|')})[\\u4e00-\\u9fff]{1,8}(?:乡|镇|街道|街)(?:${RESIDENT_CONNECTOR}${townshipSuffix}|${townshipSuffix})`;
-  return new RegExp(`(?<![\\u4e00-\\u9fff])(?:${explicit}|${unique}|${fallback})`, 'g');
+  const unparented = `(?:${townshipSuffix})`;
+  return new RegExp(`(?<![\\u4e00-\\u9fff])(?:${explicit}|${unique}|${fallback}|${unparented})`, 'g');
 }
 
 function candidatesIn(value: string): AddressMatch[] {
@@ -62,10 +62,11 @@ function candidatesIn(value: string): AddressMatch[] {
     const connector = town ? new RegExp(`^${RESIDENT_CONNECTOR}`).exec(match[0].slice(townshipEnd)) : null;
     const valueOffset = townshipEnd + (connector?.[0].length ?? 0);
     const value = connector ? match[0].slice(valueOffset) : match[0];
+    const unparented = !town && !county;
     const parentConflict = town !== undefined && county !== undefined && town.countyCode !== county.code;
     return {
       value,
-      start: offset + match.index! + (connector ? valueOffset : 0),
+      start: offset + match.index! + (connector || unparented ? valueOffset : 0),
       end: offset + match.index! + match[0].length,
       townshipCode: town?.code ?? null,
       districtCode: county?.code ?? town?.countyCode ?? null,
@@ -105,7 +106,7 @@ export function extractAddressCandidate(input: AddressInput): ExtractedAddressCa
     sourceField,
     extractorVersion: ADDRESS_EXTRACTOR_VERSION,
     districtCode: selectedMatch.districtCode,
-    parentMatch: selectedMatch.explicitDistrict ? 'explicit' : 'unique_township',
+    parentMatch: selectedMatch.explicitDistrict ? 'explicit' : selectedMatch.townshipCode ? 'unique_township' : 'unresolved',
     snapshotId: getTownshipSnapshot().snapshotId,
   };
 }

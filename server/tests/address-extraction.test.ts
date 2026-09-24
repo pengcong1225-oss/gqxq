@@ -77,9 +77,21 @@ test('rejects prose between a township and a settlement suffix instead of treati
   );
 });
 
+test('rejects an unbounded clause between a township and a settlement suffix', () => {
+  assert.equal(
+    extractAddressCandidate({ title: '地址核查', content: '我是联棚乡群众告知示例家园18号1301' }),
+    null
+  );
+});
+
 test('still extracts a directly bounded settlement name after the township', () => {
   const result = extractAddressCandidate({ title: '地址核查', content: '我是联棚乡示例家园18号1301' });
   assert.equal(result?.value, '联棚乡示例家园18号1301');
+});
+
+test('extracts an unparented settlement after an explicit leading location introduction', () => {
+  const result = extractAddressCandidate({ title: '地址核查', content: '我住在示例社区18号1301' });
+  assert.equal(result?.value, '示例社区18号1301');
 });
 
 test('maps a legacy stored address candidate without invented location metadata', async () => {
@@ -143,7 +155,7 @@ test('skips leading whitespace before an introduction', () => {
 test('returns no candidate when there is no reliable address or multiple distinct addresses', () => {
   assert.equal(extractAddressCandidate({ title: '报装催办', content: '何时可以安装？' }), null);
   const first = '点军区联棚乡示例小区18号1301';
-  const second = '伍家岗区虚构乡另一个示例小区2号501';
+  const second = '伍家岗区虚构乡示例小区2号501';
   assert.equal(extractAddressCandidate({ title: '单地址', content: first })?.value, first);
   assert.equal(extractAddressCandidate({ title: '单地址', content: second })?.value, second);
   assert.equal(
