@@ -39,6 +39,7 @@ const DOOR_SUFFIX = /^(?:[0-9一二三四五六七八九十百]{1,5}号[0-9]{1,4
 const SETTLEMENT_INTRODUCTION = /^(?:(?:您好|你好)[，,、：:\s]*)?(?:本人居住在|本人住在|本人家住|本人居住于|本人住于|我是|我家在|我住在|家住|地址是|位于|住在)/;
 const SHORT_DOOR_INTRODUCTION = /^(?:实际(?:是|为)|准确(?:地址|门牌)?(?:是|为)|门牌(?:号)?(?:是|为)|更正(?:为|成)|具体(?:是|为)|应为|应该是)[，,：:\s]*/;
 const REJECTED_LOCATION_CLAUSE = /^(?:原来|以前|过去|曾经|之前|旧址|不是|并非|不在|非|没有|无关|不属于)/;
+const REJECTED_LOCATION_SUFFIX = /^\s*(?:(?:是|为)(?:旧址|原地址|以前地址|历史地址)|(?:原来|以前|过去|曾经|之前)(?:的)?地址)/;
 const COMPLAINT_LOCATION_CLAUSE = /^(?:(?:居民|群众|本人|我)?(?:投诉|举报|反映|咨询|告知|要求|请求|催促|建议|希望|询问|追问))/;
 const CLAUSE_BOUNDARY = /[^，,。；;：:\n]+/g;
 
@@ -140,6 +141,7 @@ function extractBoundedClues(input: { title: string; content: string | null }, s
       if (!settlement || isRejectedLocationContext(text, start)) continue;
       const afterName = start + settlement[0].length;
       const door = DOOR_SUFFIX.exec(text.slice(afterName, clauseEnd))?.[0] ?? '';
+      if (REJECTED_LOCATION_SUFFIX.test(text.slice(afterName + door.length, clauseEnd))) continue;
       const hasEarlierNamedLocation = found.some((item) => item.sourceField === field.name && item.kind === 'settlement' && item.end <= start);
       const isStandaloneAddressClause = candidateOffset === firstTextOffset && !introduction &&
         candidateText.trim() === `${settlement[0]}${door}` && Boolean(door);

@@ -279,6 +279,15 @@ test('does not promote complaint, historical, negative, or old-address clauses t
   }
 });
 
+test('does not treat a second named address followed by an old-address label as current', () => {
+  for (const suffix of ['是旧址', '为原地址', '是以前地址']) {
+    const content = `联棚乡示例家园18号1301，样例社区20号1301${suffix}`;
+    const result = extractLocation({ title: '地址核查', content });
+    assert.equal(result.conflict, false, suffix);
+    assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => clue.evidence), ['示例家园18号1301'], suffix);
+  }
+});
+
 test('treats a no-door mention of the same named settlement as compatible with its full address', () => {
   const result = extractLocation({ title: '地址核查', content: '联棚乡示例家园18号1301，示例家园燃气还没装' });
   assert.equal(result.conflict, false);
