@@ -79,6 +79,22 @@ export interface AddressCandidateView {
   evidence: string;
   sourceField: 'title' | 'content';
   extractorVersion: string;
+  districtCode: string | null;
+  parentMatch: 'explicit' | 'unique_township' | 'unresolved' | null;
+  snapshotId: string | null;
+}
+
+export interface LocationClueView {
+  kind: 'township' | 'settlement';
+  value: string;
+  evidence: string;
+  sourceField: 'title' | 'content';
+  townshipCode: string | null;
+  districtCode: string | null;
+  districtName: string | null;
+  parentMatch: 'explicit' | 'unique_township' | 'unresolved';
+  extractorVersion: string;
+  snapshotId: string;
 }
 
 export interface ComplaintDetail extends ComplaintListItem {
@@ -91,6 +107,8 @@ export interface ComplaintDetail extends ComplaintListItem {
   ruleConfidence: number | null;
   ruleVersion: string | null;
   addressCandidate: AddressCandidateView | null;
+  locationClues: LocationClueView[];
+  locationConflict: boolean;
 
   sourcePayload: Record<string, unknown> | null;
   sourcePayloadHash: string | null;
