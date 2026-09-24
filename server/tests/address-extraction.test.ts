@@ -18,15 +18,15 @@ class CandidateFake {
     if (sql.startsWith('insert')) {
       this.row = {
         complaintId: values[0], candidateText: values[1], evidenceText: values[2], sourceField: values[3],
-        extractorVersion: values[4], inputHash: values[5],
+        extractorVersion: values[4], inputHash: values[5], districtCode: values[6], parentMatch: values[7], snapshotId: values[8],
       };
     } else if (sql.startsWith('delete')) {
       this.row = null;
     } else if (sql.startsWith('update')) {
       if (this.row) {
         this.row = {
-          complaintId: values[5], candidateText: values[0], evidenceText: values[1], sourceField: values[2],
-          extractorVersion: values[3], inputHash: values[4],
+          complaintId: values[8], candidateText: values[0], evidenceText: values[1], sourceField: values[2],
+          extractorVersion: values[3], inputHash: values[4], districtCode: values[5], parentMatch: values[6], snapshotId: values[7],
         };
       }
     } else throw new Error(`unexpected execute: ${sql}`);
@@ -53,6 +53,19 @@ test('keeps an exact home-garden address substring and stores inferred township 
   assert.equal(result?.parentMatch, 'unique_township');
   assert.equal(result?.snapshotId, 'yichang-2026-09-24-api-unapproved');
   assert.equal(result?.value.includes('催促安装'), false);
+});
+
+test('persists inferred township metadata separately from the exact address candidate text', async () => {
+  const db = new CandidateFake() as unknown as CandidateFake & Queryable;
+  const input = { title: '燃气报装', content: '我是联棚乡示例家园18号1301的居民，催促安装' };
+
+  assert.equal(await syncAddressCandidate(db, 'C1', input), 'created');
+  const stored = (db as unknown as CandidateFake).row!;
+  assert.equal(stored.candidateText, '联棚乡示例家园18号1301');
+  assert.equal(stored.districtCode, '420504');
+  assert.equal(stored.parentMatch, 'unique_township');
+  assert.equal(stored.snapshotId, 'yichang-2026-09-24-api-unapproved');
+  assert.equal((await findAddressCandidate(db, 'C1'))?.districtCode, '420504');
 });
 
 test('rejects a township paired with an explicitly different county', () => {
