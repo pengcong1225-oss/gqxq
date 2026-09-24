@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { extractLocation, hasLocationConflict } from '../src/services/rules/locationExtract';
-import { getTownshipSnapshot } from '../src/services/rules/townshipGazetteer';
+import { getTownshipSnapshot, validateTownshipSnapshot } from '../src/services/rules/townshipGazetteer';
 
 test('ships the complete API snapshot with normalized nine-digit township codes and a matching tree hash', () => {
   const snapshot = getTownshipSnapshot();
@@ -19,6 +19,18 @@ test('ships the complete API snapshot with normalized nine-digit township codes 
   assert.ok(townships.every((township) => snapshot.counties.some((county) => township.code.startsWith(county.code))));
   assert.equal(townships.find((township) => township.name === '联棚乡')?.code, '420504202');
   assert.equal(calculatedHash, snapshot.countyTownshipSha256);
+});
+
+test('validates the same snapshot checksum when county and township arrays are reordered', () => {
+  const snapshot = getTownshipSnapshot();
+  const reordered = {
+    ...snapshot,
+    counties: [...snapshot.counties].reverse().map((county) => ({
+      ...county,
+      townships: [...county.townships].reverse(),
+    })),
+  };
+  assert.doesNotThrow(() => validateTownshipSnapshot(reordered));
 });
 
 test('extracts an exact township clue and its unique district from current residence wording', () => {
@@ -58,7 +70,7 @@ test('retains a shortened second door reference as exact source evidence and rep
   });
   assert.equal(result.conflict, true);
   assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => clue.evidence), [
-    '联棚乡示例家园18号1301',
+    '示例家园18号1301',
     '19号1301',
   ]);
 });
@@ -76,6 +88,25 @@ test('attaches an explicit district only when the source names it', () => {
   const clue = extractLocation({ title: '核查', content: '点军区联棚乡居民来电' }).clues.find((candidate) => candidate.kind === 'township');
   assert.equal(clue?.districtCode, '420504');
   assert.equal(clue?.parentMatch, 'explicit');
+});
+
+test('marks an explicit county that disagrees with the township parent as conflicting', () => {
+  const input = { title: '地址核查', content: '点军区西陵街道示例小区18号1301' };
+  const result = extractLocation(input);
+  const clue = result.clues.find((candidate) => candidate.kind === 'township');
+  assert.equal(clue?.townshipCode, '420502001');
+  assert.equal(clue?.districtCode, '420504');
+  assert.equal(result.conflict, true);
+});
+
+test('bounds a settlement clue to the exact named home after a resident connector', () => {
+  const text = '我是联棚乡居民住在示例家园18号1301';
+  const result = extractLocation({ title: '地址核查', content: text });
+  const settlement = result.clues.find((candidate) => candidate.kind === 'settlement');
+  assert.equal(settlement?.evidence, '示例家园18号1301');
+  assert.equal(settlement?.townshipCode, '420504202');
+  assert.equal(text.slice(settlement!.start, settlement!.end), '示例家园18号1301');
+  assert.equal(result.conflict, false);
 });
 
 test('does not treat a district mentioned elsewhere in the field as the township parent', () => {

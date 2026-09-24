@@ -55,6 +55,21 @@ test('keeps an exact home-garden address substring and stores inferred township 
   assert.equal(result?.value.includes('催促安装'), false);
 });
 
+test('rejects a township paired with an explicitly different county', () => {
+  const input = { title: '地址核查', content: '点军区西陵街道示例小区18号1301' };
+  assert.equal(extractAddressCandidate(input), null);
+});
+
+test('extracts only the continuous home substring after a resident connector', () => {
+  const result = extractAddressCandidate({
+    title: '地址核查',
+    content: '我是联棚乡居民住在示例家园18号1301',
+  });
+  assert.equal(result?.value, '示例家园18号1301');
+  assert.equal(result?.evidence, '示例家园18号1301');
+  assert.equal(result?.districtCode, '420504');
+});
+
 test('maps a legacy stored address candidate without invented location metadata', async () => {
   const db = new CandidateFake() as unknown as CandidateFake & Queryable;
   db.row = {
@@ -157,4 +172,16 @@ test('candidate storage creates once, updates changed input, and removes only th
   assert.notEqual(fake.row, beforeRemove);
   assert.equal(fake.row, null);
   assert.equal(fake.operations, 3);
+});
+
+test('re-extracts an unchanged input when the address rule version changes', async () => {
+  const input = { title: '地址核查', content: '点军区联棚乡示例小区18号1301' };
+  const db = new CandidateFake() as unknown as CandidateFake & Queryable;
+  db.row = {
+    complaintId: 'C1', candidateText: '点军区联棚乡示例小区18号1301', evidenceText: '点军区联棚乡示例小区18号1301',
+    sourceField: 'content', extractorVersion: 'address-extract.v1', inputHash: addressInputHash(input),
+  };
+
+  assert.equal(await syncAddressCandidate(db, 'C1', input), 'updated');
+  assert.equal((db as unknown as CandidateFake).row?.extractorVersion, 'address-extract.v2');
 });

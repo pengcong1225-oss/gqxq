@@ -16,7 +16,7 @@ export interface TownshipSnapshot {
 
 const snapshot = snapshotData as TownshipSnapshot;
 
-function validateSnapshot(data: TownshipSnapshot): void {
+export function validateTownshipSnapshot(data: TownshipSnapshot): void {
   const countyCodes = new Set<string>();
   const townshipCodes = new Set<string>();
   const townshipNames = new Set<string>();
@@ -38,13 +38,22 @@ function validateSnapshot(data: TownshipSnapshot): void {
     }
   }
 
-  const digest = createHash('sha256').update(JSON.stringify(data.counties)).digest('hex');
+  const canonicalCounties = data.counties
+    .map((county) => ({
+      code: county.code,
+      name: county.name,
+      townships: county.townships
+        .map((township) => ({ code: township.code, name: township.name, type: township.type }))
+        .sort((left, right) => left.code.localeCompare(right.code)),
+    }))
+    .sort((left, right) => left.code.localeCompare(right.code));
+  const digest = createHash('sha256').update(JSON.stringify(canonicalCounties)).digest('hex');
   if (digest !== data.countyTownshipSha256) {
     throw new Error('Township snapshot county/township checksum does not match its contents');
   }
 }
 
-validateSnapshot(snapshot);
+validateTownshipSnapshot(snapshot);
 
 export function getTownshipSnapshot(): TownshipSnapshot {
   return snapshot;

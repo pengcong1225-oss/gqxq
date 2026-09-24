@@ -31,7 +31,9 @@ interface TownshipMatch {
   end: number;
 }
 
-const SETTLEMENT_SUFFIX = /^[，,、：:\s]*[\u4e00-\u9fff]{1,16}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)/;
+const SETTLEMENT_SUFFIX = /^[\u4e00-\u9fff]{1,16}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)/;
+const SETTLEMENT_CONNECTOR = /^(?:居民)?(?:居住在|住在)/;
+const SETTLEMENT_SEPARATOR = /^[，,、：:\s]*/;
 const DOOR_SUFFIX = /^(?:[0-9一二三四五六七八九十百]{1,5}号[0-9]{1,4}(?:室)?|[0-9]{1,4}栋[0-9]{1,4}(?:单元)?[0-9]{1,4}室)?/;
 const NEGATIVE_OR_REPORTED_CONTEXT = /(?:不是|并非|不在|非|没有|无关|不属于|以前|过去|原来|曾经|之前|旧址|转交到|搬离|离开)(?:[\u4e00-\u9fff]{0,4}|\s*)$/;
 const SETTLEMENT_PATTERN = /[\u4e00-\u9fff]{2,16}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)(?:[0-9一二三四五六七八九十百]{1,5}号[0-9]{1,4}(?:室)?|[0-9]{1,4}栋[0-9]{1,4}(?:单元)?[0-9]{1,4}室)?/g;
@@ -60,9 +62,10 @@ function findTownships(text: string, snapshot: TownshipSnapshot): TownshipMatch[
   return matches.sort((left, right) => left.start - right.start || right.end - left.end);
 }
 
-function explicitCounty(text: string, countyName: string, townshipStart: number): boolean {
-  const preceding = text.slice(Math.max(0, townshipStart - countyName.length - 3), townshipStart);
-  return new RegExp(`${countyName}(?:的)?$`).test(preceding);
+function explicitCountyCode(text: string, townshipStart: number, snapshot: TownshipSnapshot): string | null {
+  const preceding = text.slice(Math.max(0, townshipStart - 12), townshipStart);
+  const county = snapshot.counties.find((item) => preceding.endsWith(item.name) || preceding.endsWith(`${item.name}的`));
+  return county?.code ?? null;
 }
 
 function clue(
@@ -72,7 +75,7 @@ function clue(
   start: number,
   end: number,
   township: TownshipMatch | null,
-  explicit: boolean,
+  explicitDistrictCode: string | null,
   snapshot: TownshipSnapshot
 ): ExtractedLocationClue {
   const evidence = text.slice(start, end);
@@ -84,8 +87,8 @@ function clue(
     start,
     end,
     townshipCode: township?.code ?? null,
-    districtCode: township?.countyCode ?? null,
-    parentMatch: township ? (explicit ? 'explicit' : 'unique_township') : 'unresolved',
+    districtCode: township ? (explicitDistrictCode ?? township.countyCode) : null,
+    parentMatch: township ? (explicitDistrictCode ? 'explicit' : 'unique_township') : 'unresolved',
     extractorVersion: LOCATION_EXTRACTOR_VERSION,
     snapshotId: snapshot.snapshotId,
   };
@@ -103,23 +106,27 @@ function extractBoundedClues(input: AddressInput, snapshot: TownshipSnapshot): E
     if (!text) continue;
     const townshipMatches = findTownships(text, snapshot);
     for (const township of townshipMatches) {
-      const explicit = explicitCounty(text, township.countyName, township.start);
-      found.push(clue('township', text, field.name, township.start, township.end, township, explicit, snapshot));
+      const explicitCode = explicitCountyCode(text, township.start, snapshot);
+      found.push(clue('township', text, field.name, township.start, township.end, township, explicitCode, snapshot));
 
       const remainder = text.slice(township.end);
-      const settlement = SETTLEMENT_SUFFIX.exec(remainder);
+      const connector = SETTLEMENT_CONNECTOR.exec(remainder);
+      const afterConnector = remainder.slice(connector?.[0].length ?? 0);
+      const separator = SETTLEMENT_SEPARATOR.exec(afterConnector);
+      const settlementStart = township.end + (connector?.[0].length ?? 0) + (separator?.[0].length ?? 0);
+      const settlement = SETTLEMENT_SUFFIX.exec(text.slice(settlementStart));
       if (settlement) {
-        const tailStart = township.end + settlement.index + settlement[0].length;
+        const tailStart = settlementStart + settlement[0].length;
         const door = DOOR_SUFFIX.exec(text.slice(tailStart))?.[0] ?? '';
         const end = tailStart + door.length;
-        found.push(clue('settlement', text, field.name, township.start, end, township, explicit, snapshot));
+        found.push(clue('settlement', text, field.name, settlementStart, end, township, explicitCode, snapshot));
 
         const firstDoor = /\d{1,4}号\d{1,4}(?:室)?/g.exec(door);
         const firstDoorEnd = firstDoor ? tailStart + firstDoor.index + firstDoor[0].length : end;
         const laterReferences = [...text.matchAll(/\d{1,4}号\d{1,4}(?:室)?/g)].filter((match) => match.index! >= firstDoorEnd);
         for (const reference of laterReferences) {
           const start = reference.index!;
-          found.push(clue('settlement', text, field.name, start, start + reference[0].length, township, explicit, snapshot));
+          found.push(clue('settlement', text, field.name, start, start + reference[0].length, township, explicitCode, snapshot));
         }
       }
     }
@@ -130,7 +137,7 @@ function extractBoundedClues(input: AddressInput, snapshot: TownshipSnapshot): E
         const end = rawStart + settlement[0].length;
         const introduction = SETTLEMENT_INTRODUCTION.exec(settlement[0]);
         const start = rawStart + (introduction?.[0].length ?? 0);
-        if (!isRejectedContext(text, rawStart)) found.push(clue('settlement', text, field.name, start, end, null, false, snapshot));
+        if (!isRejectedContext(text, rawStart)) found.push(clue('settlement', text, field.name, start, end, null, null, snapshot));
       }
     }
   }
@@ -144,6 +151,8 @@ function extractBoundedClues(input: AddressInput, snapshot: TownshipSnapshot): E
 }
 
 export function hasLocationConflict(clues: ExtractedLocationClue[]): boolean {
+  if (clues.some((item) => item.kind === 'township' && item.parentMatch === 'explicit' &&
+    item.townshipCode !== null && item.districtCode !== item.townshipCode.slice(0, 6))) return true;
   const townships = new Set(clues.filter((item) => item.kind === 'township').map((item) => item.townshipCode).filter(Boolean));
   if (townships.size > 1) return true;
   const settlements = new Set(clues.filter((item) => item.kind === 'settlement').map((item) => item.value));
