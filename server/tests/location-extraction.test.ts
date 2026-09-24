@@ -241,6 +241,44 @@ test('does not promote an address clause embedded in a complaint title to a stan
   ]);
 });
 
+test('recognizes a standalone complete address in the content when the title has a township address', () => {
+  const result = extractLocation({ title: '联棚乡示例家园18号1301', content: '样例社区20号1301' });
+  assert.equal(result.conflict, true);
+  assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => [clue.sourceField, clue.evidence, clue.townshipCode]), [
+    ['content', '样例社区20号1301', null],
+    ['title', '示例家园18号1301', '420504202'],
+  ]);
+});
+
+test('recognizes standalone complete addresses in title and content symmetrically', () => {
+  const result = extractLocation({ title: '样例社区20号1301', content: '恒大名都小区18号1301' });
+  assert.equal(result.conflict, true);
+  assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => [clue.sourceField, clue.evidence, clue.townshipCode]), [
+    ['content', '恒大名都小区18号1301', null],
+    ['title', '样例社区20号1301', null],
+  ]);
+});
+
+test('recognizes a direct address in the first content clause without promoting complaint narrative', () => {
+  const result = extractLocation({ title: '联棚乡示例家园18号1301', content: '样例社区20号1301，燃气未装' });
+  assert.equal(result.conflict, true);
+  assert.ok(result.clues.some((clue) => clue.kind === 'settlement' && clue.sourceField === 'content' && clue.evidence === '样例社区20号1301'));
+});
+
+test('does not promote complaint, historical, negative, or old-address clauses to current locations', () => {
+  for (const content of [
+    '居民投诉样例社区20号1301燃气未装',
+    '投诉记录：样例社区20号1301',
+    '原来住在样例社区20号1301',
+    '不是样例社区20号1301',
+    '样例社区20号1301是旧址',
+  ]) {
+    const result = extractLocation({ title: '联棚乡示例家园18号1301', content });
+    assert.equal(result.conflict, false, content);
+    assert.equal(result.clues.some((clue) => clue.kind === 'settlement' && clue.sourceField === 'content'), false, content);
+  }
+});
+
 test('treats a no-door mention of the same named settlement as compatible with its full address', () => {
   const result = extractLocation({ title: '地址核查', content: '联棚乡示例家园18号1301，示例家园燃气还没装' });
   assert.equal(result.conflict, false);
@@ -252,6 +290,24 @@ test('keeps different door numbers within the same named settlement conflicting'
   assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => clue.evidence), [
     '示例家园18号1301',
     '示例家园20号1301',
+  ]);
+});
+
+test('treats an optional 室 suffix as the same door number', () => {
+  for (const content of [
+    '联棚乡示例家园18号1301，示例家园18号1301室',
+    '联棚乡示例家园18号1301室，示例家园18号1301',
+  ]) {
+    assert.equal(extractLocation({ title: '地址核查', content }).conflict, false, content);
+  }
+});
+
+test('treats an explicit short-door correction matching the complete address as compatible', () => {
+  const result = extractLocation({ title: '地址核查', content: '联棚乡示例家园18号1301，实际是18号1301' });
+  assert.equal(result.conflict, false);
+  assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => clue.evidence), [
+    '示例家园18号1301',
+    '18号1301',
   ]);
 });
 

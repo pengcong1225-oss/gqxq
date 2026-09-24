@@ -141,9 +141,9 @@ function extractBoundedClues(input: { title: string; content: string | null }, s
       const afterName = start + settlement[0].length;
       const door = DOOR_SUFFIX.exec(text.slice(afterName, clauseEnd))?.[0] ?? '';
       const hasEarlierNamedLocation = found.some((item) => item.sourceField === field.name && item.kind === 'settlement' && item.end <= start);
-      const isStandaloneTitleAddress = field.name === 'title' && candidateOffset === firstTextOffset && !introduction &&
+      const isStandaloneAddressClause = candidateOffset === firstTextOffset && !introduction &&
         candidateText.trim() === `${settlement[0]}${door}` && Boolean(door);
-      if (!introduction && door && !hasEarlierNamedLocation && !isStandaloneTitleAddress) continue;
+      if (!introduction && door && !hasEarlierNamedLocation && !isStandaloneAddressClause) continue;
       found.push(clue('settlement', text, field.name, start, afterName + door.length, null, null, snapshot));
     }
 
@@ -195,12 +195,22 @@ export function hasLocationConflict(clues: ExtractedLocationClue[]): boolean {
     item.townshipCode !== null && item.districtCode !== item.townshipCode.slice(0, 6))) return true;
   const townships = new Set(clues.filter((item) => item.kind === 'township').map((item) => item.townshipCode).filter(Boolean));
   if (townships.size > 1) return true;
+  const namedSettlementsByTownship = new Map<string, Set<string>>();
+  for (const item of clues.filter((candidate) => candidate.kind === 'settlement' && candidate.townshipCode !== null)) {
+    const name = SETTLEMENT_SUFFIX.exec(item.value)?.[0];
+    if (!name) continue;
+    const namedSettlements = namedSettlementsByTownship.get(item.townshipCode!) ?? new Set<string>();
+    namedSettlements.add(name);
+    namedSettlementsByTownship.set(item.townshipCode!, namedSettlements);
+  }
   const settlementNames = new Set<string>();
   const doorsBySettlement = new Map<string, Set<string>>();
   for (const item of clues.filter((candidate) => candidate.kind === 'settlement')) {
     const namedLocation = SETTLEMENT_SUFFIX.exec(item.value)?.[0];
-    const name = namedLocation ?? item.value;
-    const door = namedLocation ? item.value.slice(namedLocation.length) : '';
+    const parentedNames = item.townshipCode ? namedSettlementsByTownship.get(item.townshipCode) : undefined;
+    const name = namedLocation ?? (parentedNames?.size === 1 ? [...parentedNames][0] : item.value);
+    const doorEvidence = namedLocation ? item.value.slice(namedLocation.length) : parentedNames?.size === 1 ? item.value : '';
+    const door = doorEvidence.replace(/室$/, '');
     settlementNames.add(name);
     const doors = doorsBySettlement.get(name) ?? new Set<string>();
     if (door) doors.add(door);
