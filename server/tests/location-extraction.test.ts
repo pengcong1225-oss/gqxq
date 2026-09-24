@@ -9,7 +9,14 @@ test('ships the complete API snapshot with normalized nine-digit township codes 
   const townships = snapshot.counties.flatMap((county) => county.townships);
   const calculatedHash = createHash('sha256').update(JSON.stringify(snapshot.counties)).digest('hex');
 
-  assert.equal(snapshot.approved, false);
+  assert.equal(snapshot.approved, true);
+  assert.equal(snapshot.snapshotId, 'yichang-2026-09-24-api-hubei-2025-approved');
+  assert.deepEqual(snapshot.verification, {
+    baselineAsOf: '2025-12-31',
+    sourceUrl: 'https://mzt.hubei.gov.cn/ywzc/ywzc/qhc/202601/P020260112578515467143.xlsx',
+    sourceSha256: '84ABDA454508280CE14262673B1547ACEDE071C1F68F5F4C394A409ECAF40403',
+    verifiedAt: '2026-09-24T04:57:16.000Z',
+  });
   assert.equal(snapshot.sourceUrl, 'https://dmfw.mca.gov.cn/9095/xzqh/getList?code=4205&maxLevel=3');
   assert.equal(snapshot.counties.length, 13);
   assert.equal(townships.length, 110);

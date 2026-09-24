@@ -7,6 +7,12 @@ export interface TownshipSnapshot {
   sourceUrl: string;
   countyTownshipSha256: string;
   approved: boolean;
+  verification: {
+    baselineAsOf: string;
+    sourceUrl: string;
+    sourceSha256: string;
+    verifiedAt: string;
+  };
   counties: Array<{
     code: string;
     name: string;

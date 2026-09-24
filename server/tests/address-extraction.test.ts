@@ -51,7 +51,7 @@ test('keeps an exact home-garden address substring and stores inferred township 
   assert.equal(result?.value, '联棚乡示例家园18号1301');
   assert.equal(result?.districtCode, '420504');
   assert.equal(result?.parentMatch, 'unique_township');
-  assert.equal(result?.snapshotId, 'yichang-2026-09-24-api-unapproved');
+  assert.equal(result?.snapshotId, 'yichang-2026-09-24-api-hubei-2025-approved');
   assert.equal(result?.value.includes('催促安装'), false);
 });
 
@@ -64,7 +64,7 @@ test('persists inferred township metadata separately from the exact address cand
   assert.equal(stored.candidateText, '联棚乡示例家园18号1301');
   assert.equal(stored.districtCode, '420504');
   assert.equal(stored.parentMatch, 'unique_township');
-  assert.equal(stored.snapshotId, 'yichang-2026-09-24-api-unapproved');
+  assert.equal(stored.snapshotId, 'yichang-2026-09-24-api-hubei-2025-approved');
   assert.equal((await findAddressCandidate(db, 'C1'))?.districtCode, '420504');
 });
 

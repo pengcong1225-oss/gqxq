@@ -1,9 +1,15 @@
 {
-  "snapshotId": "yichang-2026-09-24-api-unapproved",
+  "snapshotId": "yichang-2026-09-24-api-hubei-2025-approved",
   "fetchedAt": "2026-09-24T01:17:57.000Z",
   "sourceUrl": "https://dmfw.mca.gov.cn/9095/xzqh/getList?code=4205&maxLevel=3",
   "countyTownshipSha256": "dcad9e16520d183e568a79fa3048462528f08a2f98f66feea56590d6859ec2ba",
-  "approved": false,
+  "approved": true,
+  "verification": {
+    "baselineAsOf": "2025-12-31",
+    "sourceUrl": "https://mzt.hubei.gov.cn/ywzc/ywzc/qhc/202601/P020260112578515467143.xlsx",
+    "sourceSha256": "84ABDA454508280CE14262673B1547ACEDE071C1F68F5F4C394A409ECAF40403",
+    "verifiedAt": "2026-09-24T04:57:16.000Z"
+  },
   "counties": [
     { "code": "420502", "name": "西陵区", "townships": [{"code":"420502001","name":"西陵街道","type":"街道"},{"code":"420502002","name":"学院街道","type":"街道"},{"code":"420502003","name":"云集街道","type":"街道"},{"code":"420502005","name":"西坝街道","type":"街道"},{"code":"420502006","name":"葛洲坝街道","type":"街道"},{"code":"420502007","name":"夜明珠街道","type":"街道"},{"code":"420502008","name":"东苑街道","type":"街道"},{"code":"420502009","name":"南苑街道","type":"街道"},{"code":"420502010","name":"北苑街道","type":"街道"},{"code":"420502011","name":"窑湾街道","type":"街道"}] },
     { "code": "420503", "name": "伍家岗区", "townships": [{"code":"420503001","name":"大公桥街道","type":"街道"},{"code":"420503002","name":"万寿桥街道","type":"街道"},{"code":"420503003","name":"宝塔河街道","type":"街道"},{"code":"420503004","name":"伍家岗街道","type":"街道"},{"code":"420503201","name":"伍家乡","type":"乡"}] },
