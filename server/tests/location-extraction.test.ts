@@ -109,6 +109,18 @@ test('bounds a settlement clue to the exact named home after a resident connecto
   assert.equal(result.conflict, false);
 });
 
+test('does not accept intervening complaint prose as part of a settlement name', () => {
+  const result = extractLocation({ title: '地址核查', content: '我是联棚乡居民投诉示例家园18号1301' });
+  assert.equal(result.clues.some((candidate) => candidate.kind === 'settlement'), false);
+});
+
+test('recognizes a directly bounded settlement name following a township', () => {
+  const result = extractLocation({ title: '地址核查', content: '我是联棚乡示例家园18号1301' });
+  const settlement = result.clues.find((candidate) => candidate.kind === 'settlement');
+  assert.equal(settlement?.evidence, '示例家园18号1301');
+  assert.equal(settlement?.townshipCode, '420504202');
+});
+
 test('does not treat a district mentioned elsewhere in the field as the township parent', () => {
   const clue = extractLocation({ title: '核查', content: '点军区另一个地方的工单已结。联棚乡居民来电' }).clues.find((candidate) => candidate.kind === 'township');
   assert.equal(clue?.districtCode, '420504');

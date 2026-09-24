@@ -70,6 +70,18 @@ test('extracts only the continuous home substring after a resident connector', (
   assert.equal(result?.districtCode, '420504');
 });
 
+test('rejects prose between a township and a settlement suffix instead of treating prose as the name', () => {
+  assert.equal(
+    extractAddressCandidate({ title: '地址核查', content: '我是联棚乡居民投诉示例家园18号1301' }),
+    null
+  );
+});
+
+test('still extracts a directly bounded settlement name after the township', () => {
+  const result = extractAddressCandidate({ title: '地址核查', content: '我是联棚乡示例家园18号1301' });
+  assert.equal(result?.value, '联棚乡示例家园18号1301');
+});
+
 test('maps a legacy stored address candidate without invented location metadata', async () => {
   const db = new CandidateFake() as unknown as CandidateFake & Queryable;
   db.row = {

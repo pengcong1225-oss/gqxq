@@ -15,7 +15,8 @@ export interface ExtractedAddressCandidate {
 
 export interface AddressInput { title: string; content: string | null }
 
-const SETTLEMENT = '[\\u4e00-\\u9fff]{1,16}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)';
+const SETTLEMENT_PROSE = '居民|投诉|反映|举报|催促|要求|请求|希望|请问|询问|表示|已经|尽快|安装|维修|办理|处理|问题|诉求|报装|居住在|住在|所在|地址';
+const SETTLEMENT = `(?:(?!(?:${SETTLEMENT_PROSE}))[\\u4e00-\\u9fff]){1,12}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)`;
 const DOOR = '(?:[0-9一二三四五六七八九十百]{1,5}号[0-9]{1,4}(?:室)?|[0-9]{1,4}栋[0-9]{1,4}(?:单元)?[0-9]{1,4}室)';
 const RESIDENT_CONNECTOR = '(?:居民)?(?:居住在|住在)';
 const DOOR_REFERENCE_PATTERN = /\d{1,4}号\d{1,4}(?:室)?/g;
