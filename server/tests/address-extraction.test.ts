@@ -89,6 +89,23 @@ test('still extracts a directly bounded settlement name after the township', () 
   assert.equal(result?.value, '联棚乡示例家园18号1301');
 });
 
+test('extracts a four-character township-linked estate name and door as an exact candidate', () => {
+  const text = '联棚乡恒大名都小区18号1301';
+  const result = extractAddressCandidate({ title: '地址核查', content: text });
+  assert.equal(result?.value, text);
+  assert.equal(result?.evidence, text);
+  assert.equal(result?.districtCode, '420504');
+});
+
+test('does not fabricate detailed candidates from complaint prose after a township', () => {
+  for (const content of [
+    '我是联棚乡群众告知示例家园18号1301',
+    '我是联棚乡居民投诉示例家园18号1301',
+  ]) {
+    assert.equal(extractAddressCandidate({ title: '地址核查', content }), null, content);
+  }
+});
+
 test('extracts an unparented settlement after an explicit leading location introduction', () => {
   const result = extractAddressCandidate({ title: '地址核查', content: '我住在示例社区18号1301' });
   assert.equal(result?.value, '示例社区18号1301');

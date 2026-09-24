@@ -31,7 +31,8 @@ interface TownshipMatch {
   end: number;
 }
 
-const SETTLEMENT_SUFFIX = /^[\u4e00-\u9fff]{1,2}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)/;
+const SETTLEMENT_SUFFIX = /^[\u4e00-\u9fff]{1,4}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)/;
+const UNPARENTED_SETTLEMENT_SUFFIX = /^[\u4e00-\u9fff]{1,2}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)/;
 const SETTLEMENT_CONNECTOR = /^(?:居民)?(?:居住在|住在)/;
 const SETTLEMENT_SEPARATOR = /^[，,、：:\s]*/;
 const DOOR_SUFFIX = /^(?:[0-9一二三四五六七八九十百]{1,5}号[0-9]{1,4}(?:室)?|[0-9]{1,4}栋[0-9]{1,4}(?:单元)?[0-9]{1,4}室)?/;
@@ -141,7 +142,7 @@ function extractBoundedClues(input: AddressInput, snapshot: TownshipSnapshot): E
         const afterIntroduction = candidateOffset + (introduction?.[0].length ?? 0);
         const separator = SETTLEMENT_SEPARATOR.exec(text.slice(afterIntroduction))?.[0].length ?? 0;
         const start = afterIntroduction + separator;
-        const settlement = SETTLEMENT_SUFFIX.exec(text.slice(start));
+        const settlement = UNPARENTED_SETTLEMENT_SUFFIX.exec(text.slice(start));
         if (!settlement || isRejectedContext(text, candidateOffset)) continue;
         const afterName = start + settlement[0].length;
         const door = DOOR_SUFFIX.exec(text.slice(afterName))?.[0] ?? '';

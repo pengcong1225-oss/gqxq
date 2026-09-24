@@ -16,6 +16,7 @@ export interface ExtractedAddressCandidate {
 export interface AddressInput { title: string; content: string | null }
 
 const SETTLEMENT = '[\\u4e00-\\u9fff]{1,2}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)';
+const TOWNSHIP_SETTLEMENT = '[\\u4e00-\\u9fff]{1,4}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)';
 const DOOR = '(?:[0-9一二三四五六七八九十百]{1,5}号[0-9]{1,4}(?:室)?|[0-9]{1,4}栋[0-9]{1,4}(?:单元)?[0-9]{1,4}室)';
 const RESIDENT_CONNECTOR = '(?:居民)?(?:居住在|住在)';
 const DOOR_REFERENCE_PATTERN = /\d{1,4}号\d{1,4}(?:室)?/g;
@@ -41,11 +42,11 @@ function addressPattern(): RegExp {
   const townships = snapshot.counties.flatMap((county) => county.townships.map((township) => ({ ...township, countyCode: county.code })))
     .sort((a, b) => b.name.length - a.name.length);
   const names = townships.map((township) => escapeRegExp(township.name)).join('|');
-  const townshipSuffix = `(?:${SETTLEMENT})${DOOR}`;
+  const townshipSuffix = `(?:${TOWNSHIP_SETTLEMENT})${DOOR}`;
   const explicit = `(?:${counties.join('|')})(?:${names})(?:${RESIDENT_CONNECTOR}${townshipSuffix}|${townshipSuffix})`;
   const unique = `(?:${names})(?:${RESIDENT_CONNECTOR}${townshipSuffix}|${townshipSuffix})`;
   const fallback = `(?:${counties.join('|')})[\\u4e00-\\u9fff]{1,8}(?:乡|镇|街道|街)(?:${RESIDENT_CONNECTOR}${townshipSuffix}|${townshipSuffix})`;
-  const unparented = `(?:${townshipSuffix})`;
+  const unparented = `(?:${SETTLEMENT})${DOOR}`;
   return new RegExp(`(?<![\\u4e00-\\u9fff])(?:${explicit}|${unique}|${fallback}|${unparented})`, 'g');
 }
 

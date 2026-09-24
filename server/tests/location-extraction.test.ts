@@ -126,6 +126,25 @@ test('recognizes a directly bounded settlement name following a township', () =>
   assert.equal(settlement?.townshipCode, '420504202');
 });
 
+test('extracts a four-character township-linked settlement name', () => {
+  const text = '联棚乡恒大名都小区18号1301';
+  const result = extractLocation({ title: '地址核查', content: text });
+  const settlement = result.clues.find((candidate) => candidate.kind === 'settlement');
+  assert.equal(settlement?.evidence, '恒大名都小区18号1301');
+  assert.equal(settlement?.townshipCode, '420504202');
+  assert.equal(text.slice(settlement!.start, settlement!.end), settlement?.evidence);
+});
+
+test('does not promote longer complaint prose to a township-linked settlement', () => {
+  for (const content of [
+    '我是联棚乡群众告知示例家园18号1301',
+    '我是联棚乡居民投诉示例家园18号1301',
+  ]) {
+    const result = extractLocation({ title: '地址核查', content });
+    assert.equal(result.clues.some((candidate) => candidate.kind === 'settlement'), false, content);
+  }
+});
+
 test('extracts an unparented settlement after the supported 我住在 introduction', () => {
   const text = '我住在示例社区';
   const result = extractLocation({ title: '地址核查', content: text });
