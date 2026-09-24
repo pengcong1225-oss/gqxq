@@ -32,11 +32,14 @@ interface TownshipMatch {
 }
 
 const SETTLEMENT_SUFFIX = /^[\u4e00-\u9fff]{1,4}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)/;
-const UNPARENTED_SETTLEMENT_SUFFIX = /^[\u4e00-\u9fff]{1,2}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)/;
+const UNPARENTED_SETTLEMENT_SUFFIX = /^[\u4e00-\u9fff]{1,4}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)/;
 const SETTLEMENT_CONNECTOR = /^(?:居民)?(?:居住在|住在)/;
 const SETTLEMENT_SEPARATOR = /^[，,、：:\s]*/;
 const DOOR_SUFFIX = /^(?:[0-9一二三四五六七八九十百]{1,5}号[0-9]{1,4}(?:室)?|[0-9]{1,4}栋[0-9]{1,4}(?:单元)?[0-9]{1,4}室)?/;
 const SETTLEMENT_INTRODUCTION = /^(?:(?:您好|你好)[，,、：:\s]*)?(?:本人居住在|本人住在|本人家住|本人居住于|本人住于|我是|我家在|我住在|家住|地址是|位于|住在)/;
+const SHORT_DOOR_INTRODUCTION = /^(?:实际(?:是|为)|准确(?:地址|门牌)?(?:是|为)|门牌(?:号)?(?:是|为)|更正(?:为|成)|具体(?:是|为)|应为|应该是)[，,：:\s]*/;
+const REJECTED_LOCATION_CLAUSE = /^(?:原来|以前|过去|曾经|之前|旧址|不是|并非|不在|非|没有|无关|不属于)/;
+const COMPLAINT_LOCATION_CLAUSE = /^(?:(?:居民|群众|本人|我)?(?:投诉|举报|反映|咨询|告知|要求|请求|催促|建议|希望|询问|追问))/;
 const CLAUSE_BOUNDARY = /[^，,。；;：:\n]+/g;
 
 function findTownships(text: string, snapshot: TownshipSnapshot): TownshipMatch[] {
@@ -101,6 +104,7 @@ function extractBoundedClues(input: { title: string; content: string | null }, s
     const text = field.text;
     if (!text) continue;
     const townshipMatches = findTownships(text, snapshot);
+    const firstTextOffset = /^\s*/.exec(text)?.[0].length ?? 0;
     for (const township of townshipMatches) {
       const explicitCode = explicitCountyCode(text, township.start, snapshot);
       found.push(clue('township', text, field.name, township.start, township.end, township, explicitCode, snapshot));
@@ -127,29 +131,39 @@ function extractBoundedClues(input: { title: string; content: string | null }, s
       const leading = /^\s*/.exec(clause[0])?.[0].length ?? 0;
       const candidateOffset = clauseStart + leading;
       const candidateText = text.slice(candidateOffset, clauseEnd);
+      if (REJECTED_LOCATION_CLAUSE.test(candidateText) || COMPLAINT_LOCATION_CLAUSE.test(candidateText)) continue;
       const introduction = SETTLEMENT_INTRODUCTION.exec(candidateText);
       const afterIntroduction = candidateOffset + (introduction?.[0].length ?? 0);
       const separator = SETTLEMENT_SEPARATOR.exec(text.slice(afterIntroduction))?.[0].length ?? 0;
       const start = afterIntroduction + separator;
       const settlement = UNPARENTED_SETTLEMENT_SUFFIX.exec(text.slice(start, clauseEnd));
-      if (!settlement || isRejectedLocationContext(text, candidateOffset)) continue;
+      if (!settlement || isRejectedLocationContext(text, start)) continue;
       const afterName = start + settlement[0].length;
       const door = DOOR_SUFFIX.exec(text.slice(afterName, clauseEnd))?.[0] ?? '';
-      const hasEarlierCompleteAddress = found.some((item) => item.sourceField === field.name && item.kind === 'settlement' &&
-        item.end <= start && /^[\u4e00-\u9fff].*\d{1,4}号\d{1,4}/.test(item.evidence));
-      if (!introduction && door && !hasEarlierCompleteAddress) continue;
+      const hasEarlierNamedLocation = found.some((item) => item.sourceField === field.name && item.kind === 'settlement' && item.end <= start);
+      const isStandaloneTitleAddress = field.name === 'title' && candidateOffset === firstTextOffset && !introduction &&
+        candidateText.trim() === `${settlement[0]}${door}` && Boolean(door);
+      if (!introduction && door && !hasEarlierNamedLocation && !isStandaloneTitleAddress) continue;
       found.push(clue('settlement', text, field.name, start, afterName + door.length, null, null, snapshot));
     }
 
-    // Preserve a shortened, second door reference only when it is outside every complete
-    // settlement mention and a single township makes its parent unambiguous.
+    // A shortened door is useful only as an explicit correction in this clause, outside
+    // named-location coverage, with one township and a complete address in the same field.
     if (townshipMatches.length === 1) {
       const completeMentions = found.filter((item) => item.sourceField === field.name && item.kind === 'settlement');
       const completeAddress = completeMentions.some((item) => /^[\u4e00-\u9fff].*\d{1,4}号\d{1,4}/.test(item.evidence));
       if (completeAddress) {
-        for (const reference of text.matchAll(/\d{1,4}号\d{1,4}(?:室)?/g)) {
-          const start = reference.index!;
-          const end = start + reference[0].length;
+        for (const clause of text.matchAll(CLAUSE_BOUNDARY)) {
+          const clauseStart = clause.index!;
+          const clauseEnd = clauseStart + clause[0].length;
+          const clauseText = clause[0].trimStart();
+          if (REJECTED_LOCATION_CLAUSE.test(clauseText) || COMPLAINT_LOCATION_CLAUSE.test(clauseText)) continue;
+          const introduction = SHORT_DOOR_INTRODUCTION.exec(clauseText);
+          if (!introduction) continue;
+          const start = clauseStart + (clause[0].length - clauseText.length) + introduction[0].length;
+          const reference = DOOR_SUFFIX.exec(text.slice(start, clauseEnd))?.[0] ?? '';
+          if (!reference) continue;
+          const end = start + reference.length;
           if (completeMentions.some((item) => start >= item.start && end <= item.end)) continue;
           if (isRejectedLocationContext(text, start)) continue;
           const township = townshipMatches[0];
@@ -181,8 +195,18 @@ export function hasLocationConflict(clues: ExtractedLocationClue[]): boolean {
     item.townshipCode !== null && item.districtCode !== item.townshipCode.slice(0, 6))) return true;
   const townships = new Set(clues.filter((item) => item.kind === 'township').map((item) => item.townshipCode).filter(Boolean));
   if (townships.size > 1) return true;
-  const settlements = new Set(clues.filter((item) => item.kind === 'settlement').map((item) => item.value));
-  return settlements.size > 1;
+  const settlementNames = new Set<string>();
+  const doorsBySettlement = new Map<string, Set<string>>();
+  for (const item of clues.filter((candidate) => candidate.kind === 'settlement')) {
+    const namedLocation = SETTLEMENT_SUFFIX.exec(item.value)?.[0];
+    const name = namedLocation ?? item.value;
+    const door = namedLocation ? item.value.slice(namedLocation.length) : '';
+    settlementNames.add(name);
+    const doors = doorsBySettlement.get(name) ?? new Set<string>();
+    if (door) doors.add(door);
+    doorsBySettlement.set(name, doors);
+  }
+  return settlementNames.size > 1 || [...doorsBySettlement.values()].some((doors) => doors.size > 1);
 }
 
 export function extractLocation(input: { title: string; content: string | null }): LocationExtraction {
