@@ -4,10 +4,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { JSDOM } from 'jsdom';
 import { createServer, type ViteDevServer } from 'vite';
-import type { CorrectionItem, LocationClueView } from '../src/types/api';
+import type { ComplaintDetail, CorrectionItem, LocationClueView } from '../src/types/api';
 
 const memoryStorage = new Map<string, string>();
 globalThis.localStorage = {
@@ -329,4 +329,107 @@ test('旧诉求的位置项不匹配新选择或仍在加载时不可用于候�
   assert.equal(matches?.(false, 'A', 'B'), false);
   assert.equal(matches?.(true, 'B', 'B'), false);
   assert.equal(matches?.(false, 'B', 'B'), true);
+});
+
+const locationDetailFixture: ComplaintDetail = {
+  id: 1, complaintId: 'CPL-TEST', complaintNo: 'CS-TEST', title: '虚构位置核查',
+  sourceSystem: null, sourceId: null, sourceChannel: null,
+  businessTypeCode: 'gas', businessTypeName: '燃气', complaintTypeCode: 'complaint', complaintTypeName: '投诉',
+  urgencyLevelCode: 'normal', urgencyLevelName: '普通', districtCode: null, districtName: null,
+  enterpriseCode: null, enterpriseName: null, isSensitive: false, sensitiveKeywords: [],
+  correctionStatusCode: 'pending', correctionStatusName: '待纠偏', correctionConfidence: null,
+  sourceEventStatusCode: 'unknown', sourceEventStatusName: '未接入', overtimeFlag: null,
+  overtimeFlagName: '无时效信息', supervisionStatusCode: 'none', supervisionStatusName: '未交办',
+  reportingStatusCode: 'not_started', reportingStatusName: '未开始', closedInSystem: false,
+  activeDispatchId: null, activeDispatchStatusCode: null, activeDispatchStatusName: null,
+  legacyStatus: 'pending', sourceReportedAt: null, receivedAt: null, createdAt: null,
+  content: '联棚乡示例家园18号1301，样例社区20号1301', address: '来源地址原值',
+  correctedAddress: null, locationLng: null, locationLat: null, ruleConfidence: null, ruleVersion: null,
+  addressCandidate: {
+    value: '联棚乡示例家园18号1301', evidence: '联棚乡示例家园18号1301', sourceField: 'content',
+    extractorVersion: 'address-extract.v2', districtCode: null, parentMatch: null, snapshotId: null,
+  },
+  locationClues: [{
+    kind: 'settlement', value: '样例社区20号1301', evidence: '样例社区20号1301', sourceField: 'content',
+    townshipCode: null, districtCode: null, districtName: null, parentMatch: 'unresolved',
+    extractorVersion: 'location-extract.v2', snapshotId: 'test-snapshot',
+  }],
+  locationConflict: true, sourcePayload: null, sourcePayloadHash: null, sourceUpdatedAt: null,
+  responsibleMatchedAt: null, responsibleMatchReason: null, closedAt: null, closedBy: null,
+  closedByName: null, closedBasis: null, analysisIncluded: false, analysisRecordId: null, updatedAt: null,
+};
+
+function locationCorrectionFixture(fieldName: string): CorrectionItem {
+  return {
+    id: fieldName === 'address' ? 1 : fieldName === 'location_lng' ? 2 : 3,
+    correctionId: `COR-${fieldName}`, complaintId: 'CPL-TEST', assignmentId: null, hasDispatch: false,
+    fieldName, fieldLabel: fieldName, oldValue: fieldName === 'address' ? '来源地址原值' : null,
+    newValue: null, basis: null, status: 'pending', statusName: '待纠偏',
+    confirmerId: null, confirmerName: null, confirmedAt: null, createdAt: null,
+  };
+}
+
+test('真实详情页把接口位置冲突传到只读线索区域', async () => {
+  installDom();
+  const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
+  const axiosRequest = request as { defaults: { adapter: unknown } };
+  const originalAdapter = axiosRequest.defaults.adapter;
+  axiosRequest.defaults.adapter = async (config: { url?: string }) => {
+    const responses: Record<string, unknown> = {
+      '/complaints/CPL-TEST': locationDetailFixture,
+      '/complaints/CPL-TEST/timeline': { content: [], total: 0 },
+      '/complaints/CPL-TEST/source-status': { enabled: false, batch: 'G6', message: '未接入' },
+    };
+    if (!(config.url && config.url in responses)) throw new Error(`Unexpected test API: ${config.url}`);
+    return { data: { code: 200, data: responses[config.url] }, status: 200, statusText: 'OK', headers: {}, config };
+  };
+  const { default: ComplaintDetailPage } = await vite.ssrLoadModule('/src/views/ComplaintDetail.tsx');
+  const { render, within, cleanup, waitFor } = await import('@testing-library/react');
+  const ui = render(<MemoryRouter initialEntries={['/complaints/CPL-TEST']}><Routes>
+    <Route path="/complaints/:id" element={<ComplaintDetailPage />} />
+  </Routes></MemoryRouter>);
+  try {
+    const page = within(document.body);
+    await waitFor(() => assert.match(ui.container.textContent ?? '', /待核实位置线索.*样例社区20号1301/));
+    assert.match(ui.container.textContent ?? '', /位置冲突/);
+    assert.equal(page.queryByRole('button', { name: '填入待核实地址' }), null);
+  } finally { ui.unmount(); cleanup(); axiosRequest.defaults.adapter = originalAdapter; }
+});
+
+test('真实整体纠偏抽屉和位置窗体不允许带入有冲突的地址候选', async () => {
+  installDom();
+  const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
+  const axiosRequest = request as { defaults: { adapter: unknown } };
+  const originalAdapter = axiosRequest.defaults.adapter;
+  axiosRequest.defaults.adapter = async (config: { url?: string }) => {
+    const responses: Record<string, unknown> = {
+      '/corrections/pending-complaints': { content: [], total: 0 },
+      '/enterprises': { content: [], total: 0 },
+      '/complaints/CPL-TEST': locationDetailFixture,
+      '/complaints/CPL-TEST/corrections': ['address', 'location_lng', 'location_lat'].map(locationCorrectionFixture),
+    };
+    if (!(config.url && config.url in responses)) throw new Error(`Unexpected test API: ${config.url}`);
+    return { data: { code: 200, data: responses[config.url] }, status: 200, statusText: 'OK', headers: {}, config };
+  };
+  const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
+  const originalUser = useAppStore.getState().userInfo;
+  useAppStore.setState({ userInfo: { id: 1, userId: 'tester', username: 'tester', realName: '测试经办', roles: ['handler'], permissions: [] } });
+  const { default: AddressCorrectionPage } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
+  const { render, within, fireEvent, cleanup, waitFor } = await import('@testing-library/react');
+  const ui = render(<MemoryRouter initialEntries={['/address-correction?complaintId=CPL-TEST']}>
+    <AddressCorrectionPage />
+  </MemoryRouter>);
+  try {
+    const page = within(document.body);
+    await waitFor(() => assert.match(document.body.textContent ?? '', /待核实位置线索.*样例社区20号1301/));
+    assert.match(document.body.textContent ?? '', /位置冲突/);
+    await waitFor(() => assert.equal((page.getByRole('button', { name: '打开位置组纠偏' }) as HTMLButtonElement).disabled, false));
+    fireEvent.click(page.getByRole('button', { name: '打开位置组纠偏' }));
+    assert.match(document.body.textContent ?? '', /位置组纠偏/);
+    assert.equal(page.queryByRole('button', { name: '填入待核实地址' }), null);
+    assert.equal((page.getByPlaceholderText('人工核对后填写地址') as HTMLInputElement).value, '来源地址原值');
+  } finally {
+    ui.unmount(); cleanup(); axiosRequest.defaults.adapter = originalAdapter;
+    useAppStore.setState({ userInfo: originalUser });
+  }
 });
