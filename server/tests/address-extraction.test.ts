@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { addressInputHash, extractAddressCandidate } from '../src/services/rules/addressExtract';
-import { syncAddressCandidate } from '../src/repositories/addressCandidateRepo';
+import { findAddressCandidate, syncAddressCandidate } from '../src/repositories/addressCandidateRepo';
 import type { Queryable } from '../src/repositories/complaintSourceLogRepo';
 
 class CandidateFake {
@@ -41,6 +41,31 @@ test('extracts a bounded residential address and stops at resident narrative', (
   });
   assert.equal(result?.value, '点军区联棚乡示例小区18号1301');
   assert.equal(result?.sourceField, 'content');
+});
+
+test('keeps an exact home-garden address substring and stores inferred township metadata separately', () => {
+  const result = extractAddressCandidate({
+    title: '燃气报装',
+    content: '我是联棚乡示例家园18号1301的居民，催促安装',
+  });
+  assert.equal(result?.value, '联棚乡示例家园18号1301');
+  assert.equal(result?.districtCode, '420504');
+  assert.equal(result?.parentMatch, 'unique_township');
+  assert.equal(result?.snapshotId, 'yichang-2026-09-24-api-unapproved');
+  assert.equal(result?.value.includes('催促安装'), false);
+});
+
+test('maps a legacy stored address candidate without invented location metadata', async () => {
+  const db = new CandidateFake() as unknown as CandidateFake & Queryable;
+  db.row = {
+    complaintId: 'C1', candidateText: '点军区联棚乡示例小区18号1301', evidenceText: '点军区联棚乡示例小区18号1301',
+    sourceField: 'content', extractorVersion: 'address-extract.v1', inputHash: 'legacy-hash',
+  };
+
+  const result = await findAddressCandidate(db, 'C1');
+  assert.equal(result?.districtCode, null);
+  assert.equal(result?.parentMatch, null);
+  assert.equal(result?.snapshotId, null);
 });
 
 test('starts the candidate at the address boundary after request wording', () => {

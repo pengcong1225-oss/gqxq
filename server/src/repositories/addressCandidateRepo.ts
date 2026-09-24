@@ -21,6 +21,9 @@ function mapCandidate(row: AddressCandidateRow): AddressCandidate {
     sourceField: row.sourceField === 'title' ? 'title' : 'content',
     extractorVersion: String(row.extractorVersion) as ExtractedAddressCandidate['extractorVersion'],
     inputHash: String(row.inputHash),
+    districtCode: null,
+    parentMatch: null,
+    snapshotId: null,
   };
 }
 

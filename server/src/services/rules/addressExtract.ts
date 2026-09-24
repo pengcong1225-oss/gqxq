@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { getTownshipSnapshot } from './townshipGazetteer';
 
 export const ADDRESS_EXTRACTOR_VERSION = 'address-extract.v1';
 
@@ -7,11 +8,15 @@ export interface ExtractedAddressCandidate {
   evidence: string;
   sourceField: 'title' | 'content';
   extractorVersion: typeof ADDRESS_EXTRACTOR_VERSION;
+  districtCode: string | null;
+  parentMatch: 'explicit' | 'unique_township' | 'unresolved' | null;
+  snapshotId: string | null;
 }
 
-type AddressInput = { title: string; content: string | null };
+export interface AddressInput { title: string; content: string | null }
 
-const ADDRESS_PATTERN = /(?<![\u4e00-\u9fff])[\u4e00-\u9fff]{2,}(?:区|县|市)[\u4e00-\u9fff]{1,8}(?:乡|镇|街道|街)[\u4e00-\u9fff]{0,15}(?:小区|社区|村)[\u4e00-\u9fff\d号栋幢单元室楼座-]{0,18}?\d{1,4}号\d{1,4}(?:室)?/g;
+const SETTLEMENT = '[\\u4e00-\\u9fff]{1,16}?(?:家园|小区|社区|村|花园|苑|公寓|家属院)';
+const DOOR = '(?:[0-9一二三四五六七八九十百]{1,5}号[0-9]{1,4}(?:室)?|[0-9]{1,4}栋[0-9]{1,4}(?:单元)?[0-9]{1,4}室)';
 const DOOR_REFERENCE_PATTERN = /\d{1,4}号\d{1,4}(?:室)?/g;
 const LEADING_INTRODUCTION = /^\s*(?:(?:您好|你好)[，,、：:\s]*)?(?:本人居住在|本人住在|本人家住|本人居住于|本人住于|我是|我家在|我住在|家住|地址是|位于|住在|请处理)/;
 
@@ -19,17 +24,47 @@ interface AddressMatch {
   value: string;
   start: number;
   end: number;
+  townshipCode: string | null;
+  districtCode: string | null;
+  explicitDistrict: boolean;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function addressPattern(): RegExp {
+  const snapshot = getTownshipSnapshot();
+  const counties = snapshot.counties.map((county) => escapeRegExp(county.name)).sort((a, b) => b.length - a.length);
+  const townships = snapshot.counties.flatMap((county) => county.townships.map((township) => ({ ...township, countyCode: county.code })))
+    .sort((a, b) => b.name.length - a.name.length);
+  const names = townships.map((township) => escapeRegExp(township.name)).join('|');
+  const townshipSuffix = `(?:${SETTLEMENT})${DOOR}`;
+  const explicit = `(?:${counties.join('|')})(?:${names})${townshipSuffix}`;
+  const unique = `(?:${names})${townshipSuffix}`;
+  const fallback = `(?:${counties.join('|')})[\\u4e00-\\u9fff]{1,8}(?:乡|镇|街道|街)${townshipSuffix}`;
+  return new RegExp(`(?<![\\u4e00-\\u9fff])(?:${explicit}|${unique}|${fallback})`, 'g');
 }
 
 function candidatesIn(value: string): AddressMatch[] {
   const introduction = LEADING_INTRODUCTION.exec(value);
   const offset = introduction?.[0].length ?? 0;
   const searchable = value.slice(offset);
-  return [...searchable.matchAll(ADDRESS_PATTERN)].map((match) => ({
-    value: match[0],
-    start: offset + match.index!,
-    end: offset + match.index! + match[0].length,
-  }));
+  const snapshot = getTownshipSnapshot();
+  const townships = snapshot.counties.flatMap((county) => county.townships.map((township) => ({ ...township, countyCode: county.code })));
+  return [...searchable.matchAll(addressPattern())].map((match) => {
+    const town = townships.find((item) => match[0].includes(item.name));
+    const county = snapshot.counties.find((item) => match[0].startsWith(item.name));
+    return {
+      value: match[0],
+      start: offset + match.index!,
+      end: offset + match.index! + match[0].length,
+      townshipCode: town?.code ?? null,
+      districtCode: town?.countyCode ?? county?.code ?? null,
+      explicitDistrict: county !== undefined || town !== undefined &&
+        match[0].startsWith(snapshot.counties.find((item) => item.code === town.countyCode)!.name),
+    };
+  });
 }
 
 export function extractAddressCandidate(input: AddressInput): ExtractedAddressCandidate | null {
@@ -54,7 +89,15 @@ export function extractAddressCandidate(input: AddressInput): ExtractedAddressCa
   const sourceField = selectedMatch.sourceField;
   const text = fields.find((field) => field.name === sourceField)!.value!;
   const evidence = text.slice(selectedMatch.start, selectedMatch.end).slice(0, 500);
-  return { value: value.slice(0, 500), evidence, sourceField, extractorVersion: ADDRESS_EXTRACTOR_VERSION };
+  return {
+    value: value.slice(0, 500),
+    evidence,
+    sourceField,
+    extractorVersion: ADDRESS_EXTRACTOR_VERSION,
+    districtCode: selectedMatch.districtCode,
+    parentMatch: selectedMatch.explicitDistrict ? 'explicit' : 'unique_township',
+    snapshotId: getTownshipSnapshot().snapshotId,
+  };
 }
 
 export function addressInputHash(input: AddressInput): string {
