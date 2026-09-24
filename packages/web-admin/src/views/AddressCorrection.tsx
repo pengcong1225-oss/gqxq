@@ -37,6 +37,7 @@ import { listEnterprises } from '../api/enterprises';
 import { getComplaint } from '../api/complaints';
 import type { AddressCandidateView, ComplaintDetail, CorrectionItem, EnterpriseListItem } from '../types/api';
 import TiandituLocationPicker from '../components/TiandituLocationPicker';
+import LocationClues from '../components/LocationClues';
 import InlineCorrectionField from '../components/InlineCorrectionField';
 import { useWriteAccess, WriteGate } from '../stores/roleAccess';
 import { useAdminAccess } from '../stores/roleAccess';
@@ -78,8 +79,9 @@ export const AddressCandidateCorrection: React.FC<{
   sourceAddress: string | null;
   candidate: AddressCandidateView | null;
   pending: boolean;
+  locationConflict?: boolean;
   onUse: () => void;
-}> = ({ sourceAddress, candidate, pending, onUse }) => (
+}> = ({ sourceAddress, candidate, pending, locationConflict = false, onUse }) => (
   <Descriptions size="small" column={1} bordered>
     <Descriptions.Item label="来源地址">{sourceAddress || '—'}</Descriptions.Item>
     <Descriptions.Item label="机器地址候选">
@@ -87,7 +89,8 @@ export const AddressCandidateCorrection: React.FC<{
         <Tag color="warning">待核实</Tag> {candidate.value}
         <div>提取来源：{candidate.sourceField === 'title' ? '标题' : '正文'}；规则：{candidate.extractorVersion}</div>
         <div>证据：{candidate.evidence}</div>
-        {pending && <Button size="small" onClick={onUse}>填入待核实地址</Button>}
+        {pending && !locationConflict && <Button size="small" onClick={onUse}>填入待核实地址</Button>}
+        {locationConflict && <Tag color="warning">位置冲突，仅供查看</Tag>}
       </> : '无候选'}
     </Descriptions.Item>
   </Descriptions>
@@ -139,10 +142,11 @@ export const AddressCandidateBackfillControls: React.FC<AddressCandidateBackfill
 
   const doExecute = () => {
     if (!preview || !adminAccess.can || executeLoading) return;
-    const expectedWrites = preview.created + preview.updated + preview.removed;
+    const expectedAddressChanges = preview.created + preview.updated + preview.removed;
+    const expectedClueChanges = preview.clueCreated + preview.clueUpdated + preview.clueRemoved;
     Modal.confirm({
       title: '确认执行存量地址候选补提取？',
-      content: '预览范围共 ' + preview.total + ' 条，预计写入或移除 ' + expectedWrites + ' 条。执行后仅更新机器候选，并记录操作审计。',
+      content: '预览范围共 ' + preview.total + ' 条；地址候选预计写入或移除 ' + expectedAddressChanges + ' 条，位置线索预计新增/更新/移除 ' + expectedClueChanges + ' 条，位置冲突 ' + preview.conflicts + ' 条。执行后仅更新机器地址候选和位置线索，并记录操作审计。',
       okText: '确认执行', cancelText: '取消',
       onOk: async () => {
         setExecuteLoading(true);
@@ -174,9 +178,18 @@ export const AddressCandidateBackfillControls: React.FC<AddressCandidateBackfill
           <Descriptions.Item label="可提取">{preview.extractable}</Descriptions.Item>
           <Descriptions.Item label="无候选">{preview.noCandidate}</Descriptions.Item>
           <Descriptions.Item label="预计写入/移除">{preview.created + preview.updated + preview.removed}</Descriptions.Item>
+          <Descriptions.Item label="乡镇线索">{preview.townshipClues}</Descriptions.Item>
+          <Descriptions.Item label="村社区小区线索">{preview.settlementClues}</Descriptions.Item>
+          <Descriptions.Item label="位置冲突">{preview.conflicts}</Descriptions.Item>
+          <Descriptions.Item label="上级待核实">{preview.unresolved}</Descriptions.Item>
+          <Descriptions.Item label="线索新增">{preview.clueCreated}</Descriptions.Item>
+          <Descriptions.Item label="线索更新">{preview.clueUpdated}</Descriptions.Item>
+          <Descriptions.Item label="线索未变">{preview.clueUnchanged}</Descriptions.Item>
+          <Descriptions.Item label="线索移除">{preview.clueRemoved}</Descriptions.Item>
+          <Descriptions.Item label="版本重算">{preview.recomputedForVersion}</Descriptions.Item>
         </Descriptions>}
       </Space>
-      {preview?.samples.map((sample) => <span key={sample.item}>示例 {sample.item}：{sample.action}；来源 {sample.sourceField ?? '无'}；{sample.value}</span>)}
+      {preview?.samples.map((sample) => <span key={sample.item}>示例 {sample.item}：{sample.category}；{sample.action}；{sample.value}</span>)}
       {execution && <Alert type={addressBackfillOutcome(execution) === 'success' ? 'success' : addressBackfillOutcome(execution) === 'failed' ? 'error' : 'warning'} showIcon message="执行结果" description={'新增 ' + execution.created + '，更新 ' + execution.updated + '，未变 ' + execution.unchanged + '，移除 ' + execution.removed + '，失败 ' + execution.failed + '（扫描 ' + execution.errors.scan + '，单条处理 ' + execution.errors.row + '，审计 ' + execution.errors.audit + '）'} />}
     </Space>
   );
@@ -738,8 +751,10 @@ const AddressCorrection: React.FC = () => {
                     sourceAddress={selectedComplaintDetail?.address ?? null}
                     candidate={selectedComplaintDetail?.addressCandidate ?? null}
                     pending={false}
+                    locationConflict={selectedComplaintDetail?.locationConflict ?? false}
                     onUse={() => undefined}
                   />
+                  <LocationClues clues={selectedComplaintDetail?.locationClues ?? []} conflict={selectedComplaintDetail?.locationConflict ?? false} />
                 </div>
 
                 {pendingCount === 0 && items.length > 0 && (
@@ -908,13 +923,15 @@ const AddressCorrection: React.FC = () => {
             <AddressCandidateCorrection
               sourceAddress={selectedComplaintDetail?.address ?? null}
               candidate={selectedComplaintDetail?.addressCandidate ?? null}
-                    pending={positionItemsReady && positionItems[0]?.status === 'pending'}
-                    onUse={() => {
-                if (positionItemsReady && positionItems[0]?.status === 'pending' && selectedComplaintDetail?.addressCandidate) {
+              pending={positionItemsReady && positionItems[0]?.status === 'pending'}
+              locationConflict={selectedComplaintDetail?.locationConflict ?? false}
+              onUse={() => {
+                if (positionItemsReady && positionItems[0]?.status === 'pending' && selectedComplaintDetail?.addressCandidate && !selectedComplaintDetail.locationConflict) {
                   positionForm.setFieldsValue({ address: selectedComplaintDetail.addressCandidate.value });
                 }
               }}
             />
+            <LocationClues clues={selectedComplaintDetail?.locationClues ?? []} conflict={selectedComplaintDetail?.locationConflict ?? false} />
           </div>
           <Form.Item name="address" label="核实后的地址" rules={positionItems[0]?.status === 'pending' ? [{ required: true, whitespace: true, message: '请输入核实后的地址' }] : []}>
             <Input disabled={positionItems[0]?.status !== 'pending'} placeholder="人工核对后填写地址" />

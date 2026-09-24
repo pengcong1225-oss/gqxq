@@ -31,6 +31,7 @@ import {
   SendOutlined,
 } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
+import LocationClues from '../components/LocationClues';
 import type { Dayjs } from 'dayjs';
 import { getComplaint, getComplaintTimeline } from '../api/complaints';
 import { createDispatch, getDispatchOrder } from '../api/dispatch';
@@ -673,6 +674,7 @@ const ComplaintDetail: React.FC = () => {
                 {detail.content ?? '—'}
               </Descriptions.Item>
             </Descriptions>
+            <LocationClues clues={detail.locationClues} conflict={detail.locationConflict} />
           </Card>
 
           <Card title="处理记录" style={{ marginTop: 16 }}>
