@@ -135,7 +135,9 @@ function extractBoundedClues(input: { title: string; content: string | null }, s
       if (!settlement || isRejectedLocationContext(text, candidateOffset)) continue;
       const afterName = start + settlement[0].length;
       const door = DOOR_SUFFIX.exec(text.slice(afterName, clauseEnd))?.[0] ?? '';
-      if (!introduction && door) continue;
+      const hasEarlierCompleteAddress = found.some((item) => item.sourceField === field.name && item.kind === 'settlement' &&
+        item.end <= start && /^[\u4e00-\u9fff].*\d{1,4}号\d{1,4}/.test(item.evidence));
+      if (!introduction && door && !hasEarlierCompleteAddress) continue;
       found.push(clue('settlement', text, field.name, start, afterName + door.length, null, null, snapshot));
     }
 
@@ -160,6 +162,15 @@ function extractBoundedClues(input: { title: string; content: string | null }, s
   const unique = new Map<string, ExtractedLocationClue>();
   for (const item of found) {
     const key = `${item.kind}\0${item.value}\0${item.townshipCode ?? ''}`;
+    if (item.kind === 'settlement') {
+      const samePlace = [...unique.entries()].find(([, existing]) => existing.kind === 'settlement' && existing.value === item.value &&
+        (existing.townshipCode === null) !== (item.townshipCode === null));
+      if (samePlace) {
+        const [existingKey, existing] = samePlace;
+        if (existing.townshipCode === null && item.townshipCode !== null) unique.delete(existingKey);
+        else continue;
+      }
+    }
     if (!unique.has(key)) unique.set(key, item);
   }
   return [...unique.values()].sort((left, right) => left.sourceField.localeCompare(right.sourceField) || left.start - right.start || left.end - right.end);

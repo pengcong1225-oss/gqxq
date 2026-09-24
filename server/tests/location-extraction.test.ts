@@ -198,6 +198,23 @@ test('does not turn a repeated complete address into a bare door clue or conflic
   assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => clue.evidence), ['示例家园18号1301']);
 });
 
+test('does not create a bare door clue or conflict for a repeated named address in the next clause', () => {
+  const result = extractLocation({ title: '地址核查', content: '联棚乡示例家园18号1301，示例家园18号1301' });
+  assert.equal(result.conflict, false);
+  assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => [clue.evidence, clue.townshipCode]), [
+    ['示例家园18号1301', '420504202'],
+  ]);
+});
+
+test('preserves a second named address without inheriting the first township', () => {
+  const result = extractLocation({ title: '地址核查', content: '联棚乡示例家园18号1301，样例社区20号1301' });
+  assert.equal(result.conflict, true);
+  assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => [clue.evidence, clue.townshipCode, clue.parentMatch]), [
+    ['示例家园18号1301', '420504202', 'unique_township'],
+    ['样例社区20号1301', null, 'unresolved'],
+  ]);
+});
+
 test('does not attribute the door number of a second named location to the first township', () => {
   const result = extractLocation({ title: '地址核查', content: '联棚乡示例家园18号1301，西陵街道样例家园20号1301' });
   assert.equal(result.conflict, true);
