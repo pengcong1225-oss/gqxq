@@ -201,7 +201,7 @@ test('存量地址候选先预览，取消不执行，确认后才调用执行 A
     townshipClues: 1, settlementClues: 2, conflicts: 1, unresolved: 1, clueCreated: 2, clueUpdated: 0, clueUnchanged: 1, clueRemoved: 0, recomputedForVersion: 3,
     errors: { scan: 0, row: 0, audit: 0 },
     samples: [{ item: 1, action: 'create', category: 'address' as const, value: '[已脱敏]' as const }] });
-  const execute = async () => ({ total: 4, extractable: 3, noCandidate: 1, created: 2, updated: 0, unchanged: 2, removed: 0, failed: 0,
+  const execute = async () => ({ total: 4, extractable: 3, noCandidate: 1, created: 0, updated: 0, unchanged: 4, removed: 0, failed: 0,
     townshipClues: 1, settlementClues: 2, conflicts: 1, unresolved: 1, clueCreated: 2, clueUpdated: 0, clueUnchanged: 1, clueRemoved: 0, recomputedForVersion: 3,
     errors: { scan: 0, row: 0, audit: 0 } });
   let executeCalls = 0;
@@ -226,7 +226,8 @@ test('存量地址候选先预览，取消不执行，确认后才调用执行 A
     fireEvent.click(executeButton);
     fireEvent.click(await screen.findByRole('button', { name: '确认执行', exact: true }));
     await waitFor(() => assert.equal(executeCalls, 1));
-    assert.equal(await screen.findByText(/新增 2/).then(() => true), true);
+    assert.equal(await screen.findByText(/位置线索新增 2/).then(() => true), true);
+    assert.match(ui.container.textContent ?? '', /地址候选新增 0，更新 0，未变 4，移除 0/);
   } finally { ui.unmount(); cleanup(); message.success = originalSuccess; }
 });
 
@@ -253,6 +254,37 @@ test('地址候选分开展示来源与候选，待处理时经办点击才允�
     ui.rerender(<Candidate sourceAddress="来源地址原值" candidate={candidate} pending locationConflict onUse={() => copies++} />);
     assert.equal(screen.queryByRole('button', { name: '填入待核实地址' }), null);
     assert.equal(copies, 1);
+  } finally { ui.unmount(); cleanup(); }
+});
+
+test('地址纠偏证据组合在存在位置冲突时保留线索且不允许带入候选', async () => {
+  const module = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
+  const Panel = module.AddressLocationEvidence as React.ComponentType<{
+    sourceAddress: string | null;
+    candidate: { value: string; evidence: string; sourceField: 'title' | 'content'; extractorVersion: string } | null;
+    pending: boolean;
+    conflict: boolean;
+    clues: LocationClueView[];
+    onUse: () => void;
+  }> | undefined;
+  assert.equal(typeof Panel, 'function');
+  const { render, screen, fireEvent, cleanup } = await import('@testing-library/react');
+  let copies = 0;
+  const clue: LocationClueView = {
+    kind: 'settlement', value: '样例社区', evidence: '样例社区', sourceField: 'content',
+    townshipCode: null, districtCode: null, districtName: null,
+    parentMatch: 'unresolved', extractorVersion: 'location-extract.v1', snapshotId: 'official-20260923',
+  };
+  const ui = render(<Panel sourceAddress="来源地址" candidate={{
+    value: '联棚乡示例家园18号1301', evidence: '联棚乡示例家园18号1301', sourceField: 'content', extractorVersion: 'address-extract.v2',
+  }} pending conflict clues={[clue]} onUse={() => copies++} />);
+  try {
+    assert.match(ui.container.textContent ?? '', /示例家园18号1301/);
+    assert.match(ui.container.textContent ?? '', /样例社区/);
+    assert.match(ui.container.textContent ?? '', /位置冲突/);
+    assert.equal(screen.queryByRole('button', { name: '填入待核实地址' }), null);
+    fireEvent.click(screen.getByText('样例社区'));
+    assert.equal(copies, 0);
   } finally { ui.unmount(); cleanup(); }
 });
 

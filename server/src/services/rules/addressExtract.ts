@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import { getTownshipSnapshot } from './townshipGazetteer';
+import { extractLocation } from './locationExtract';
+import { hasImmediateComplaintPredicate, isRejectedLocationContext } from './locationContext';
 
-export const ADDRESS_EXTRACTOR_VERSION = 'address-extract.v2';
+export const ADDRESS_EXTRACTOR_VERSION = 'address-extract.v3';
 
 export interface ExtractedAddressCandidate {
   value: string;
@@ -21,12 +23,7 @@ const DOOR = '(?:[0-9一二三四五六七八九十百]{1,5}号[0-9]{1,4}(?:室)
 const RESIDENT_CONNECTOR = '(?:居民)?(?:居住在|住在)';
 const DOOR_REFERENCE_PATTERN = /\d{1,4}号\d{1,4}(?:室)?/g;
 const LEADING_INTRODUCTION = /^\s*(?:(?:您好|你好)[，,、：:\s]*)?(?:本人居住在|本人住在|本人家住|本人居住于|本人住于|我是|我家在|我住在|家住|地址是|位于|住在|请处理)/;
-// These discourse verbs are unsafe as a township-linked settlement prefix without an explicit residence connector.
-const IMMEDIATE_COMPLAINT_PREDICATE = /^(?:投诉|举报|反映|咨询|告知|要求|请求|催促|建议|希望)/;
-
-export function hasImmediateComplaintPredicate(text: string): boolean {
-  return IMMEDIATE_COMPLAINT_PREDICATE.test(text);
-}
+export { hasImmediateComplaintPredicate } from './locationContext';
 
 interface AddressMatch {
   value: string;
@@ -56,13 +53,15 @@ function addressPattern(): RegExp {
   return new RegExp(`(?<![\\u4e00-\\u9fff])(?:${explicit}|${unique}|${fallback}|${unparented})`, 'g');
 }
 
-function candidatesIn(value: string): AddressMatch[] {
-  const introduction = LEADING_INTRODUCTION.exec(value);
+function candidatesIn(text: string): AddressMatch[] {
+  const introduction = LEADING_INTRODUCTION.exec(text);
   const offset = introduction?.[0].length ?? 0;
-  const searchable = value.slice(offset);
+  const searchable = text.slice(offset);
   const snapshot = getTownshipSnapshot();
   const townships = snapshot.counties.flatMap((county) => county.townships.map((township) => ({ ...township, countyCode: county.code })));
   return [...searchable.matchAll(addressPattern())].flatMap((match) => {
+    const absoluteStart = offset + match.index!;
+    if (isRejectedLocationContext(text, absoluteStart)) return [];
     const town = townships.find((item) => match[0].includes(item.name));
     const county = snapshot.counties.find((item) => match[0].startsWith(item.name));
     const townshipEnd = town ? match[0].indexOf(town.name) + town.name.length : 0;
@@ -86,6 +85,7 @@ function candidatesIn(value: string): AddressMatch[] {
 }
 
 export function extractAddressCandidate(input: AddressInput): ExtractedAddressCandidate | null {
+  if (extractLocation(input).conflict) return null;
   const fields: Array<{ name: 'title' | 'content'; value: string | null }> = [
     { name: 'title', value: input.title },
     { name: 'content', value: input.content },

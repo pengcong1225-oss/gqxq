@@ -235,6 +235,22 @@ test('candidate storage creates once, updates changed input, and removes only th
   assert.equal(fake.operations, 3);
 });
 
+test('does not create a fillable candidate for historical or denied address wording', () => {
+  for (const content of [
+    '原来住在：联棚乡示例家园18号1301，现在地址尚待核实',
+    '不是在 示例社区18号1301',
+  ]) {
+    assert.equal(extractAddressCandidate({ title: '地址核查', content }), null, content);
+  }
+});
+
+test('does not keep a detailed candidate when a second incompatible settlement is named', () => {
+  assert.equal(
+    extractAddressCandidate({ title: '地址核查', content: '联棚乡示例家园18号1301，样例社区也有相同问题' }),
+    null,
+  );
+});
+
 test('re-extracts an unchanged input when the address rule version changes', async () => {
   const input = { title: '地址核查', content: '点军区联棚乡示例小区18号1301' };
   const db = new CandidateFake() as unknown as CandidateFake & Queryable;
@@ -244,5 +260,5 @@ test('re-extracts an unchanged input when the address rule version changes', asy
   };
 
   assert.equal(await syncAddressCandidate(db, 'C1', input), 'updated');
-  assert.equal((db as unknown as CandidateFake).row?.extractorVersion, 'address-extract.v2');
+  assert.equal((db as unknown as CandidateFake).row?.extractorVersion, 'address-extract.v3');
 });

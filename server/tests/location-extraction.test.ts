@@ -43,6 +43,7 @@ test('extracts an exact township clue and its unique district from current resid
   assert.equal(clue?.townshipCode, '420504202');
   assert.equal(clue?.districtCode, '420504');
   assert.equal(clue?.parentMatch, 'unique_township');
+  assert.equal(clue?.extractorVersion, 'location-extract.v2');
   assert.equal(result.conflict, false);
 });
 
@@ -180,4 +181,37 @@ test('does not join a distant named settlement across intervening complaint narr
   assert.equal(result.clues.some((candidate) => candidate.kind === 'settlement'), false);
   const township = result.clues.find((candidate) => candidate.kind === 'township');
   assert.equal(township?.evidence, '联棚乡');
+});
+
+test('keeps an unparented settlement in another clause and marks the two places conflicting', () => {
+  const result = extractLocation({ title: '地址核查', content: '联棚乡示例家园18号1301，样例社区也有相同问题' });
+  assert.equal(result.conflict, true);
+  assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => [clue.evidence, clue.parentMatch]), [
+    ['示例家园18号1301', 'unique_township'],
+    ['样例社区', 'unresolved'],
+  ]);
+});
+
+test('does not turn a repeated complete address into a bare door clue or conflict', () => {
+  const result = extractLocation({ title: '地址核查', content: '联棚乡示例家园18号1301，请核查联棚乡示例家园18号1301' });
+  assert.equal(result.conflict, false);
+  assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => clue.evidence), ['示例家园18号1301']);
+});
+
+test('does not attribute the door number of a second named location to the first township', () => {
+  const result = extractLocation({ title: '地址核查', content: '联棚乡示例家园18号1301，西陵街道样例家园20号1301' });
+  assert.equal(result.conflict, true);
+  assert.deepEqual(result.clues.filter((clue) => clue.kind === 'settlement').map((clue) => [clue.evidence, clue.townshipCode]), [
+    ['示例家园18号1301', '420504202'],
+    ['样例家园20号1301', '420502001'],
+  ]);
+});
+
+test('rejects historical and negative settlement clues across punctuation and spaces', () => {
+  for (const content of [
+    '原来住在：联棚乡示例家园18号1301，现在地址尚待核实',
+    '不是在 示例社区18号1301',
+  ]) {
+    assert.equal(extractLocation({ title: '地址核查', content }).clues.some((clue) => clue.kind === 'settlement'), false, content);
+  }
 });

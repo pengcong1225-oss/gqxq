@@ -96,6 +96,24 @@ export const AddressCandidateCorrection: React.FC<{
   </Descriptions>
 );
 
+export const AddressLocationEvidence: React.FC<{
+  sourceAddress: string | null;
+  candidate: AddressCandidateView | null;
+  pending: boolean;
+  conflict: boolean;
+  clues: ComplaintDetail['locationClues'];
+  onUse: () => void;
+}> = ({ sourceAddress, candidate, pending, conflict, clues, onUse }) => <>
+  <AddressCandidateCorrection
+    sourceAddress={sourceAddress}
+    candidate={candidate}
+    pending={pending}
+    locationConflict={conflict}
+    onUse={onUse}
+  />
+  <LocationClues clues={clues} conflict={conflict} />
+</>;
+
 const POSITION_FIELDS = ['address', 'location_lng', 'location_lat'] as const;
 
 /** 交办轴筛选（两条轴并行，页面要能分别看） */
@@ -190,7 +208,7 @@ export const AddressCandidateBackfillControls: React.FC<AddressCandidateBackfill
         </Descriptions>}
       </Space>
       {preview?.samples.map((sample) => <span key={sample.item}>示例 {sample.item}：{sample.category}；{sample.action}；{sample.value}</span>)}
-      {execution && <Alert type={addressBackfillOutcome(execution) === 'success' ? 'success' : addressBackfillOutcome(execution) === 'failed' ? 'error' : 'warning'} showIcon message="执行结果" description={'新增 ' + execution.created + '，更新 ' + execution.updated + '，未变 ' + execution.unchanged + '，移除 ' + execution.removed + '，失败 ' + execution.failed + '（扫描 ' + execution.errors.scan + '，单条处理 ' + execution.errors.row + '，审计 ' + execution.errors.audit + '）'} />}
+      {execution && <Alert type={addressBackfillOutcome(execution) === 'success' ? 'success' : addressBackfillOutcome(execution) === 'failed' ? 'error' : 'warning'} showIcon message="执行结果" description={'地址候选新增 ' + execution.created + '，更新 ' + execution.updated + '，未变 ' + execution.unchanged + '，移除 ' + execution.removed + '；位置线索新增 ' + execution.clueCreated + '，更新 ' + execution.clueUpdated + '，未变 ' + execution.clueUnchanged + '，移除 ' + execution.clueRemoved + '；失败 ' + execution.failed + '（扫描 ' + execution.errors.scan + '，单条处理 ' + execution.errors.row + '，审计 ' + execution.errors.audit + '）'} />}
     </Space>
   );
 };
@@ -747,14 +765,14 @@ const AddressCorrection: React.FC = () => {
                   <Descriptions.Item label="全部项">{items.length}</Descriptions.Item>
                 </Descriptions>
                 <div style={{ marginBottom: 16 }}>
-                  <AddressCandidateCorrection
+                  <AddressLocationEvidence
                     sourceAddress={selectedComplaintDetail?.address ?? null}
                     candidate={selectedComplaintDetail?.addressCandidate ?? null}
                     pending={false}
-                    locationConflict={selectedComplaintDetail?.locationConflict ?? false}
+                    conflict={selectedComplaintDetail?.locationConflict ?? false}
+                    clues={selectedComplaintDetail?.locationClues ?? []}
                     onUse={() => undefined}
                   />
-                  <LocationClues clues={selectedComplaintDetail?.locationClues ?? []} conflict={selectedComplaintDetail?.locationConflict ?? false} />
                 </div>
 
                 {pendingCount === 0 && items.length > 0 && (
@@ -920,18 +938,18 @@ const AddressCorrection: React.FC = () => {
             <Descriptions.Item label="诉求标题">{selectedComplaintInfo?.title || '正在读取…'}</Descriptions.Item>
           </Descriptions>
           <div style={{ marginBottom: 12 }}>
-            <AddressCandidateCorrection
+            <AddressLocationEvidence
               sourceAddress={selectedComplaintDetail?.address ?? null}
               candidate={selectedComplaintDetail?.addressCandidate ?? null}
               pending={positionItemsReady && positionItems[0]?.status === 'pending'}
-              locationConflict={selectedComplaintDetail?.locationConflict ?? false}
+              conflict={selectedComplaintDetail?.locationConflict ?? false}
+              clues={selectedComplaintDetail?.locationClues ?? []}
               onUse={() => {
                 if (positionItemsReady && positionItems[0]?.status === 'pending' && selectedComplaintDetail?.addressCandidate && !selectedComplaintDetail.locationConflict) {
                   positionForm.setFieldsValue({ address: selectedComplaintDetail.addressCandidate.value });
                 }
               }}
             />
-            <LocationClues clues={selectedComplaintDetail?.locationClues ?? []} conflict={selectedComplaintDetail?.locationConflict ?? false} />
           </div>
           <Form.Item name="address" label="核实后的地址" rules={positionItems[0]?.status === 'pending' ? [{ required: true, whitespace: true, message: '请输入核实后的地址' }] : []}>
             <Input disabled={positionItems[0]?.status !== 'pending'} placeholder="人工核对后填写地址" />
