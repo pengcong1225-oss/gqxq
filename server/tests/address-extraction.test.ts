@@ -106,6 +106,13 @@ test('does not fabricate detailed candidates from complaint prose after a townsh
   }
 });
 
+test('does not fabricate a detailed candidate when an immediate complaint predicate resembles the settlement name', () => {
+  assert.equal(
+    extractAddressCandidate({ title: '地址核查', content: '我是联棚乡投诉示例家园18号1301' }),
+    null
+  );
+});
+
 test('extracts an unparented settlement after an explicit leading location introduction', () => {
   const result = extractAddressCandidate({ title: '地址核查', content: '我住在示例社区18号1301' });
   assert.equal(result?.value, '示例社区18号1301');

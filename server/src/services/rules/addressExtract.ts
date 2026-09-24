@@ -21,6 +21,12 @@ const DOOR = '(?:[0-9一二三四五六七八九十百]{1,5}号[0-9]{1,4}(?:室)
 const RESIDENT_CONNECTOR = '(?:居民)?(?:居住在|住在)';
 const DOOR_REFERENCE_PATTERN = /\d{1,4}号\d{1,4}(?:室)?/g;
 const LEADING_INTRODUCTION = /^\s*(?:(?:您好|你好)[，,、：:\s]*)?(?:本人居住在|本人住在|本人家住|本人居住于|本人住于|我是|我家在|我住在|家住|地址是|位于|住在|请处理)/;
+// These discourse verbs are unsafe as a township-linked settlement prefix without an explicit residence connector.
+const IMMEDIATE_COMPLAINT_PREDICATE = /^(?:投诉|举报|反映|咨询|告知|要求|请求|催促|建议|希望)/;
+
+export function hasImmediateComplaintPredicate(text: string): boolean {
+  return IMMEDIATE_COMPLAINT_PREDICATE.test(text);
+}
 
 interface AddressMatch {
   value: string;
@@ -56,16 +62,17 @@ function candidatesIn(value: string): AddressMatch[] {
   const searchable = value.slice(offset);
   const snapshot = getTownshipSnapshot();
   const townships = snapshot.counties.flatMap((county) => county.townships.map((township) => ({ ...township, countyCode: county.code })));
-  return [...searchable.matchAll(addressPattern())].map((match) => {
+  return [...searchable.matchAll(addressPattern())].flatMap((match) => {
     const town = townships.find((item) => match[0].includes(item.name));
     const county = snapshot.counties.find((item) => match[0].startsWith(item.name));
     const townshipEnd = town ? match[0].indexOf(town.name) + town.name.length : 0;
     const connector = town ? new RegExp(`^${RESIDENT_CONNECTOR}`).exec(match[0].slice(townshipEnd)) : null;
+    if (town && !connector && hasImmediateComplaintPredicate(match[0].slice(townshipEnd))) return [];
     const valueOffset = townshipEnd + (connector?.[0].length ?? 0);
     const value = connector ? match[0].slice(valueOffset) : match[0];
     const unparented = !town && !county;
     const parentConflict = town !== undefined && county !== undefined && town.countyCode !== county.code;
-    return {
+    return [{
       value,
       start: offset + match.index! + (connector || unparented ? valueOffset : 0),
       end: offset + match.index! + match[0].length,
@@ -74,7 +81,7 @@ function candidatesIn(value: string): AddressMatch[] {
       explicitDistrict: county !== undefined || town !== undefined &&
         match[0].startsWith(snapshot.counties.find((item) => item.code === town.countyCode)!.name),
       parentConflict,
-    };
+    }];
   });
 }
 

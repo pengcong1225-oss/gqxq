@@ -1,5 +1,5 @@
 import { getTownshipSnapshot, type TownshipSnapshot } from './townshipGazetteer';
-import type { AddressInput } from './addressExtract';
+import { hasImmediateComplaintPredicate, type AddressInput } from './addressExtract';
 
 export const LOCATION_EXTRACTOR_VERSION = 'location-extract.v1';
 
@@ -115,6 +115,7 @@ function extractBoundedClues(input: AddressInput, snapshot: TownshipSnapshot): E
       const afterConnector = remainder.slice(connector?.[0].length ?? 0);
       const separator = SETTLEMENT_SEPARATOR.exec(afterConnector);
       const settlementStart = township.end + (connector?.[0].length ?? 0) + (separator?.[0].length ?? 0);
+      if (!connector && hasImmediateComplaintPredicate(text.slice(settlementStart))) continue;
       const settlement = SETTLEMENT_SUFFIX.exec(text.slice(settlementStart));
       if (settlement) {
         const tailStart = settlementStart + settlement[0].length;

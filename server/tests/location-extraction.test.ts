@@ -145,6 +145,11 @@ test('does not promote longer complaint prose to a township-linked settlement', 
   }
 });
 
+test('does not treat an immediate complaint predicate as a four-character settlement name', () => {
+  const result = extractLocation({ title: '地址核查', content: '我是联棚乡投诉示例家园18号1301' });
+  assert.equal(result.clues.some((candidate) => candidate.kind === 'settlement'), false);
+});
+
 test('extracts an unparented settlement after the supported 我住在 introduction', () => {
   const text = '我住在示例社区';
   const result = extractLocation({ title: '地址核查', content: text });
