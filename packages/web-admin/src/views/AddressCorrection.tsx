@@ -554,13 +554,6 @@ const AddressCorrection: React.FC = () => {
   return (
     <div>
       <h2 style={{ marginBottom: 8 }}>整体纠偏</h2>
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 12 }}
-        message="打开诉求后，直接在字段行填写纠偏后取值并保存；原值无误则点“核验无误”。"
-      />
-
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
           <Segmented
