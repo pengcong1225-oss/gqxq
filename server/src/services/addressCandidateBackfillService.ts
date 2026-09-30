@@ -1,13 +1,18 @@
 import { pool } from '../db/pool';
 import { withTransaction } from '../db/tx';
-import { findAddressCandidate, syncAddressCandidate } from '../repositories/addressCandidateRepo';
+import { classifyAddressCandidateChange, findAddressCandidate, syncAddressCandidate } from '../repositories/addressCandidateRepo';
+import { classifyLocationClueChange, findLocationClues, syncLocationClues, type LocationSyncResult } from '../repositories/locationClueRepo';
 import type { Queryable } from '../repositories/complaintSourceLogRepo';
 import { insertAudit } from '../repositories/auditLogRepo';
 import type { OperatorContext } from './dispatchService';
 import { GQXQ_APP_CODE } from './intakeService';
-import { addressInputHash, extractAddressCandidate } from './rules/addressExtract';
+import { ADDRESS_EXTRACTOR_VERSION, addressInputHash, extractAddressCandidate } from './rules/addressExtract';
+import { extractLocation, LOCATION_EXTRACTOR_VERSION, type ExtractedLocationClue } from './rules/locationExtract';
+import { getTownshipSnapshot } from './rules/townshipGazetteer';
 
 export type AddressBackfillErrorCategory = 'scan' | 'row' | 'audit';
+export type BackfillSampleCategory = 'address' | 'township' | 'settlement' | 'conflict' | 'unresolved';
+export type BackfillAction = 'create' | 'update' | 'unchanged' | 'remove' | 'no_candidate';
 
 export interface AddressBackfillSummary {
   total: number;
@@ -19,16 +24,28 @@ export interface AddressBackfillSummary {
   removed: number;
   failed: number;
   errors: Record<AddressBackfillErrorCategory, number>;
+  townshipClues: number;
+  settlementClues: number;
+  conflicts: number;
+  unresolved: number;
+  clueCreated: number;
+  clueUpdated: number;
+  clueUnchanged: number;
+  clueRemoved: number;
+  recomputedForVersion: number;
 }
 
 export interface AddressBackfillPreview extends AddressBackfillSummary {
-  samples: Array<{ item: number; action: 'create' | 'update' | 'unchanged' | 'remove' | 'no_candidate'; sourceField: 'title' | 'content' | null; value: '[地址已脱敏]' | '[无地址候选]' }>;
+  samples: Array<{ item: number; action: BackfillAction; category: BackfillSampleCategory; value: '[已脱敏]' }>;
 }
 
 interface ComplaintRow { complaintId: string; title: string | null; content: string | null }
 const PAGE_SIZE = 100;
-const EMPTY = (): AddressBackfillSummary => ({ total: 0, extractable: 0, noCandidate: 0,
-  created: 0, updated: 0, unchanged: 0, removed: 0, failed: 0, errors: { scan: 0, row: 0, audit: 0 } });
+const EMPTY = (): AddressBackfillSummary => ({
+  total: 0, extractable: 0, noCandidate: 0, created: 0, updated: 0, unchanged: 0, removed: 0, failed: 0,
+  errors: { scan: 0, row: 0, audit: 0 }, townshipClues: 0, settlementClues: 0, conflicts: 0, unresolved: 0,
+  clueCreated: 0, clueUpdated: 0, clueUnchanged: 0, clueRemoved: 0, recomputedForVersion: 0,
+});
 
 async function scanPage(db: Queryable, after: string): Promise<ComplaintRow[]> {
   const [rows] = await db.query(
@@ -36,6 +53,53 @@ async function scanPage(db: Queryable, after: string): Promise<ComplaintRow[]> {
     [after, PAGE_SIZE]
   );
   return rows as ComplaintRow[];
+}
+
+function versionChanged(
+  beforeClues: Awaited<ReturnType<typeof findLocationClues>>,
+  beforeCandidate: Awaited<ReturnType<typeof findAddressCandidate>>
+): boolean {
+  const snapshotId = getTownshipSnapshot().snapshotId;
+  const clueVersionChanged = beforeClues.some((clue) => clue.extractorVersion !== LOCATION_EXTRACTOR_VERSION || clue.snapshotId !== snapshotId);
+  const candidateVersionChanged = beforeCandidate !== null &&
+    (beforeCandidate.extractorVersion !== ADDRESS_EXTRACTOR_VERSION || beforeCandidate.snapshotId !== snapshotId);
+  return clueVersionChanged || candidateVersionChanged;
+}
+
+function categoryOf(clues: ExtractedLocationClue[], conflict: boolean, hasAddress: boolean): BackfillSampleCategory {
+  if (conflict) return 'conflict';
+  if (clues.some((clue) => clue.parentMatch === 'unresolved')) return 'unresolved';
+  if (clues.some((clue) => clue.kind === 'township')) return 'township';
+  if (clues.some((clue) => clue.kind === 'settlement')) return 'settlement';
+  return hasAddress ? 'address' : 'unresolved';
+}
+
+function countLocation(result: AddressBackfillSummary, clues: ExtractedLocationClue[], conflict: boolean): void {
+  result.townshipClues += clues.filter((clue) => clue.kind === 'township').length;
+  result.settlementClues += clues.filter((clue) => clue.kind === 'settlement').length;
+  if (conflict) result.conflicts++;
+  if (clues.length === 0 || clues.some((clue) => clue.parentMatch === 'unresolved')) result.unresolved++;
+}
+
+function countClueAction(result: AddressBackfillSummary, action: BackfillAction): void {
+  if (action === 'create') result.clueCreated++;
+  else if (action === 'update') result.clueUpdated++;
+  else if (action === 'remove') result.clueRemoved++;
+  else result.clueUnchanged++;
+}
+
+function countAddressAction(result: AddressBackfillSummary, action: LocationSyncResult): void {
+  if (action === 'created') result.created++;
+  else if (action === 'updated') result.updated++;
+  else if (action === 'removed') result.removed++;
+  else result.unchanged++;
+}
+
+function toBackfillAction(action: LocationSyncResult): BackfillAction {
+  if (action === 'created') return 'create';
+  if (action === 'updated') return 'update';
+  if (action === 'removed') return 'remove';
+  return 'unchanged';
 }
 
 export async function previewAddressCandidateBackfill(): Promise<AddressBackfillPreview> {
@@ -48,18 +112,30 @@ export async function previewAddressCandidateBackfill(): Promise<AddressBackfill
       after = row.complaintId;
       result.total++;
       const input = { title: row.title ?? '', content: row.content };
-      const extracted = extractAddressCandidate(input);
-      if (extracted) result.extractable++;
-      else result.noCandidate++;
-      const existing = await findAddressCandidate(pool, row.complaintId);
-      let action: AddressBackfillPreview['samples'][number]['action'];
-      if (!extracted) { if (existing) { result.removed++; action = 'remove'; } else action = 'no_candidate'; }
-      else if (!existing) { result.created++; action = 'create'; }
-      else if (existing.inputHash === addressInputHash(input) && existing.extractorVersion === extracted.extractorVersion) { result.unchanged++; action = 'unchanged'; }
-      else { result.updated++; action = 'update'; }
+      const address = extractAddressCandidate(input);
+      const location = extractLocation(input);
+      const hash = addressInputHash(input);
+      const [existingAddress, existingClues] = await Promise.all([
+        findAddressCandidate(pool, row.complaintId), findLocationClues(pool, row.complaintId),
+      ]);
+
+      if (address) result.extractable++; else result.noCandidate++;
+      const addressChange = classifyAddressCandidateChange(existingAddress, address, hash);
+      if (addressChange === 'created') result.created++;
+      else if (addressChange === 'updated') result.updated++;
+      else if (addressChange === 'removed') result.removed++;
+      else result.unchanged++;
+
+      countLocation(result, location.clues, location.conflict);
+      const clueChange = classifyLocationClueChange(existingClues, location.clues, hash);
+      countClueAction(result, toBackfillAction(clueChange));
+      if (versionChanged(existingClues, existingAddress)) result.recomputedForVersion++;
       if (result.samples.length < 5) result.samples.push({
-        item: result.total, action, sourceField: extracted?.sourceField ?? null,
-        value: extracted ? '[地址已脱敏]' : '[无地址候选]',
+        item: result.total,
+        action: (clueChange === 'none' || clueChange === 'unchanged') && addressChange !== 'unchanged' && addressChange !== 'none'
+          ? toBackfillAction(addressChange) : toBackfillAction(clueChange),
+        category: categoryOf(location.clues, location.conflict, Boolean(address)),
+        value: '[已脱敏]',
       });
     }
   }
@@ -84,27 +160,41 @@ export async function executeAddressCandidateBackfill(operator: OperatorContext)
             [scanned.complaintId]
           );
           const locked = (lockedRows as ComplaintRow[])[0];
-          if (!locked) return { kind: 'unchanged' as const, extractable: false };
+          if (!locked) throw Object.assign(new Error('complaint disappeared after backfill scan'), { category: 'row' as const });
           const input = { title: locked.title ?? '', content: locked.content };
-          const extracted = extractAddressCandidate(input);
-          const kind = await syncAddressCandidate(tx, locked.complaintId, input);
-          if (kind !== 'none' && kind !== 'unchanged') {
+          const extractedAddress = extractAddressCandidate(input);
+          const extractedLocation = extractLocation(input);
+          const hash = addressInputHash(input);
+          const [beforeAddress, beforeClues] = await Promise.all([
+            findAddressCandidate(tx, locked.complaintId), findLocationClues(tx, locked.complaintId),
+          ]);
+          const recomputedForVersion = versionChanged(beforeClues, beforeAddress);
+          const addressChange = await syncAddressCandidate(tx, locked.complaintId, input);
+          const clueChange = await syncLocationClues(tx, locked.complaintId, input);
+          if ((addressChange !== 'none' && addressChange !== 'unchanged') ||
+              (clueChange !== 'none' && clueChange !== 'unchanged')) {
             try {
               await insertAudit(tx, {
                 userId: operator.userId, appCode: GQXQ_APP_CODE, resourceCode: '/address-candidates/backfill',
-                action: 'ADDRESS_CANDIDATE_BACKFILL_ROW', bizType: 'address_candidate', bizId: locked.complaintId,
+                action: 'LOCATION_CLUE_BACKFILL_ROW', bizType: 'address_candidate', bizId: locked.complaintId,
                 result: 'success', clientIp: operator.clientIp,
-                detail: { complaintId: locked.complaintId, change: kind, inputHash: addressInputHash(input) },
+                detail: { complaintId: locked.complaintId, addressChange, clueChange, inputHash: hash },
                 createdAt: new Date(),
               });
             } catch (err) {
-              throw Object.assign(new Error('address candidate audit failed', { cause: err }), { category: 'audit' as const });
+              throw Object.assign(new Error('location clue backfill audit failed', { cause: err }), { category: 'audit' as const });
             }
           }
-          return { kind, extractable: Boolean(extracted) };
+          return {
+            extractable: Boolean(extractedAddress), clues: extractedLocation.clues, conflict: extractedLocation.conflict,
+            addressChange, clueChange, recomputedForVersion,
+          };
         });
         if (change.extractable) result.extractable++; else result.noCandidate++;
-        result[change.kind === 'none' ? 'unchanged' : change.kind]++;
+        countAddressAction(result, change.addressChange);
+        countLocation(result, change.clues, change.conflict);
+        countClueAction(result, toBackfillAction(change.clueChange));
+        if (change.recomputedForVersion) result.recomputedForVersion++;
       } catch (err) {
         result.failed++;
         if ((err as { category?: string })?.category === 'audit') result.errors.audit++;

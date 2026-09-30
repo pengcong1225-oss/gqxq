@@ -20,6 +20,7 @@ import { insertFieldVersions, toFieldText, type FieldVersionEntry } from '../rep
 import { insertAudit } from '../repositories/auditLogRepo';
 import { recordSensitiveHits } from '../repositories/sensitiveHitRepo';
 import { syncAddressCandidate } from '../repositories/addressCandidateRepo';
+import { syncLocationClues } from '../repositories/locationClueRepo';
 import { buildRuleText, classify, CLASSIFY_RULE_VERSION, type Classification } from './rules/classify';
 import { detectSensitive, type SensitiveResult } from './rules/sensitive';
 import type { IntakeResponse } from '../types/api';
@@ -349,6 +350,7 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
   }
 
   await syncAddressCandidate(tx, complaintId, { title: cmd.title, content: cmd.content });
+  await syncLocationClues(tx, complaintId, { title: cmd.title, content: cmd.content });
 
   const message = buildMessage([unknownFieldNotice(cmd.payload, KNOWN_REQUEST_KEYS)]);
   await insertSourceLog(tx, {
@@ -549,6 +551,7 @@ async function applyRedelivery(
 
   if (changedColumns.includes('title') || changedColumns.includes('content')) {
     await syncAddressCandidate(tx, complaintId, { title: cmd.title, content: cmd.content });
+    await syncLocationClues(tx, complaintId, { title: cmd.title, content: cmd.content });
   }
 
   const insertedVersions = await insertFieldVersions(tx, fieldVersions);

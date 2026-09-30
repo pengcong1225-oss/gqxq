@@ -10,10 +10,14 @@ import type {
   ComplaintListResult,
   OvertimeFilterCode,
   TimelineItem,
+  LocationClueView,
 } from '../types/api';
 import { labelOf } from '../domain/enums';
 import { rowToDetail, rowToListItem } from '../repositories/complaintMapper';
 import { findAddressCandidate } from '../repositories/addressCandidateRepo';
+import { findLocationClues } from '../repositories/locationClueRepo';
+import { hasLocationConflict } from './rules/locationExtract';
+import { getTownshipSnapshot } from './rules/townshipGazetteer';
 import { pool } from '../db/pool';
 import {
   findByIdOrNo,
@@ -221,7 +225,25 @@ export async function listComplaints(query: Record<string, unknown>): Promise<Co
 export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetail> {
   const row = await findByIdOrNo(idOrNo);
   if (!row) throw AppError.notFound('诉求不存在');
-  const candidate = await findAddressCandidate(pool, String(row.complaint_id));
+  const complaintId = String(row.complaint_id);
+  const [candidate, storedClues] = await Promise.all([
+    findAddressCandidate(pool, complaintId),
+    findLocationClues(pool, complaintId),
+  ]);
+  const snapshot = getTownshipSnapshot();
+  const districtNames = new Map(snapshot.counties.map((county) => [county.code, county.name]));
+  const locationClues: LocationClueView[] = storedClues.map((clue) => ({
+    kind: clue.kind,
+    value: clue.value,
+    evidence: clue.evidence,
+    sourceField: clue.sourceField,
+    townshipCode: clue.townshipCode,
+    districtCode: clue.districtCode,
+    districtName: clue.districtCode === null ? null : districtNames.get(clue.districtCode) ?? null,
+    parentMatch: clue.parentMatch,
+    extractorVersion: clue.extractorVersion,
+    snapshotId: clue.snapshotId,
+  }));
   return {
     ...rowToDetail(row),
     addressCandidate: candidate ? {
@@ -229,7 +251,12 @@ export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetai
       evidence: candidate.evidence,
       sourceField: candidate.sourceField,
       extractorVersion: candidate.extractorVersion,
+      districtCode: candidate.districtCode,
+      parentMatch: candidate.parentMatch,
+      snapshotId: candidate.snapshotId,
     } : null,
+    locationClues,
+    locationConflict: hasLocationConflict(storedClues),
   };
 }
 
