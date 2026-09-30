@@ -347,25 +347,6 @@ const AddressCorrection: React.FC = () => {
   return (
     <div>
       <h2 style={{ marginBottom: 8 }}>整体纠偏</h2>
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="纠偏是数据质量轴，覆盖所有诉求；与交办轴并行"
-        description={
-          <>
-            任何诉求都会逐字段生成纠偏项（企业名称/归属、地址、分类、坐标、摘要、企业处置结果），
-            <b>与是否交办、是否审批通过无关</b>；列表里的「已交办 / 未交办」只是标出这条件在另一条轴上的状态。
-            <br />
-            责任单位现在<b>只在这里确认</b>（总账的「匹配单位」按钮已下线）：取值从企业主数据里选，
-            后端成对写回 enterprise_code + enterprise_name，编码未登记会被拒绝。
-            <br />
-            纠偏全部确认或判定无需后，该诉求才满足进入分析库的前置条件之一；分析库口径未变——
-            未交办、误报归库的件仍不纳入分析。无法确认的请留在待纠偏，不要勉强确认。
-          </>
-        }
-      />
-
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
           <Segmented
