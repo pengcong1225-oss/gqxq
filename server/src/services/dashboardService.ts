@@ -5,8 +5,38 @@ import {dashboardQuery} from '../repositories/dashboardRepo';
 import {captureStatistics} from './statisticsService';
 import {shanghaiToday} from '../domain/statisticsQuery';
 export const BUSINESS_TIME_BASIS='source_reported_at_or_received_at';
-export async function getOverview(days:number,access:AccessContext=currentAccessContext(),permissions:readonly string[]=[],clock:()=>Date=()=>new Date()):Promise<DashboardOverview&{query:import('../types/statistics').StatisticsQuery;statistics:import('../types/statistics').StatisticsResult}>{
- const q=dashboardQuery(days,access,clock);const captured=await captureStatistics(q,access,permissions,clock,true);const s=captured.summary;const rows=captured.rows;const today=shanghaiToday(clock);
- const types=new Map<string,{code:string;name:string;value:number}>();for(const r of captured.legacyListItems){const item=types.get(r.complaintTypeCode);if(item)item.value++;else types.set(r.complaintTypeCode,{code:r.complaintTypeCode,name:r.complaintTypeName,value:1});}
- return {generatedAt:s.dataCutoffAt,source:'database',query:q,statistics:s,period:{today,timezone:'Asia/Shanghai',timeBasis:BUSINESS_TIME_BASIS,timeBasisLabel:s.timeBasis+'；所有统计均为 '+q.from+' ~ '+q.to},metrics:{total:s.total,todayReceived:rows.filter(r=>r.businessDay===today).length,waterReceived:rows.filter(r=>r.businessType==='water').length,gasReceived:rows.filter(r=>r.businessType==='gas').length,sensitiveTotal:captured.legacyMetrics.sensitive,closedInSystem:captured.legacyMetrics.closedInSystem,overtimeActive:null,closedRate:captured.legacyMetrics.sourceKnown?Math.round(captured.legacyMetrics.sourceClosed/captured.legacyMetrics.sourceKnown*1000)/10:null},unavailable:[{key:'overtimeActive',reason:'本指标截止时间与有效处理政策尚未就绪'},...(captured.legacyMetrics.sourceKnown?[]:[{key:'closedRate' as const,reason:'未取得已知来源状态，候选来源办结率不可计算'}])],trend:{dates:s.trend.map(d=>d.date),water:s.trend.map(d=>rows.filter(r=>r.businessDay===d.date&&r.businessType==='water').length),gas:s.trend.map(d=>rows.filter(r=>r.businessDay===d.date&&r.businessType==='gas').length),days,from:q.from,to:q.to},businessTypeDistribution:s.dimensions.filter(b=>b.dimension==='business').map(b=>({code:b.code??'',name:b.name,value:b.count})),complaintTypeDistribution:[...types.values()],regionRank:s.dimensions.filter(b=>b.dimension==='district').slice(0,10).map(b=>({districtCode:b.code,districtName:b.name,value:b.count})),latestComplaints:permissions.includes('complaint.read')?captured.legacyListItems.slice(0,5):[]};
+export async function getOverview(days: number, access: AccessContext = currentAccessContext(), permissions: readonly string[] = [], clock: () => Date = () => new Date()): Promise<DashboardOverview & {
+    query: import('../types/statistics').StatisticsQuery;
+    statistics: import('../types/statistics').StatisticsResult;
+}> {
+    const q = dashboardQuery(days, access, clock);
+    const captured = await captureStatistics(q, access, permissions, clock, true);
+    const s = captured.summary;
+    const rows = captured.rows;
+    const today = shanghaiToday(clock);
+    const types = new Map<string, {
+        code: string;
+        name: string;
+        value: number;
+    }>();
+    for (const r of captured.legacyListItems) {
+        const item = types.get(r.complaintTypeCode);
+        if (item)
+            item.value++;
+        else
+            types.set(r.complaintTypeCode, { code: r.complaintTypeCode, name: r.complaintTypeName, value: 1 });
+    }
+    const countsByDay = new Map<string, {
+        water: number;
+        gas: number;
+    }>();
+    for (const row of rows) {
+        const counts = countsByDay.get(row.businessDay!) ?? { water: 0, gas: 0 };
+        if (row.businessType === 'water')
+            counts.water++;
+        else if (row.businessType === 'gas')
+            counts.gas++;
+        countsByDay.set(row.businessDay!, counts);
+    }
+    return { generatedAt: s.dataCutoffAt, source: 'database', query: q, statistics: s, period: { today, timezone: 'Asia/Shanghai', timeBasis: BUSINESS_TIME_BASIS, timeBasisLabel: s.timeBasis + '；所有统计均为 ' + q.from + ' ~ ' + q.to }, metrics: { total: s.total, todayReceived: rows.filter(r => r.businessDay === today).length, waterReceived: rows.filter(r => r.businessType === 'water').length, gasReceived: rows.filter(r => r.businessType === 'gas').length, sensitiveTotal: captured.legacyMetrics.sensitive, closedInSystem: captured.legacyMetrics.closedInSystem, overtimeActive: null, closedRate: captured.legacyMetrics.sourceKnown ? Math.round(captured.legacyMetrics.sourceClosed / captured.legacyMetrics.sourceKnown * 1000) / 10 : null }, unavailable: [{ key: 'overtimeActive', reason: '本指标截止时间与有效处理政策尚未就绪' }, ...(captured.legacyMetrics.sourceKnown ? [] : [{ key: 'closedRate' as const, reason: '未取得已知来源状态，候选来源办结率不可计算' }])], trend: { dates: s.trend.map(d => d.date), water: s.trend.map(d => countsByDay.get(d.date)?.water ?? 0), gas: s.trend.map(d => countsByDay.get(d.date)?.gas ?? 0), days, from: q.from, to: q.to }, businessTypeDistribution: s.dimensions.filter(b => b.dimension === 'business').map(b => ({ code: b.code ?? '', name: b.name, value: b.count })), complaintTypeDistribution: [...types.values()], regionRank: s.dimensions.filter(b => b.dimension === 'district').slice(0, 10).map(b => ({ districtCode: b.code, districtName: b.name, value: b.count })), latestComplaints: permissions.includes('complaint.read') ? captured.legacyListItems.slice(0, 5) : [] };
 }

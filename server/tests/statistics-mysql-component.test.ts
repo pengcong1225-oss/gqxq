@@ -92,6 +92,58 @@ test('D1 declared isolated real MySQL contract (not M0/canonical/restart)',{skip
    const same=await capture({...overview.query});assert.equal(overview.metrics.total,same.summary.total);assert.equal(overview.businessTypeDistribution.reduce((n:any,b:any)=>n+b.value,0),same.summary.total);assert.equal(overview.complaintTypeDistribution.reduce((n:any,b:any)=>n+b.value,0),same.summary.total);assert.equal(overview.trend.water.reduce((a:any,b:any)=>a+b,0)+overview.trend.gas.reduce((a:any,b:any)=>a+b,0),same.summary.total);assert.ok(Array.isArray(overview.latestComplaints));
    const {listAnalysisRecords}=await import('../src/services/analysisService');const old:any=await runWithAccessContext(access,()=>listAnalysisRecords({enterpriseCode:'E1'}));assert.equal(old.mode,'legacy-membership/no-date');assert.equal(old.total,3);assert.ok(old.content.some((r:any)=>r.analysisId==='OLD'));assert.ok(old.content.every((r:any)=>r.enterpriseCode==='E1'));await assert.rejects(()=>listAnalysisRecords({from:'2026-09-01'}),/statistics|完整/);
   });
+  await t.test('household capture freezes independently authorized master ownership in the supplied RR snapshot',async()=>{
+   const conn=await pool.getConnection();
+   try{
+    await conn.query('set transaction isolation level repeatable read');await conn.query('start transaction with consistent snapshot, read only');
+    await conn.query('select enterprise_code from enterprise limit 1');
+    await db('enterprise').where('enterprise_code','E1').update({district_code:'D2'});
+    const frozen=await service.captureStatisticsIn(conn,normalizeStatisticsQuery(raw({enterpriseCode:'E1'}),access,clock),access,permissions,clock);
+    assert.ok(Array.isArray(frozen.masterScopeFacts),'household master scope facts must be frozen separately');
+    assert.deepEqual(frozen.masterScopeFacts,[{enterpriseCode:'E1',districtCode:'D1'}]);
+    assert.equal('masterScopeFacts' in frozen.summary,false,'internal master scope must not enter public summary');
+    assert.equal((await db('enterprise').where('enterprise_code','E1').first()).district_code,'D2');
+    assert.ok(frozen.scopeFacts.some(s=>s.original.districtCode==='D1'));await conn.rollback();
+    await db('enterprise').where('enterprise_code','E1').update({district_code:null});
+    assert.deepEqual((await capture({enterpriseCode:'E1'})).masterScopeFacts,[{enterpriseCode:'E1',districtCode:null}]);
+    assert.deepEqual((await capture({enterpriseCode:'E1'},access,permissions.filter(p=>p!=='enterprise.read'))).masterScopeFacts,[]);
+    const denied={...access,rules:[{kind:'restricted',enterpriseCodes:[],districtCodes:['D1']}]};
+    assert.deepEqual((await capture({enterpriseCode:'E1'},denied)).masterScopeFacts,[]);
+   }finally{await conn.rollback();conn.release();await db('enterprise').where('enterprise_code','E1').update({district_code:'D1'});}
+  });
+  await t.test('batched coverage preserves effective interval geometry and whole current/historical ownership authorization',async()=>{
+   const code='TIME';const second={...coverage(code),version:'2',validFrom:'2026-09-15',adminGridCodes:['A2'],geometry:{type:'FeatureCollection',features:[{type:'Feature',properties:{adminGridCode:'A2'},geometry:{type:'Polygon',coordinates:[[[10,10],[14,10],[14,14],[10,14],[10,10]]]}}]}};
+   await db('service_grid').insert({grid_code:code,grid_name:code,business_type:'water',version:2,import_state:'published'});await db('grid_enterprise').insert({grid_code:code,enterprise_code:'E1'});
+   await db('service_grid_revision').insert([{grid_code:code,version:1,valid_from:'2025-01-01',valid_to:'2026-09-15',snapshot:JSON.stringify(coverage(code)),operator_id:'synthetic',created_at:new Date()},{grid_code:code,version:2,valid_from:'2026-09-15',snapshot:JSON.stringify(second),operator_id:'synthetic',created_at:new Date()}]);await db('service_grid_admin').insert({grid_code:code,version:2,admin_grid_code:'A2'});
+   await seed('TIME-LATE','2026-09-20 08:00:00');
+   try{
+    const f=await capture({enterpriseCode:'E1'});assert.equal(f.rows.find(r=>r.complaintId==='NOW0')!.grids.includes(code),true);assert.equal(f.rows.find(r=>r.complaintId==='TIME-LATE')!.grids.includes(code),false);
+    const evidence=f.coverageEvidence.filter(e=>e.coverage.code===code);assert.equal(evidence.length,2);assert.ok(evidence.some(e=>e.coverage.version==='1'&&e.coverage.validTo==='2026-09-15'&&e.original.districtCodes[0]==='D1'&&e.current.districtCodes[0]==='D2'));
+    const restricted={...access,rules:[{kind:'restricted',enterpriseCodes:['E1'],districtCodes:['D1']}]};assert.equal((await capture({enterpriseCode:'E1'},restricted)).coverageEvidence.some(e=>e.coverage.code===code),false);
+    await db('complaint').where('complaint_id','NOW0').update({major_category_code:null});const excluded=await capture({enterpriseCode:'E1',majorCode:'fee'});assert.ok(excluded.periodFacts[0].excludedRows.some(e=>e.row.complaintId==='NOW0'&&/分类/.test(e.reason)));assert.ok(excluded.scopeFacts.some(s=>s.complaintId==='NOW0'));
+   }finally{await db('complaint').where('complaint_id','NOW0').update({major_category_code:'fee'});await db('complaint').where('complaint_id','TIME-LATE').delete();for(const table of ['service_grid_admin','service_grid_revision','grid_enterprise','service_grid'])await db(table).where('grid_code',code).delete();}
+  });
+  await t.test('coverage query count scales with effective versions rather than grid times business days; bounded capacity measurement',async()=>{
+   const {addDays}=await import('../src/domain/statisticsQuery');const gridCodes=Array.from({length:10},(_,i)=>'CAPG'+i);
+   for(const code of gridCodes){await db('service_grid').insert({grid_code:code,grid_name:code,business_type:'water',version:1,import_state:'published'});await db('grid_enterprise').insert({grid_code:code,enterprise_code:'E1'});await db('service_grid_revision').insert({grid_code:code,version:1,valid_from:'2025-01-01',snapshot:JSON.stringify(coverage(code)),operator_id:'synthetic',created_at:new Date()});await db('service_grid_admin').insert({grid_code:code,version:1,admin_grid_code:'A1'});}
+   const samples=Array.from({length:3000},(_,i)=>({complaint_id:'CAP'+i,complaint_no:'CAPNO'+i,title:'合成容量样本',business_type:'water',complaint_type:'complaint',enterprise_code:'E1',district_code:'D1',source_reported_at:addDays('2026-07-01',i%92)+' 08:00:00',received_at:'2026-10-10 08:00:00',location_lng:1,location_lat:1,location_coordinate_system:'WGS84',location_coordinate_source:'合成测量',major_category_code:'fee',minor_category_code:'price',category_dictionary_version:10,edit_version:1}));
+   for(let i=0;i<samples.length;i+=250)await db('complaint').insert(samples.slice(i,i+250));
+   const measured=async(from:string,to:string)=>{
+    const conn=await pool.getConnection();let queries=0;const statements:string[]=[];const started=performance.now();
+    try{await conn.query('set transaction isolation level repeatable read');await conn.query('start transaction with consistent snapshot, read only');
+     const executor={query:async(sql:string,params:unknown[])=>{queries++;statements.push(sql);return conn.query(sql,params);}};
+     const value=await service.captureStatisticsIn(executor as any,normalizeStatisticsQuery(raw({periodKind:'custom',from,to,enterpriseCode:'E1'}),access,clock),access,permissions,clock);
+     return {value,queries,coverageQueries:statements.filter(s=>/service_grid_revision|service_grid_admin|from admin_grid/.test(s)).length,elapsedMs:Math.round((performance.now()-started)*100)/100};
+    }finally{await conn.rollback();conn.release();}
+   };
+   try{
+    const short=await measured('2026-09-01','2026-09-01');const long=await measured('2026-07-01','2026-09-30');
+    assert.ok(long.coverageQueries<=short.coverageQueries+2,'coverage SQL must not grow as grids × distinct business days');assert.ok(long.coverageQueries<=5);
+    const [direct]=await db.raw("select count(distinct complaint_id) as n from complaint where coalesce(deleted,0)=0 and enterprise_code='E1' and coalesce(source_reported_at,received_at)>='2026-07-01 00:00:00' and coalesce(source_reported_at,received_at)<'2026-10-01 00:00:00'");assert.equal(long.value.summary.total,Number(direct[0].n));assert.equal(long.value.rows.length,long.value.summary.total);assert.equal(long.value.summary.trend.reduce((n,p)=>n+p.count,0),long.value.summary.total);assert.equal(long.value.coverageEvidence.length,12);
+    assert.equal(long.value.scopeFacts.length,new Set(long.value.periodFacts.flatMap(p=>[...p.rows,...p.excludedRows.map(e=>e.row)]).map(r=>r.complaintId)).size);
+    console.log('D1_BOUNDED_CAPACITY='+JSON.stringify({syntheticRows:3000,grids:12,businessDays:92,short:{queries:short.queries,coverageQueries:short.coverageQueries,elapsedMs:short.elapsedMs},long:{queries:long.queries,coverageQueries:long.coverageQueries,elapsedMs:long.elapsedMs},selectedRows:long.value.summary.total,coverageVersions:long.value.coverageEvidence.length}));
+   }finally{await db('complaint').where('complaint_id','like','CAP%').delete();for(const table of ['service_grid_admin','service_grid_revision','grid_enterprise','service_grid'])await db(table).whereIn(table==='service_grid'?'grid_code':'grid_code',gridCodes).delete();}
+  });
   await t.test('migration preflights zero-mutation conflicts and once-seeds actual builtin capabilities',async()=>{
    const before=await db('analysis_record').where('analysis_id','OLD').first();await migration.up(db);assert.deepEqual(await db('analysis_record').where('analysis_id','OLD').first(),before);
    const roles=await db('platform_role_permission').where('permission_code','statistics.read');assert.ok(roles.length>0);await db('platform_role_permission').where({role_code:roles[0].role_code,permission_code:'statistics.read'}).delete();await migration.up(db);assert.equal((await db('platform_role_permission').where({role_code:roles[0].role_code,permission_code:'statistics.read'})).length,0);

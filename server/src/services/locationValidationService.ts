@@ -47,8 +47,15 @@ function usableGeometry(coverage:GridCoverage):boolean {
 }
 /** Shared geometry evaluation; callers choose/authorize their actual effective date. */
 export function coverageContainsWgs84Point(coverage:GridCoverage,point:number[]):boolean {
- return point.length===2&&point.every(Number.isFinite)&&usableGeometry(coverage)&&coverage.geometry!.features.some(f=>contains(point,f.geometry));
+ return createCoveragePointMatcher(coverage)(point);
 }
+/** One request can validate immutable coverage once and reuse its point evaluator. */
+export function createCoveragePointMatcher(coverage: GridCoverage): (point: number[]) => boolean {
+    if (!usableGeometry(coverage))
+        return () => false;
+    return point => point.length === 2 && point.every(Number.isFinite) && coverage.geometry!.features.some(f => contains(point, f.geometry));
+}
+
 /** Current-date evidence only. Unknown/incomplete evidence never becomes a negative spatial finding. */
 export function evaluateLocationEvidence(input:LocationCorrectionInput,facts:LocationFacts,validationDate:string):LocationValidationResult {
  const admin=input.adminGridCode?facts.admins.find(a=>a.code===input.adminGridCode):null;

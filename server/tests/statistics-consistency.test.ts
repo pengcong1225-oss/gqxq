@@ -33,3 +33,12 @@ test('structured unknown/versioned bucket filter survives query serialization',(
  const q=query({bucket:JSON.stringify({dimension:'category',code:null,level:'minor',dictionaryVersion:null})});assert.deepEqual(q.bucket,{dimension:'category',code:null,level:'minor',dictionaryVersion:null});
  assert.deepEqual(api.normalizeStatisticsQuery({...q,bucket:JSON.stringify(q.bucket)},access,clock),q);assert.throws(()=>query({bucket:JSON.stringify({dimension:'category',code:'fee'})}));
 });
+test('coverage resource guards reject before fetching/truncating JSON and malformed geometry remains unknown',async()=>{
+ const {readStatisticsCoverage,coverageVertexCount}=await import('../src/repositories/statisticsRepo');const {createCoveragePointMatcher}=await import('../src/services/locationValidationService');
+ const ranges=[{from:'2026-09-01',to:'2026-09-30'}];const demands=[{enterpriseCode:'E1',businessType:'water',dates:['2026-09-10']}];let calls=0;
+ const fake=(metadata:any[])=>({query:async()=>{calls++;return [metadata,[]];}});
+ await assert.rejects(()=>readStatisticsCoverage(fake([]) as any,access as any,Array.from({length:201},(_,i)=>({...demands[0],enterpriseCode:'E'+i})),ranges),/超过200/);assert.equal(calls,0);
+ await assert.rejects(()=>readStatisticsCoverage(fake(Array.from({length:1001},()=>({snapshot_bytes:1}))) as any,access as any,demands,ranges),/超过1000/);assert.equal(calls,1);
+ await assert.rejects(()=>readStatisticsCoverage(fake([{snapshot_bytes:4*1024*1024+1}]) as any,access as any,demands,ranges),/超过4MiB/);assert.equal(calls,2);
+ const bad:any={coordinateSystem:'WGS84',geometrySources:['synthetic'],adminGridCodes:['A'],geometry:{features:[{geometry:null}]}};assert.equal(coverageVertexCount(bad),0);assert.equal(createCoveragePointMatcher(bad)([1,1]),false);
+});

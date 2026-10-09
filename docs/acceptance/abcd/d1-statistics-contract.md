@@ -19,3 +19,7 @@
 旧 `/dashboard/overview?days` 保留 DTO，days 规范化为 ledger/current/custom 范围，所有面板共享该范围并追加 query/统计元数据。旧 `/analysis/records` 无日期请求保留原入库列、筛选、分页和排序（包括年代久远、日期未知的成员），追加 `legacy-membership/no-date` 元数据。它仅用于入库记录浏览，不计算有日期比较；传新统计参数清晰拒绝并指向新接口。代价是保留一个仅旧列表使用的无日期兼容分支。
 
 后续 D2/D3 直接复用 `server/src/services/statisticsService.ts` 的 `captureStatistics` 和 `captureStatisticsIn`，以及 `server/src/types/statistics.ts`。前者拥有单一 READ ONLY REPEATABLE READ 事务；后者要求调用方传入同一读快照 executor。返回 summary、当期全部安全 rows、current/yoy/mom 实际 `periodFacts`（含 excludedRows 原因）、实际分类字典快照、授权历史覆盖几何/版本/原及当前归属、户数证据、全部统计贡献诉求的原及当前 `scopeFacts`。无原始来源 payload，不以 IDs 重新查询冒充冻结值。D3 仍须对冻结的全部原范围事实和当前对象再次授权；本批不实现报告 render/jobs。
+
+审查修复后，内部 capture 还返回 `masterScopeFacts: {enterpriseCode:string; districtCode:string|null}[]`。这是通过同一 executor 读取并实际核验授权的户数企业 master 原归属；既不是诉求区划，也不是冻结后的当前企业值。确实未知的区划保持 null，不存在/没有主数据能力/主数据对象无权时不造 scope 事实，rate 保留相应不可用原因。该字段只属于内部冻结 DTO，不进入公开 summary 或前端户数 DTO。D3 必须分别检查冻结 master 原事实和当前企业 master 事实，不能凭投诉 scope 推断。
+
+覆盖读取按当期/基期交叠版本批读，实际业务日对区间复用；同一次 capture 缓存当前关系、admin 区划、人口组合/日期区间和一次验证后的几何。覆盖 SQL 次数不随网格乘业务日增长，新统计及旧 dashboard 趋势均单遍聚合。保守资源边界会明确拒绝整个请求：相关企业/业务组合最多 200；候选交叠覆盖版本最多 1000；实际读取覆盖快照总量最多 4MiB；当前+历史 admin 引用最多 4000；实际相关几何顶点最多 100000；人口组合/业务日版本检查最多 2000000；点位与候选几何顶点检查最多 10000000。已有诉求数 100000、日期 3660 日界限仍在；所有边界均拒绝而不截断统计或证据。它们是本地保守资源控制，不代表生产性能承诺。
