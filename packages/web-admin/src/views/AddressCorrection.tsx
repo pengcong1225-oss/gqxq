@@ -252,6 +252,9 @@ const AddressCorrection: React.FC = () => {
   const [selectedComplaintInfo, setSelectedComplaintInfo] = useState<{ complaintNo: string; title: string } | null>(null);
   const [selectedComplaintDetail, setSelectedComplaintDetail] = useState<ComplaintDetail | null>(null);
   const summarySeqRef = useRef(0);
+  const selectedComplaintIdRef = useRef<string | null>(null);
+  const selectionIsCurrent = useCallback((complaintId: string, epoch: number) =>
+    summarySeqRef.current === epoch && selectedComplaintIdRef.current === complaintId, []);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [items, setItems] = useState<CorrectionItem[]>([]);
   const [inlineDrafts, setInlineDrafts] = useState<Record<string, InlineCorrectionDraft>>({});
@@ -368,8 +371,11 @@ const AddressCorrection: React.FC = () => {
   const selectComplaint = useCallback(
     (complaintId: string, summary?: PendingComplaintSummary) => {
       const summarySeq = ++summarySeqRef.current;
+      selectedComplaintIdRef.current = complaintId;
       setSelectedComplaintId(complaintId);
       setVersionConflict(false);
+      setSubmitting(false);
+      setPositionResult([]);
       setDrawerOpen(true);
       setItems([]);
       setItemsComplaintId(null);
@@ -559,28 +565,52 @@ const AddressCorrection: React.FC = () => {
     setPositionModalOpen(true);
   };
 
+  // Apply correction/version/detail as one selection result; preserve its mounted drafts.
+  const refreshPositionSelection = async (complaintId: string, epoch: number): Promise<CorrectionItem[] | null> => {
+    const [current, detail] = await Promise.all([listComplaintCorrections(complaintId), getComplaint(complaintId)]);
+    if (!selectionIsCurrent(complaintId, epoch)) return null;
+    if (detail.complaintId !== complaintId || current.some(item => item.complaintId !== complaintId)) {
+      throw new Error('诉求响应与当前选择不一致，请刷新核对');
+    }
+    setItems(current);
+    setItemsComplaintId(complaintId);
+    if (current[0]) setPositionVersion(current[0].editVersion);
+    setSelectedComplaintDetail(detail);
+    return current;
+  };
+
   const savePositionGroup = async () => {
     if(!writeAccess.can||!positionItemsReady||!selectedComplaintId||versionConflict)return;
+    const complaintId = selectedComplaintId, epoch = summarySeqRef.current;
     let values: LocationDraft;
     try {
       values = await positionForm.validateFields();
     } catch {
       return;
     }
-    let body;try{body=locationDraftInput(selectedComplaintId,positionVersion,values);}catch(e){message.error(errText(e));return;}
+    if (!selectionIsCurrent(complaintId, epoch)) return;
+    let body;try{body=locationDraftInput(complaintId,positionVersion,values);}catch(e){message.error(errText(e));return;}
     setSubmitting(true);
+    let saved = false;
     try {
       const result=await confirmLocationGroup(body);
+      saved = true;
+      if (!selectionIsCurrent(complaintId, epoch)) return;
       setPositionResult([{label:'位置组一次保存完成',ok:true,detail:result.validationDate+'：'+result.spatialReason}]);
       setPositionModalOpen(false);positionForm.resetFields();
       message.success(result.spatialStatus==='verified'?'位置组已保存，当日空间复核通过':'位置组已保存；空间依据尚未核实');
-      await afterDecision(selectedComplaintId,result.analysisEntered);
-      setSelectedComplaintDetail(await getComplaint(selectedComplaintId));
+      if (await refreshPositionSelection(complaintId, epoch) === null) return;
+      await loadQueue(page, size, dispatched);
+      if (selectionIsCurrent(complaintId, epoch) && result.analysisEntered === true) {
+        message.success('该诉求纠偏已全部闭环——已进入分析库（可在「分析库」页查到）');
+      }
     } catch(err){
-      if(isCorrectionVersionConflict(err)){setVersionConflict(true);message.warning(CORRECTION_CONFLICT_MESSAGE);}
+      if (!selectionIsCurrent(complaintId, epoch)) return;
+      if(saved)message.error('位置组已保存，刷新当前诉求失败：'+errText(err));
+      else if(isCorrectionVersionConflict(err)){setVersionConflict(true);message.warning(CORRECTION_CONFLICT_MESSAGE);}
       else message.error('位置组未保存，全部输入已保留：'+errText(err));
     } finally {
-      setSubmitting(false);
+      if (selectionIsCurrent(complaintId, epoch)) setSubmitting(false);
     }
   };
 
@@ -594,16 +624,14 @@ const AddressCorrection: React.FC = () => {
   const sourceAddress = selectedComplaintDetail?.sourceAddress ?? null;
   const refreshConflict = async () => {
     if (!selectedComplaintId) return;
+    const complaintId = selectedComplaintId, epoch = summarySeqRef.current;
     try {
-      const current = await listComplaintCorrections(selectedComplaintId);
-      // Preserve mounted inline drafts and position form contents while showing the current server values.
-      setItems(current);
-      if(current[0])setPositionVersion(current[0].editVersion);
-      setSelectedComplaintDetail(await getComplaint(selectedComplaintId));
+      const current = await refreshPositionSelection(complaintId, epoch);
+      if (current === null) return;
       if (verifyTarget) setVerifyTarget(current.find(item => item.correctionId === verifyTarget.correctionId && item.status === 'pending') ?? null);
       setVersionConflict(false);
       message.info('已刷新当前有效值与版本；请逐项核对保留的草稿后再提交');
-    } catch (err) { message.error('刷新核对失败：' + errText(err)); }
+    } catch (err) { if (selectionIsCurrent(complaintId, epoch)) message.error('刷新核对失败：' + errText(err)); }
   };
 
   return (
@@ -832,7 +860,7 @@ const AddressCorrection: React.FC = () => {
                         <Alert
                           type={positionResult.every((result) => result.ok) ? 'success' : 'warning'}
                           showIcon
-                          message="位置组逐项提交结果"
+                          message="位置组保存结果"
                           description={
                             <Space direction="vertical" size={0}>
                               {positionResult.map((result) => (

@@ -52,3 +52,93 @@ test('Tianditu synthetic search retains same-name candidates with unknown CRS pr
  const result=await searchTiandituPlaces('Synthetic','synthetic-unused-key',async()=>({ok:true,json:async()=>({pois:[{name:'同名',address:'合成甲',lonlat:'111,30'},{name:'同名',address:'合成乙',lonlat:'112,31'}]})}));
  assert.equal(result.length,2);assert.deepEqual(result.map((v:any)=>v.coordinateSystem),['unknown','unknown']);assert.ok(result.every((v:any)=>v.coordinateSource));
 });
+
+function deferred<T>() {
+ let resolve!:(value:T)=>void;
+ const promise=new Promise<T>(done=>{resolve=done;});
+ return {promise,resolve};
+}
+for(const scenario of ['saved-detail','conflict-detail','late-save-success','late-save-conflict','late-refresh-error'] as const)
+test('location selection guard '+scenario,async()=>{
+ const {default:request}=await vite.ssrLoadModule('/src/api/request.ts');
+ const originalAdapter=request.defaults.adapter;
+ const delayedA=deferred<void>(),delayedB=deferred<void>();
+ const writes:Array<{url:string;body:any}>=[];
+ const lateSave=scenario.startsWith('late-save');
+ let aDetailReads=0,aPending=false,bPending=false;
+ const conflict=()=>{const error:any=new Error('Synthetic late conflict');error.response={status:409,data:{code:'DUPLICATE_CONFLICT',message:'Synthetic late conflict'}};return error;};
+ const details={
+  C1:{complaintId:'C1',complaintNo:'LOCAL-C1',title:'Synthetic A',districtCode:'D1',districtName:'合成甲',adminGridCode:'A1',communityCode:'X1',locationCoordinateSystem:'unknown',locationCoordinateSource:'source-A',sourceAddress:'source-address-A',locationClues:[],locationConflict:false},
+  C2:{complaintId:'C2',complaintNo:'LOCAL-C2',title:'Synthetic B',districtCode:'D2',districtName:'合成乙',adminGridCode:'A2',communityCode:'X2',locationCoordinateSystem:'WGS84',locationCoordinateSource:'source-B',sourceAddress:'source-address-B',locationClues:[],locationConflict:false},
+ };
+ request.defaults.adapter=async(config:any)=>{
+  let data:any;
+  if(config.method==='post'){
+   writes.push({url:config.url,body:JSON.parse(config.data)});
+   if(config.url==='/complaints/C1/location-corrections'){
+    if(lateSave){aPending=true;await delayedA.promise;}
+    if(scenario==='conflict-detail'||scenario==='late-refresh-error'||scenario==='late-save-conflict')throw conflict();
+   }else if(lateSave){bPending=true;await delayedB.promise;}
+   data={version:10,analysisEntered:false,validationDate:'2026-10-09',spatialStatus:'unknown',spatialReason:'synthetic unknown',coverageEvidence:[],candidates:[]};
+  }else if(config.url==='/enterprise-options')data=[];
+  else if(config.url==='/corrections/pending-complaints')data={content:Object.values(details).map(d=>({...d,pendingCount:4,hasDispatch:false})),total:2};
+  else if(config.url.endsWith('/location-correction-options'))data={districts:[{code:'D1',name:'合成甲'},{code:'D2',name:'合成乙'}],adminGrids:[{code:'A1',name:'甲网格',districtCode:'D1'},{code:'A2',name:'乙网格',districtCode:'D2'}],communities:[{code:'X1',name:'甲小区',adminGridCode:'A1'},{code:'X2',name:'乙小区',adminGridCode:'A2'}]};
+  else if(config.url.endsWith('/corrections')){
+   const id=config.url.includes('/C2/')?'C2':'C1';
+   data=['address','location_lng','location_lat','district_name'].map((fieldName,i)=>({id:i+1,correctionId:id+'-'+fieldName,complaintId:id,fieldName,fieldLabel:fieldName,oldValue:'old',effectiveValue:fieldName==='address'?'effective-'+id:fieldName==='location_lng'?'111':fieldName==='location_lat'?'30':details[id].districtName,status:'pending',hasDispatch:false,editVersion:id==='C2'?9:1}));
+  }else if(config.url==='/complaints/C1'){
+   if(++aDetailReads>1){aPending=true;await delayedA.promise;if(scenario==='late-refresh-error')throw new Error('Synthetic late refresh failure');}
+   data=details.C1;
+  }else if(config.url==='/complaints/C2')data=details.C2;
+  else data={content:[],total:0};
+  return {data:{code:200,data},status:200,headers:{},config};
+ };
+ const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');
+ const originalUser=useAppStore.getState().userInfo;
+ useAppStore.setState({userInfo:{id:1,userId:'synthetic',username:'synthetic',roles:['custom'],permissions:['complaint.read','complaint.correct']}});
+ const {default:Page}=await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
+ const {render,within,fireEvent,waitFor,act,cleanup}=await import('@testing-library/react');
+ const ui=render(<MemoryRouter initialEntries={['/address-correction?complaintId=C1']}><Page/></MemoryRouter>);
+ try{
+  const page=within(document.body);
+  const open=async()=>{await waitFor(()=>assert.equal((page.getByRole('button',{name:'打开位置组纠偏'}) as HTMLButtonElement).disabled,false));fireEvent.click(page.getByRole('button',{name:'打开位置组纠偏'}));};
+  const enterBasis=async(value:string)=>{const basis=page.getByLabelText('位置组依据') as HTMLTextAreaElement;await act(async()=>{basis.value=value;Simulate.change(basis);});};
+  await open();await enterBasis('basis-A');fireEvent.click(page.getByRole('button',{name:'保存位置组'}));
+  if(scenario==='conflict-detail'||scenario==='late-refresh-error'){
+   await waitFor(()=>assert.ok(page.getAllByRole('button',{name:'刷新核对（保留草稿）'}).length));
+   fireEvent.click(page.getAllByRole('button',{name:'刷新核对（保留草稿）'}).at(-1)!);
+  }
+  await waitFor(()=>assert.equal(aPending,true));
+  const cancelA=page.queryByRole('button',{name:/^(Cancel|取消)$/});
+  if(cancelA)fireEvent.click(cancelA);
+  fireEvent.click(page.getAllByRole('button',{name:'Close'}).find(button=>button.classList.contains('ant-drawer-close'))!);
+  const bRow=page.getByText('LOCAL-C2').closest('tr')!;
+  fireEvent.click(within(bRow).getByRole('button',{name:'打开纠偏'}));
+  await open();
+  if(lateSave){
+   const save=page.getByRole('button',{name:/保存位置组/});
+   assert.equal(save.classList.contains('ant-btn-loading'),false,'A pending operation must not keep B busy');
+   await enterBasis('basis-B');fireEvent.click(save);
+   await waitFor(()=>assert.equal(bPending,true));
+  }else fireEvent.click(page.getByRole('button',{name:/^(Cancel|取消)$/}));
+  await act(async()=>{delayedA.resolve();await delayedA.promise;});
+  await waitFor(()=>assert.equal((document.body.textContent??'').includes('Synthetic late refresh failure'),false));
+  if(!lateSave)await open();
+  assert.equal((page.getByLabelText('位置组地址') as HTMLInputElement).value,'effective-C2');
+  assert.equal((page.getByLabelText('位置组坐标来源') as HTMLInputElement).value,'source-B');
+  assert.equal((document.body.textContent??'').includes('source-address-A'),false,'late A details must not replace B source evidence');
+  assert.equal(page.queryAllByRole('button',{name:'刷新核对（保留草稿）'}).length,0,'late A conflict must not flag B');
+  if(lateSave){
+   assert.equal(page.getByRole('button',{name:/保存位置组/}).classList.contains('ant-btn-loading'),true,'A finally must not clear B pending save');
+  }else{
+   await enterBasis('basis-B');fireEvent.click(page.getByRole('button',{name:'保存位置组'}));
+   await waitFor(()=>assert.equal(writes.length,2));
+  }
+  assert.equal(writes[1].url,'/complaints/C2/location-corrections');
+  assert.equal(writes[1].body.expectedVersion,9);
+  assert.equal(writes[1].body.districtCode,'D2');assert.equal(writes[1].body.adminGridCode,'A2');assert.equal(writes[1].body.communityCode,'X2');assert.equal(writes[1].body.coordinateSystem,'WGS84');assert.equal(writes[1].body.coordinateSource,'source-B');
+ }finally{
+  await act(async()=>{delayedA.resolve();delayedB.resolve();message.destroy();ui.unmount();cleanup();});
+  request.defaults.adapter=originalAdapter;useAppStore.setState({userInfo:originalUser});
+ }
+});
