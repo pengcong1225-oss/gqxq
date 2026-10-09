@@ -4,6 +4,7 @@ import { env } from './config/env';
 import { reconcilePendingEvents } from './services/callbackService';
 import { reconcileOpenReporting } from './services/reportingEvidenceService';
 import { assertDbReachable, closePool } from './db/pool';
+import {pruneExpiredImports} from './services/masterDataImportService';
 
 /**
  * 判定监听地址是否为回环（M1 的默认值）。
@@ -27,6 +28,9 @@ async function main(): Promise<void> {
   const reconcile=async()=>{if(reconciling)return;reconciling=true;try{await runAsTrustedSystem(async()=>{await reconcilePendingEvents();await reconcileOpenReporting();});}catch{console.error('[integration] pending event reconciliation failed; retained for retry');}finally{reconciling=false;}};
   const replayTimer=setInterval(()=>void reconcile(),Math.max(30_000,env.pu.reconciliationIntervalMs));replayTimer.unref();void reconcile();
   const app = createApp();
+  let pruning=false;
+  const prune=async()=>{if(pruning)return;pruning=true;try{await pruneExpiredImports();}catch{console.error('[master-import] expired resource cleanup failed; retained for retry');}finally{pruning=false;}};
+  const importRetentionTimer=setInterval(()=>void prune(),60_000);importRetentionTimer.unref();void prune();
   // M1（防护方案 §4.1）：显式绑定 env.host（默认 127.0.0.1），不再让 Express 走 0.0.0.0/::。
   // 生产形态 = 只绑回环 + 本机反代转发；对外暴露由 M2 安全组与 M3 网关白名单收口。
   const server = app.listen(env.port, env.host, () => {
@@ -46,6 +50,7 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     clearInterval(replayTimer);
+    clearInterval(importRetentionTimer);
     console.log('[Server] 收到 ' + signal + '，正在关闭…');
     server.close(() => {
       void closePool().finally(() => process.exit(0));

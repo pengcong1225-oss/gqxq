@@ -95,17 +95,8 @@ export class DictionaryService {
   assertMasterPermission(ctx);const input=parseDictionaryInput(saveItemSchema,raw);assertMutableType(input.typeCode);
   const type=await readDictionaryType(tx,input.typeCode,true);if(!type)throw AppError.notFound('字典类型不存在');
   if(input.expectedTypeVersion!==undefined&&input.expectedTypeVersion!==type.version)throw AppError.conflict('字典依赖版本已变化');
-  const items=await readDictionaryItems(tx,input.typeCode,true);const before=items.find(i=>i.code===input.code);
-  if((before?.version??0)!==input.expectedVersion)throw AppError.conflict('条目版本已变化，请刷新核对');
-  const item:DictionaryItem={itemId:before?.itemId??'DICT-'+randomUUID(),typeCode:type.code,code:input.code,label:input.label,parentCode:input.parentCode===undefined?before?.parentCode??null:input.parentCode,sort:input.sort??before?.sort??0,status:input.status??before?.status??'enabled',version:before?.version??0,published:before?.published||input.published===true};
-  if(type.fixedCodes&&(!Object.hasOwn((DICT as Record<string,Record<string,string>>)[type.code]??{},item.code)||item.parentCode))throw AppError.validation('协议编码固定，仅可维护合法码标签、排序和停用');
-  if(item.status==='enabled'&&type.status!=='enabled')throw AppError.validation('字典类型已停用');
-  validateItemHierarchy(item,items);
-  const parent=item.parentCode?items.find(i=>i.code===item.parentCode):null;
-  if(item.published&&parent&&!parent.published)throw AppError.validation('小类发布前需发布父项');
-  const children=items.filter(i=>i.parentCode===item.code&&i.status==='enabled');
-  if(item.status==='disabled'&&children.length&&!input.cascadeDisable)throw AppError.validation('停用父项需明确确认同时停用子项');
-  return {input,type,item,before,children,dependency:{typeCode:type.code,version:type.version,parentCode:parent?.code??null,parentVersion:parent?.version??null}};
+  const items=await readDictionaryItems(tx,input.typeCode,true);
+  return validateDictionaryItemState(input,type,items,ctx);
  }
  async saveItem(input:SaveItemInput,ctx:MasterDataContext) {return withTransaction(tx=>this.saveItemInTx(tx,input,ctx));}
  async saveItemInTx(tx:Tx,raw:SaveItemInput,ctx:MasterDataContext):Promise<DictionaryChange<DictionaryItem>> {
@@ -144,6 +135,23 @@ export class DictionaryService {
   await audit(tx,code===null?'DICTIONARY_TYPE_DELETE':'DICTIONARY_ITEM_DELETE',typeCode+(code?':'+code:''),type,ctx,code===null?undefined:target as DictionaryItem);
   return {key:typeCode+(code?':'+code:''),changed:true};
  }
+}
+/** Same rules for locked interactive reads and typed, read-only import staging. */
+export function validateDictionaryItemState(raw:SaveItemInput,type:DictionaryType,items:readonly DictionaryItem[],ctx:MasterDataContext) {
+  assertMasterPermission(ctx);const input=parseDictionaryInput(saveItemSchema,raw);assertMutableType(input.typeCode);
+  if(type.code!==input.typeCode)throw AppError.validation('字典类型不匹配');
+  if(input.expectedTypeVersion!==undefined&&input.expectedTypeVersion!==type.version)throw AppError.conflict('字典依赖版本已变化');
+  const before=items.find(i=>i.code===input.code);
+  if((before?.version??0)!==input.expectedVersion)throw AppError.conflict('条目版本已变化，请刷新核对');
+  const item:DictionaryItem={itemId:before?.itemId??'DICT-'+randomUUID(),typeCode:type.code,code:input.code,label:input.label,parentCode:input.parentCode===undefined?before?.parentCode??null:input.parentCode,sort:input.sort??before?.sort??0,status:input.status??before?.status??'enabled',version:before?.version??0,published:before?.published||input.published===true};
+  if(type.fixedCodes&&(!Object.hasOwn((DICT as Record<string,Record<string,string>>)[type.code]??{},item.code)||item.parentCode))throw AppError.validation('协议编码固定，仅可维护合法码标签、排序和停用');
+  if(item.status==='enabled'&&type.status!=='enabled')throw AppError.validation('字典类型已停用');
+  validateItemHierarchy(item,items);
+  const parent=item.parentCode?items.find(i=>i.code===item.parentCode):null;
+  if(item.published&&parent&&!parent.published)throw AppError.validation('小类发布前需发布父项');
+  const children=items.filter(i=>i.parentCode===item.code&&i.status==='enabled');
+  if(item.status==='disabled'&&children.length&&!input.cascadeDisable)throw AppError.validation('停用父项需明确确认同时停用子项');
+  return {input,type,item,before,children,dependency:{typeCode:type.code,version:type.version,parentCode:parent?.code??null,parentVersion:parent?.version??null}};
 }
 /** Current and explicit category history references remain protected even after soft delete. */
 function referencePredicate(typeCode:string,code:string|null,alias:string):{sql:string;params:unknown[]} {

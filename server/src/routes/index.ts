@@ -17,6 +17,7 @@ import { sourceRouter } from './source';
 import { complaintActionsRouter } from './complaintActions';
 import { enterprisesRouter } from './enterprises';
 import { gridsRouter } from './grids';
+import { masterDataImportsRouter } from './masterDataImports';
 import { rolesRouter } from './roles';
 import { auditLogsRouter } from './auditLogs';
 import { usersRouter } from './users';
@@ -55,6 +56,7 @@ export function buildRouter(): Router {
   root.use(complaintActionsRouter);
   root.use(enterprisesRouter);
   root.use(gridsRouter);
+  root.use(masterDataImportsRouter);
   root.use(dashboardRouter);
   root.use(dictsRouter);
   root.use(dispatchRouter);

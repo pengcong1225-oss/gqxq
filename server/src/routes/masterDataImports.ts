@@ -1,0 +1,18 @@
+import {Router,raw,type Request} from 'express';
+import {readFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {ok} from '../http/respond';
+import {AppError} from '../http/errors';
+import {currentAccessContext} from '../auth/accessScope';
+import {masterDataImportService,assertImportPermission} from '../services/masterDataImportService';
+import {parseKind,IMPORT_LIMITS} from '../services/masterDataImportParser';
+import type {MasterDataContext} from '../types/masterData';
+export const masterDataImportsRouter=Router();
+function context(req:Request):MasterDataContext{return {userId:req.user!.id,userName:req.user!.username,clientIp:req.ip??null,permissionCodes:req.user?.permissionCodes??[],access:req.accessContext??currentAccessContext()};}
+function pagination(req:Request,max=100){const page=Number(req.query.page??1),size=Number(req.query.size??20);if(!Number.isSafeInteger(page)||page<1||!Number.isSafeInteger(size)||size<1||size>max||!Number.isSafeInteger((page-1)*size))throw AppError.validation('分页参数无效');return {page,size};}
+masterDataImportsRouter.get('/master-data/import-templates/:kind',async(req,res,next)=>{try{const kind=parseKind(req.params.kind);assertImportPermission(kind,context(req));const format=req.query.format??(kind==='grid_boundary'?'geojson':'xlsx');if(kind==='grid_boundary'?format!=='geojson':!['xlsx','csv','fields'].includes(String(format)))throw AppError.validation('模板格式无效');const name=kind+(format==='fields'?'-fields.md':'.'+format);const data=await readFile(resolve(__dirname,'../../templates/imports',name));res.setHeader('Content-Disposition','attachment; filename="'+name+'"');res.type(format==='xlsx'?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':format==='csv'?'text/csv; charset=utf-8':format==='geojson'?'application/geo+json':'text/markdown; charset=utf-8');res.send(data);}catch(e){next(e);}});
+masterDataImportsRouter.post('/master-data/imports/preview',(req,res,next)=>raw({type:'application/octet-stream',limit:IMPORT_LIMITS.bytes})(req,res,error=>next(error?.type==='entity.too.large'?new AppError('PAYLOAD_TOO_LARGE','文件超过 10 MiB，请拆批'):error)),async(req,res,next)=>{try{const kind=parseKind(req.query.kind);if(!Buffer.isBuffer(req.body)||typeof req.query.name!=='string'||req.query.name.length>200)throw AppError.validation('上传须为文件二进制与有效文件名');ok(res,await masterDataImportService.previewImport({name:req.query.name,bytes:req.body},kind,context(req)));}catch(e){next(e);}});
+masterDataImportsRouter.get('/master-data/imports',async(req,res,next)=>{try{const {page,size}=pagination(req);ok(res,await masterDataImportService.list(parseKind(req.query.kind),context(req),page,size));}catch(e){next(e);}});
+masterDataImportsRouter.get('/master-data/imports/:batchId',async(req,res,next)=>{try{const {page,size}=pagination(req);ok(res,await masterDataImportService.getBatch(req.params.batchId,context(req),page,size));}catch(e){next(e);}});
+masterDataImportsRouter.post('/master-data/imports/:batchId/commit',async(req,res,next)=>{try{if(!req.body||typeof req.body.requestId!=='string')throw AppError.validation('幂等键必填');ok(res,await masterDataImportService.commitImport({batchId:req.params.batchId,previewVersion:req.body.previewVersion,requestId:req.body.requestId},context(req)));}catch(e){next(e);}});
+masterDataImportsRouter.get('/master-data/imports/:batchId/errors',async(req,res,next)=>{try{const data=await masterDataImportService.errors(req.params.batchId,context(req));res.type('text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="import-errors.csv"');res.send(data);}catch(e){next(e);}});

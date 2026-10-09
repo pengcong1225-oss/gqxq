@@ -68,9 +68,7 @@ export class EnterpriseService {
  }
  async householdHistory(code:string,ctx:MasterDataContext){await this.detail(code,ctx);return readHouseholdsIn(pool,code);}
  async saveHouseholds(input:HouseholdWriteInput,ctx:MasterDataContext){return withTransaction(tx=>this.saveHouseholdsInTx(tx,input,ctx));}
- async validateHouseholdsInTx(tx:Tx,raw:HouseholdWriteInput,ctx:MasterDataContext){authorize(ctx);const input=parseEnterpriseInput(householdWriteSchema,raw);const enterprise=await readEnterpriseIn(tx,input.enterpriseCode,true);if(!enterprise)throw AppError.notFound('企业不存在');assertScope({enterpriseCode:enterprise.enterpriseCode,districtCode:enterprise.districtCode??null},ctx);if(enterprise.version!==input.expectedVersion)throw AppError.conflict('企业版本已变化');const history=await readHouseholdsIn(tx,input.enterpriseCode,true);const same=history.find(h=>h.validFrom===input.validFrom&&h.validTo===input.validTo&&h.households===input.households);const closing=history.find(h=>h.validTo===null&&h.validFrom<input.validFrom);
- if(!same&&history.some(h=>h!==closing&&h.validFrom<(input.validTo??'9999-12-31')&&(h.validTo??'9999-12-31')>input.validFrom))throw AppError.conflict('户数生效区间交叠，不能覆盖历史');
- return {input,enterprise,history,same,closing,dependency:{enterpriseCode:input.enterpriseCode,version:enterprise.version!}};}
+ async validateHouseholdsInTx(tx:Tx,raw:HouseholdWriteInput,ctx:MasterDataContext){authorize(ctx);const input=parseEnterpriseInput(householdWriteSchema,raw);const enterprise=await readEnterpriseIn(tx,input.enterpriseCode,true);if(!enterprise)throw AppError.notFound('企业不存在');assertScope({enterpriseCode:enterprise.enterpriseCode,districtCode:enterprise.districtCode??null},ctx);if(enterprise.version!==input.expectedVersion)throw AppError.conflict('企业版本已变化');const history=await readHouseholdsIn(tx,input.enterpriseCode,true);const {same,closing}=validateHouseholdPeriod(input,history); return {input,enterprise,history,same,closing,dependency:{enterpriseCode:input.enterpriseCode,version:enterprise.version!}};}
  async saveHouseholdsInTx(tx:Tx,raw:HouseholdWriteInput,ctx:MasterDataContext){const {input,enterprise,same,closing,dependency}=await this.validateHouseholdsInTx(tx,raw,ctx);if(same)return {key:input.enterpriseCode,changed:false,version:enterprise.version!,value:same,dependency};
  if(closing)await tx.execute('update enterprise_household_version set valid_to=? where enterprise_code=? and version=?',[input.validFrom,input.enterpriseCode,closing.version]);
  enterprise.version=enterprise.version!+1;const value:HouseholdVersion={enterpriseCode:input.enterpriseCode,households:input.households,validFrom:input.validFrom,validTo:input.validTo,version:String(enterprise.version)};
@@ -85,3 +83,8 @@ export class EnterpriseService {
  async resolveDepartment(source:string,code:string,ctx:MasterDataContext){const scope=buildEnterpriseScopeSql(ctx.access);const [rows]=await pool.query('select m.enterprise_code as enterpriseCode from enterprise_department_mapping m join enterprise e on e.enterprise_code=m.enterprise_code where m.source_system=? and m.source_department_code=? and m.verified=1 and m.entity_type=\'enterprise\' and '+scope.sql,[source,code,...scope.params]) as unknown as [{enterpriseCode:string}[],unknown];return rows[0]??null;}
 }
 export const enterpriseService=new EnterpriseService();
+
+/** Shared read-only period rules for B4 staging and locked B2 writes. */
+export function validateHouseholdPeriod(input:HouseholdWriteInput,history:readonly HouseholdVersion[]){const same=history.find(h=>h.validFrom===input.validFrom&&h.validTo===input.validTo&&h.households===input.households);const closing=history.find(h=>h.validTo===null&&h.validFrom<input.validFrom);
+ if(!same&&history.some(h=>h!==closing&&h.validFrom<(input.validTo??'9999-12-31')&&(h.validTo??'9999-12-31')>input.validFrom))throw AppError.conflict('户数生效区间交叠，不能覆盖历史');
+return {same,closing};}

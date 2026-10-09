@@ -1,0 +1,15 @@
+import request from './request';
+export type ImportKind='enterprise'|'department_mapping'|'household'|'dictionary_type'|'dictionary_item'|'category'|'admin_grid'|'community'|'service_grid'|'grid_coverage'|'grid_boundary';
+export const importLabels:Record<ImportKind,string>={enterprise:'企业/责任单位',department_mapping:'来源部门映射',household:'服务户数',dictionary_type:'字典类型',dictionary_item:'字典条目',category:'正式大小类',admin_grid:'行政网格',community:'小区',service_grid:'企业服务网格',grid_coverage:'覆盖关系',grid_boundary:'行政网格边界'};
+export function importModule(kind:ImportKind){return ['dictionary_type','dictionary_item','category'].includes(kind)?'system.dict.manage':['enterprise','department_mapping','household'].includes(kind)?'enterprise.manage':'grid.manage';}
+export interface ImportPreview {batchId:string;templateVersion:string;previewVersion:number;expiresAt:string;counts:{total:number;create:number;update:number;unchanged:number;error:number};canCommit:boolean}
+export interface ImportResult {batchId:string;state:'succeeded'|'failed';created:number;updated:number;unchanged:number;failureReason:string|null;completedAt:string}
+export interface ImportDetail {sheet:string;row:number;key:string;action:string;before:unknown;after:unknown;errors:{field:string;message:string}[]}
+export interface ImportBatch {kind:ImportKind;preview:ImportPreview;result:ImportResult|null;expired:boolean;details:ImportDetail[];total:number;page:number;size:number}
+export async function previewImport(file:File,kind:ImportKind):Promise<ImportPreview>{const bytes=await file.arrayBuffer();return request.post('/master-data/imports/preview',bytes,{params:{kind,name:file.name},headers:{'Content-Type':'application/octet-stream'},timeout:60000}) as unknown as Promise<ImportPreview>;}
+export const getImportBatch=(id:string,page=1,size=20)=>request.get('/master-data/imports/'+encodeURIComponent(id),{params:{page,size}}) as unknown as Promise<ImportBatch>;
+export const commitImport=(preview:ImportPreview,requestId:string)=>request.post('/master-data/imports/'+encodeURIComponent(preview.batchId)+'/commit',{previewVersion:preview.previewVersion,requestId},{timeout:60000}) as unknown as Promise<ImportResult>;
+export const listImportBatches=(kind:ImportKind,page=1,size=20)=>request.get('/master-data/imports',{params:{kind,page,size}}) as unknown as Promise<{content:{kind:ImportKind;preview:ImportPreview;result:ImportResult|null}[];page:number;size:number}>;
+export const importErrors=(id:string)=>request.get('/master-data/imports/'+encodeURIComponent(id)+'/errors',{responseType:'blob'}) as unknown as Promise<Blob>;
+export const importTemplate=(kind:ImportKind,format='xlsx')=>request.get('/master-data/import-templates/'+kind,{params:{format:kind==='grid_boundary'?'geojson':format},responseType:'blob'}) as unknown as Promise<Blob>;
+export function saveImportDownload(blob:Blob,name:string){const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=name;link.click();URL.revokeObjectURL(url);}

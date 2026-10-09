@@ -47,6 +47,10 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
+  {method:'GET',path:/^\/master-data\/import-templates\/[^/]+$/,roles:A,permissionCode:'masterdata.import',desc:'B4 模板（另核目标维护权限）'},
+  {method:'POST',path:/^\/master-data\/imports\/preview$/,roles:A,permissionCode:'masterdata.import',desc:'B4 上传校验预览'},
+  {method:'GET',path:/^\/master-data\/imports(?:\/[^/]+(?:\/errors)?)?$/,roles:A,permissionCode:'masterdata.import',desc:'B4 本人批次与当前对象范围'},
+  {method:'POST',path:/^\/master-data\/imports\/[^/]+\/commit$/,roles:A,permissionCode:'masterdata.import',desc:'B4 整批事务确认'},
   {method:'GET',path:/^\/enterprise-reference-options$/,roles:R,permissionCode:'enterprise.read',desc:'企业维护选项（已发布字典只读）'},
   {method:'GET',path:/^\/enterprise-options$/,roles:R,permissionCode:'enterprise.read',desc:'登记目标最小选单'},
   {method:'POST',path:/^\/enterprises$/,roles:A,permissionCode:'enterprise.manage',desc:'企业新增'},

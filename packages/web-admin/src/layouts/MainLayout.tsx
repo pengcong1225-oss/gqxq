@@ -26,6 +26,7 @@ interface MenuEntry {
 /** Menus reflect backend permissions. Buttons use their endpoint capability;
  * the server always independently validates access. */
 const menuEntries: MenuEntry[] = [
+  {key:'/master-data/imports',icon:<DatabaseOutlined/>,label:'导入批次',permission:'masterdata.import'},
   { key: '/dashboard', icon: <DashboardOutlined />, label: '数据大屏', permission: 'dashboard.read' },
   { key: '/complaints', icon: <FileTextOutlined />, label: '诉求管理', permission: 'complaint.read' },
   { key: '/address-correction', icon: <AuditOutlined />, label: '整体纠偏', permission: 'complaint.correct' },
@@ -76,7 +77,7 @@ const MainLayout: React.FC = () => {
   const menuItems = useMemo(
     () =>
       menuEntries
-        .filter(e=>permissions.includes(e.permission)&&!userInfo?.mustChangePassword)
+        .filter(e=>permissions.includes(e.permission)&&!userInfo?.mustChangePassword&&(e.key!=='/master-data/imports'||['enterprise.manage','grid.manage','system.dict.manage'].some(code=>permissions.includes(code))))
         .map(({ key, icon, label }) => ({ key, icon, label })),
     [permissions,userInfo]
   );

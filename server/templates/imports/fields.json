@@ -1,0 +1,12 @@
+{
+ "enterprise":{"enterpriseCode":"001","enterpriseName":"虚构供水企业甲","businessType":"water","status":"enabled","districtCode":"d1","uscc":"","legalPerson":"","contactPerson":"","contactPhone":"","serviceArea":"","address":"","disableReason":""},
+ "department_mapping":{"sourceSystem":"synthetic","sourceDepartmentCode":"001","sourceDepartmentName":"虚构来源部门甲","enterpriseCode":"001","entityType":"enterprise","aliases":"[]","verified":"true"},
+ "household":{"enterpriseCode":"001","households":"1000","validFrom":"2026-01-01","validTo":""},
+ "dictionary_type":{"code":"synthetic_type","name":"虚构字典类型","status":"enabled","published":"true","cascadeDisable":"false"},
+ "dictionary_item":{"typeCode":"synthetic_type","code":"001","label":"虚构根项","parentCode":"","sort":"0","status":"enabled","published":"true","cascadeDisable":"false"},
+ "category":{"code":"001","label":"虚构正式大类","parentCode":"","sort":"0","status":"enabled","published":"true","cascadeDisable":"false"},
+ "admin_grid":{"code":"001","name":"虚构行政网格甲","districtCode":"d1"},
+ "community":{"code":"001","name":"虚构小区甲","adminGridCode":"001"},
+ "service_grid":{"code":"001","name":"虚构服务网格甲","enterpriseCode":"001","businessType":"water"},
+ "grid_coverage":{"code":"001","validFrom":"2026-07-01","validTo":"","relationKind":"admin_grid","relationCode":"001"}
+}

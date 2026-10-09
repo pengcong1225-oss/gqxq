@@ -1,0 +1,22 @@
+# enterprise / b4-v1
+
+- 字段：规则
+- 模板类型：enterprise / b4-v1
+- 样例：全部虚构。导入前删除样例；引用对象需先导入。
+- 步骤：下载 → 文本填写 → 预览 → 核对差异 → 确认 → 查询批次
+- 约束：全批原子；有错误不能确认；10MiB / 2000行；24小时保留
+- 空值：缺少可选列保留；提供空列清除可空文本；不删除文件缺少的对象
+- 顺序：字典类型→条目/分类→企业→户数/映射→行政网格→小区→服务网格→覆盖/边界
+- templateVersion：必填，固定 b4-v1；旧版本请重新下载
+- enterpriseCode：必填稳定企业编码；文本，保留前导零
+- enterpriseName：必填企业名称，最多128字
+- businessType：必填已发布启用业务编码，如 water/gas
+- status：必填 enabled/disabled；停用企业需 disableReason
+- districtCode：行政网格必填；企业可空（清除区划）；已发布 district 编码
+- uscc：可空清除；18位大写统一社会信用代码
+- legalPerson：可空清除，最多64字
+- contactPerson：可空清除，最多64字
+- contactPhone：可空清除，最多64字
+- serviceArea：可空清除，最多500字
+- address：可空清除，最多500字
+- disableReason：企业停用必填依据，最多500字

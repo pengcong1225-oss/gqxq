@@ -1,3 +1,4 @@
+import MasterDataImportDialog from '../components/MasterDataImportDialog';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Alert,Button,Card,Descriptions,Drawer,Form,Input,InputNumber,Modal,Result,Select,Space,Switch,Table,Tabs,Tag} from 'antd';
 import {listEnterprises,getEnterprise,saveEnterprise,listHouseholds,saveHouseholds,listDepartmentMappings,saveDepartmentMapping,getEnterpriseReferenceOptions} from '../api/enterprises';
@@ -116,7 +117,7 @@ const CompanyList:React.FC=()=>{
   finally{if(currentDetail(owner))setDetailSaving(false);}
  };
  if(!read.can)return <Result status="403" title="无权限，请联系管理员"/>;
- return <Card title="企业档案" extra={write.can&&<Button type="primary" onClick={()=>void edit()}>新增企业</Button>}>
+ return <Card title="企业档案" extra={<Space><MasterDataImportDialog kinds={['enterprise','department_mapping','household']} onImported={()=>setReload(v=>v+1)}/>{write.can&&<Button type="primary" onClick={()=>void edit()}>新增企业</Button>}</Space>}>
   <Alert type="info" showIcon message="管理归属区县须按真实区划明确登记，不表示服务覆盖或户数区县分配。户数为全企业口径；区县局部诉求不能直接配全企业户数计算比率。" style={{marginBottom:16}}/>
   {error&&<Alert type="error" showIcon message={error} style={{marginBottom:16}}/>}
   <Space style={{marginBottom:16}}><Input aria-label="企业搜索" value={search} onChange={e=>setSearch(e.target.value)} placeholder="登记编码或名称"/><Button onClick={()=>{setPage(1);setKeyword(search);}}>查询</Button><Button onClick={()=>setReload(v=>v+1)}>刷新</Button></Space>

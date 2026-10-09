@@ -21,6 +21,7 @@ import DictManager from './views/DictManager';
 import UserManager from './views/UserManager';
 import RoleManager from './views/RoleManager';
 import AuditLogView from './views/AuditLogView';
+import ImportBatchList from './views/ImportBatchList';
 import ChangePassword from './views/ChangePassword';
 import Login from './views/Login';
 
@@ -86,6 +87,7 @@ const App: React.FC = () => {
         <Route path="dicts" element={<RequireRole permission="system.dict.manage"><DictManager /></RequireRole>} />
         <Route path="system/roles" element={<RequireRole permission="system.roles.manage"><RoleManager/></RequireRole>} />
         <Route path="system/audit-logs" element={<RequireRole permission="system.audit.read"><AuditLogView/></RequireRole>} />
+        <Route path="master-data/imports" element={<RequireRole permission="masterdata.import"><ImportBatchList/></RequireRole>} />
         <Route path="system/users" element={<RequireRole permission="system.users.manage"><UserManager /></RequireRole>} />
       </Route>
     </Routes>

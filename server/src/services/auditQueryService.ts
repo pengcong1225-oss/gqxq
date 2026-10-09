@@ -45,6 +45,7 @@ const valueFields=new Set(['address','district_code','district_name','location_l
 /** All responses use action-specific allowlists; stored audit evidence is untouched. */
 function safeDetail(row:AuditRow):Record<string,unknown> {
  const data=record(row.detail);const action=String(row.action??'');
+ if(row.biz_type==='master_import'&&['MASTER_IMPORT_COMMIT','MASTER_IMPORT_FAILED','MASTER_IMPORT_ERRORS_DOWNLOAD'].includes(action))return pick(data,['batchId','kind','templateVersion','previewVersion','created','updated','unchanged','state']);
  if(row.biz_type==='http'&&action==='ACCESS_DENIED'){
   const reason=String(data.reason??'');
   return {...pick(data,['requestId']),reasonCode:reason.includes('口令')?'PASSWORD_CHANGE_REQUIRED':reason.includes('readonly')?'READONLY_WRITE_DENIED':reason.includes('未登记')?'UNREGISTERED_ENDPOINT':'MISSING_PERMISSION'};
@@ -63,6 +64,7 @@ function safeDetail(row:AuditRow):Record<string,unknown> {
   if(!['SENSITIVE_WORD_CREATE','SENSITIVE_WORD_UPDATE'].includes(action))return {};
   const out=pick(data,['operator']);for(const key of ['before','after'])if(data[key]!==undefined)out[key]=pick(data[key],['word','status']);return out;
  }
+ if(row.biz_type==='service_grid'&&action==='SERVICE_GRID_REGISTER')return pick(data,['code','name','enterpriseCode','businessType','state','version']);
  if(row.biz_type==='service_grid'&&action==='SERVICE_GRID_SAVE')return pick(data,['code','enterpriseCode','businessType','version','validFrom','validTo','adminGridCount','communityCount']);
  if(row.biz_type==='admin_grid'&&action==='ADMIN_GRID_SAVE')return pick(data,['code','name','districtCode','version','hasGeometry']);
  if(row.biz_type==='community'&&action==='COMMUNITY_SAVE')return pick(data,['code','name','adminGridCode','version']);

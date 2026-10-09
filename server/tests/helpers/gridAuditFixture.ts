@@ -14,4 +14,5 @@ export async function prepareGridAuditFixture(db:Knex){
  await db.raw('create table service_grid(id bigint auto_increment primary key,grid_code varchar(64) not null unique,grid_name varchar(128) not null,business_type varchar(64),district_code varchar(64) null) engine=InnoDB default charset=utf8mb4');
  await db.raw('create table grid_enterprise(id bigint auto_increment primary key,grid_code varchar(64) not null,enterprise_code varchar(64) not null,unique key uk_pair(grid_code,enterprise_code)) engine=InnoDB default charset=utf8mb4');
  await require('../../migrations/20261009090000__service_grid_coverage.js').up(db);
+ await require('../../migrations/20261009100001__service_grid_registration.js').up(db);
 }
