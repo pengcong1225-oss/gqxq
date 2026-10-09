@@ -50,6 +50,14 @@ export function fieldDef(code: string): CorrectionFieldDef | null {
   return DEF_BY_CODE.get(code) ?? null;
 }
 
+/** Human decisions protect paired district/coordinate columns as one effective group. */
+export function protectedColumnsForCorrection(code: string): string[] {
+  if (code === 'district_name') return ['district_name', 'district_code'];
+  if (code === 'location_lng' || code === 'location_lat') return ['location_lng', 'location_lat'];
+  const def = fieldDef(code);
+  return def?.column ? [def.column, ...(def.pairedCodeColumn ? [def.pairedCodeColumn] : [])] : [];
+}
+
 export function isCorrectionFieldCode(code: string): boolean {
   return DEF_BY_CODE.has(code);
 }
@@ -71,6 +79,8 @@ export function statusLabel(status: string): string {
 }
 
 export interface CorrectionRow {
+  editVersion?: number;
+  effectiveValue?: string | null;
   id: number;
   correctionId: string;
   complaintId: string;
@@ -95,6 +105,8 @@ export function rowToCorrectionItem(r: CorrectionRow, hasDispatch: boolean): Cor
   const status = String(r.status);
   const def = fieldDef(String(r.fieldName));
   return {
+    editVersion: Number(r.editVersion ?? 1),
+    effectiveValue: r.effectiveValue == null ? null : String(r.effectiveValue),
     id: Number(r.id),
     correctionId: String(r.correctionId),
     complaintId: String(r.complaintId),
@@ -105,7 +117,7 @@ export function rowToCorrectionItem(r: CorrectionRow, hasDispatch: boolean): Cor
     oldValue: r.oldValue === null || r.oldValue === undefined ? null : String(r.oldValue),
     newValue: r.newValue === null || r.newValue === undefined ? null : String(r.newValue),
     basis: r.basis === null || r.basis === undefined ? null : String(r.basis),
-    status: isCorrectionItemStatus(status) ? status : 'pending',
+    status,
     statusName: statusLabel(status),
     confirmerId: r.confirmerId === null || r.confirmerId === undefined ? null : String(r.confirmerId),
     confirmerName: r.confirmerName === null || r.confirmerName === undefined ? null : String(r.confirmerName),
@@ -115,7 +127,11 @@ export function rowToCorrectionItem(r: CorrectionRow, hasDispatch: boolean): Cor
 }
 
 const SELECT_COLUMNS =
-  'id, correction_id as correctionId, complaint_id as complaintId, assignment_id as assignmentId,' +
+  '(select case correction_item.field_name ' + CORRECTION_FIELD_DEFS.filter(def => def.column).map(def =>
+    "when '" + def.code + "' then cast(c." + (def.pairedCodeColumn ?? def.column) + ' as char)'
+  ).join(' ') + ' else correction_item.old_value end from complaint c where c.complaint_id = correction_item.complaint_id) as effectiveValue,' +
+  '(select c.edit_version from complaint c where c.complaint_id = correction_item.complaint_id) as editVersion,' +
+  ' id, correction_id as correctionId, complaint_id as complaintId, assignment_id as assignmentId,' +
   ' field_name as fieldName, field_label as fieldLabel, old_value as oldValue, new_value as newValue,' +
   ' basis, status, confirmer_id as confirmerId, confirmer_name as confirmerName,' +
   ' confirmed_at as confirmedAt, created_at as createdAt';
@@ -277,7 +293,8 @@ export async function findPendingComplaintPage(
 /** 待纠偏项数量。分析入库与办结的前置校验都要用它，必须在同一事务内调用。 */
 export async function countPendingByComplaint(db: Queryable, complaintId: string): Promise<number> {
   const [rows] = await db.query(
-    "select count(*) as total from correction_item where complaint_id = ? and status = 'pending'",
+    "select count(*) as total from correction_item where complaint_id = ? and" +
+      " (status = 'pending' or status not in ('pending', 'confirmed', 'rejected'))",
     [complaintId]
   );
   return Number((rows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);

@@ -9,6 +9,7 @@ import { GQXQ_APP_CODE } from './intakeService';
 import { ADDRESS_EXTRACTOR_VERSION, addressInputHash, extractAddressCandidate } from './rules/addressExtract';
 import { extractLocation, LOCATION_EXTRACTOR_VERSION, type ExtractedLocationClue } from './rules/locationExtract';
 import { getTownshipSnapshot } from './rules/townshipGazetteer';
+import { parseJsonColumn } from '../repositories/complaintMapper';
 
 export type AddressBackfillErrorCategory = 'scan' | 'row' | 'audit';
 export type BackfillSampleCategory = 'address' | 'township' | 'settlement' | 'conflict' | 'unresolved';
@@ -39,7 +40,15 @@ export interface AddressBackfillPreview extends AddressBackfillSummary {
   samples: Array<{ item: number; action: BackfillAction; category: BackfillSampleCategory; value: '[已脱敏]' }>;
 }
 
-interface ComplaintRow { complaintId: string; title: string | null; content: string | null }
+interface ComplaintRow { complaintId: string; title: string | null; content: string | null; sourceFields?: unknown; sourcePayload?: unknown }
+function candidateInput(row: ComplaintRow): { title: string; content: string | null } {
+  const source = parseJsonColumn(row.sourceFields) ?? parseJsonColumn(row.sourcePayload);
+  if (source && ('title' in source || 'content' in source)) {
+    return { title: typeof source.title === 'string' ? source.title : '', content: typeof source.content === 'string' ? source.content : null };
+  }
+  // Legacy records without stored source text keep the established extraction behavior; do not fabricate a source snapshot.
+  return { title: row.title ?? '', content: row.content };
+}
 const PAGE_SIZE = 100;
 const EMPTY = (): AddressBackfillSummary => ({
   total: 0, extractable: 0, noCandidate: 0, created: 0, updated: 0, unchanged: 0, removed: 0, failed: 0,
@@ -49,7 +58,7 @@ const EMPTY = (): AddressBackfillSummary => ({
 
 async function scanPage(db: Queryable, after: string): Promise<ComplaintRow[]> {
   const [rows] = await db.query(
-    'select complaint_id as complaintId, title, content from complaint where complaint_id > ? order by complaint_id limit ?',
+    'select complaint_id as complaintId, title, content, source_fields as sourceFields, source_payload as sourcePayload from complaint where complaint_id > ? order by complaint_id limit ?',
     [after, PAGE_SIZE]
   );
   return rows as ComplaintRow[];
@@ -111,7 +120,7 @@ export async function previewAddressCandidateBackfill(): Promise<AddressBackfill
     for (const row of rows) {
       after = row.complaintId;
       result.total++;
-      const input = { title: row.title ?? '', content: row.content };
+      const input = candidateInput(row);
       const address = extractAddressCandidate(input);
       const location = extractLocation(input);
       const hash = addressInputHash(input);
@@ -156,12 +165,12 @@ export async function executeAddressCandidateBackfill(operator: OperatorContext)
       try {
         const change = await withTransaction(async (tx) => {
           const [lockedRows] = await tx.query(
-            'select complaint_id as complaintId, title, content from complaint where complaint_id = ? for update',
+            'select complaint_id as complaintId, title, content, source_fields as sourceFields, source_payload as sourcePayload from complaint where complaint_id = ? for update',
             [scanned.complaintId]
           );
           const locked = (lockedRows as ComplaintRow[])[0];
           if (!locked) throw Object.assign(new Error('complaint disappeared after backfill scan'), { category: 'row' as const });
-          const input = { title: locked.title ?? '', content: locked.content };
+          const input = candidateInput(locked);
           const extractedAddress = extractAddressCandidate(input);
           const extractedLocation = extractLocation(input);
           const hash = addressInputHash(input);

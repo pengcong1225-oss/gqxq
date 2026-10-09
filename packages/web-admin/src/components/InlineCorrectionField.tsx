@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Input, Select, Space, Typography } from 'antd';
 import type { CorrectionItem, EnterpriseListItem } from '../types/api';
+import { correctionEffectiveText } from '../api/corrections';
 
 export interface InlineCorrectionFieldProps {
   item: CorrectionItem;
@@ -20,15 +21,16 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
 }) => {
   const isEnterprise = item.fieldName === 'enterprise_name';
   const label = item.fieldLabel ?? item.fieldName;
-  const [value, setValue] = useState(isEnterprise ? '' : item.newValue ?? item.oldValue ?? '');
+  const [value, setValue] = useState(isEnterprise ? '' : correctionEffectiveText(item));
   const [basis, setBasis] = useState(item.basis ?? '');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setValue(isEnterprise ? '' : item.newValue ?? item.oldValue ?? '');
+    setValue(isEnterprise ? '' : correctionEffectiveText(item));
     setBasis(item.basis ?? '');
     setError(null);
-  }, [item.correctionId, item.newValue, item.oldValue, item.basis, isEnterprise]);
+  // A version-conflict refresh must keep this field's unsent value and basis.
+  }, [item.correctionId, isEnterprise]);
 
   const save = () => {
     const trimmed = value.trim();
@@ -36,7 +38,7 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
       setError(isEnterprise ? '请先从企业主数据选择责任单位' : '请填写纠偏后的取值');
       return;
     }
-    if (!isEnterprise && trimmed === (item.oldValue ?? '')) {
+    if (!isEnterprise && trimmed === correctionEffectiveText(item)) {
       setError('取值与原值相同；如已核实无误，请使用“核验无误”');
       return;
     }

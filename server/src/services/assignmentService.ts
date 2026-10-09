@@ -19,6 +19,8 @@ import { insertAssignment, updateComplaintEnterprise } from '../repositories/ass
 import { findEnterpriseByCodeIn } from '../repositories/enterpriseRepo';
 import { GQXQ_APP_CODE } from './intakeService';
 import { optionalText, requiredText, type OperatorContext } from './dispatchService';
+import { parseFieldState } from '../domain/effectiveFieldPolicy';
+import { insertFieldVersions } from '../repositories/complaintFieldVersionRepo';
 
 /** enterprise_code 与 complaint.enterprise_code 同为 varchar(64)，超长的输入必须在进库前被拒（对齐列宽，见 HANDOVER §6-④） */
 const ENTERPRISE_CODE_MAX = 64;
@@ -120,6 +122,26 @@ export async function confirmResponsibleEnterpriseInTx(
     supervisionStatus: nextSupervision,
     updatedAt: input.now,
   });
+
+  // Corrections own their one shared-version increment; the retained standalone API owns its increment here.
+  if (input.source === 'assignment') {
+    const [rows] = await tx.query('select edit_version, effective_field_state from complaint where complaint_id = ?', [target.complaintId]);
+    const row = (rows as Array<Record<string, unknown>>)[0];
+    if (!row) throw AppError.notFound('诉求不存在');
+    const nextVersion = Number(row.edit_version) + 1;
+    const states = parseFieldState(row.effective_field_state);
+    for (const [column, value] of [['enterprise_code', enterpriseCode], ['enterprise_name', enterpriseName]]) {
+      states[column] = { resolution: 'confirmed', value, version: nextVersion, reason: '独立责任确认：' + (input.reason ?? '人工核验') };
+    }
+    await tx.execute('update complaint set effective_field_state = ?, edit_version = ? where complaint_id = ?',
+      [JSON.stringify(states), nextVersion, target.complaintId]);
+    await insertFieldVersions(tx, [
+      { fieldName: 'enterprise_code', oldValue: beforeCode, newValue: enterpriseCode },
+      { fieldName: 'enterprise_name', oldValue: beforeName, newValue: enterpriseName },
+    ].map(entry => ({ ...entry, complaintId: target.complaintId, changeSource: 'manual_edit' as const,
+      reason: '独立责任确认：' + (input.reason ?? '人工核验'), operatorId: input.ctx.userId,
+      operatorName: input.ctx.userName, changedAt: input.now })));
+  }
 
   await insertAudit(tx, {
     userId: input.ctx.userId,

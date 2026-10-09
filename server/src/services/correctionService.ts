@@ -14,8 +14,6 @@ import type {
   CorrectionBatchResult,
   CorrectionGenerateResult,
   CorrectionItem,
-  CorrectionConfirmRequest,
-  CorrectionRejectRequest,
   Paged,
 } from '../types/api';
 import { AppError } from '../http/errors';
@@ -39,6 +37,7 @@ import {
   listByComplaint,
   lockCorrection,
   rowToCorrectionItem,
+  protectedColumnsForCorrection,
   type CorrectionFieldDef,
   type DispatchedFilter,
 } from '../repositories/correctionRepo';
@@ -51,6 +50,8 @@ import { insertTodoIfAbsent } from '../repositories/reportTodoRepo';
 import { confirmResponsibleEnterpriseInTx } from './assignmentService';
 import { GQXQ_APP_CODE } from './intakeService';
 import { optionalText, type OperatorContext } from './dispatchService';
+import { loadEffectiveFieldState } from '../repositories/effectiveFieldRepo';
+import { getTownshipSnapshot } from './rules/townshipGazetteer';
 
 /* ==================== 参数解析 ==================== */
 
@@ -90,6 +91,8 @@ function paged<T>(content: T[], total: number, page: number, size: number): Page
 /* ==================== complaint 读取 ==================== */
 
 interface ComplaintFullRow {
+  edit_version: number;
+  effective_field_state: unknown;
   complaint_id: string;
   complaint_no: string;
   title: string;
@@ -108,7 +111,8 @@ interface ComplaintFullRow {
 
 const COMPLAINT_FULL_COLUMNS =
   'complaint_id, complaint_no, title, enterprise_code, enterprise_name, district_code, district_name,' +
-  ' address, business_type, complaint_type, location_lng, location_lat, reporting_status, supervision_status';
+  ' address, business_type, complaint_type, location_lng, location_lat, reporting_status, supervision_status,' +
+  ' edit_version, effective_field_state, content, urgency_level, is_sensitive, sensitive_keywords, rule_confidence, rule_version';
 
 async function resolveComplaintId(db: Tx | typeof pool, idOrNo: string): Promise<string> {
   const ref = await findComplaintRefByAnyKey(db, idOrNo);
@@ -586,18 +590,30 @@ async function writeBackToComplaint(
   }
 
   const bound = coerceWriteBackValue(def, newValue);
+  let writtenValue = newValue;
   // 旧值必须从当前行取真实值：原先这里写死 null，等于审计里丢掉了「改之前是什么」。
   const oldValue = textOf((complaint as unknown as Record<string, unknown>)[column]);
-  await tx.execute(
-    'update complaint set ' + column + ' = ?, updated_at = ? where complaint_id = ?',
-    [bound, now, complaint.complaint_id]
-  );
+  if (fieldName === 'district_name') {
+    const county = getTownshipSnapshot().counties.find(item => item.name === newValue || item.code === newValue);
+    if (!county) throw AppError.validation('归属区域必须为区划名录中的名称或编码');
+    writtenValue = county.name;
+    await tx.execute('update complaint set district_name = ?, district_code = ?, updated_at = ? where complaint_id = ?',
+      [county.name, county.code, now, complaint.complaint_id]);
+    await insertFieldVersions(tx, [{ complaintId: complaint.complaint_id, fieldName: 'district_code',
+      oldValue: textOf(complaint.district_code), newValue: county.code, changeSource: 'manual_edit',
+      reason: 'G5 纠偏确认：区划名称与编码成对', operatorId: ctx.userId, operatorName: ctx.userName, changedAt: now }]);
+  } else {
+    await tx.execute(
+      'update complaint set ' + column + ' = ?, updated_at = ? where complaint_id = ?',
+      [bound, now, complaint.complaint_id]
+    );
+  }
   await insertFieldVersions(tx, [
     {
       complaintId: complaint.complaint_id,
       fieldName: column,
       oldValue,
-      newValue,
+      newValue: writtenValue,
       changeSource: 'manual_edit',
       reason: 'G5 纠偏确认：' + def.label,
       operatorId: ctx.userId,
@@ -623,6 +639,11 @@ async function decide(
   ctx: OperatorContext
 ): Promise<DecideOutcome> {
   const body = (rawBody ?? {}) as Record<string, unknown>;
+  if (typeof body.expectedVersion !== 'number' || !Number.isSafeInteger(body.expectedVersion) || body.expectedVersion < 1) {
+    throw AppError.validation('expectedVersion 必须为 >=1 的整数；请刷新并使用新版客户端', [
+      { field: 'expectedVersion', message: '必须提供读取时的有效值编辑版本' },
+    ]);
+  }
   const now = new Date();
 
   // 先取 complaintId（不加锁），再按固定顺序：锁 complaint -> 锁 correction。
@@ -637,6 +658,9 @@ async function decide(
 
   const result = await withTransaction(async (tx) => {
     const complaint = await lockComplaintFull(tx, complaintId);
+    if (Number(complaint.edit_version) !== body.expectedVersion) {
+      throw AppError.conflict('该诉求已被其它窗口修改；已保留未提交内容，请刷新核对后重新提交');
+    }
     const locked = await lockCorrection(tx, correctionId);
     if (!locked) throw AppError.notFound('纠偏项不存在');
     if (String(locked.status) !== 'pending') {
@@ -648,14 +672,17 @@ async function decide(
 
     let newValue: string | null = null;
     let writtenBack = false;
+    const states = await loadEffectiveFieldState(tx, complaint as unknown as Record<string, unknown>);
     if (status === 'confirmed') {
-      newValue = optionalText((body as CorrectionConfirmRequest).newValue, 'newValue', 2000);
-      if (newValue !== null && newValue !== locked.oldValue) {
+      newValue = optionalText(body.newValue, 'newValue', 2000);
+      const currentColumn = fieldDef(String(locked.fieldName))?.column;
+      const currentValue = currentColumn ? textOf((complaint as unknown as Record<string, unknown>)[currentColumn]) : locked.oldValue;
+      if (newValue !== null && newValue !== currentValue) {
         writtenBack = await writeBackToComplaint(tx, complaint, String(locked.fieldName), newValue, ctx, now);
       }
     }
     const basis = optionalText(
-      (body as CorrectionRejectRequest).basis ?? (body as CorrectionConfirmRequest).basis,
+      body.basis,
       'basis',
       500
     );
@@ -671,6 +698,16 @@ async function decide(
     if (affected === 0) {
       throw new AppError('INVALID_STATE_TRANSITION', '该纠偏项已被其它请求处置，请刷新后重试');
     }
+
+    const actual = await lockComplaintFull(tx, complaintId);
+    const nextVersion = Number(complaint.edit_version) + 1;
+    for (const column of protectedColumnsForCorrection(String(locked.fieldName))) {
+      states[column] = { resolution: status === 'confirmed' ? 'confirmed' : 'no_correction',
+        value: (actual as unknown as Record<string, unknown>)[column] ?? null, version: nextVersion,
+        correctionId, reason: status === 'confirmed' ? '人工确认当前有效值' : '人工判定当前有效值无需纠偏' };
+    }
+    await tx.execute('update complaint set effective_field_state = ?, edit_version = ?, updated_at = ? where complaint_id = ?',
+      [JSON.stringify(states), nextVersion, now, complaintId]);
 
     const analysis = await maybeEnterAnalysis(tx, {
       complaintId,
@@ -698,6 +735,8 @@ async function decide(
         newValue,
         basis,
         writtenBack,
+        editVersion: nextVersion,
+        effectiveValues: Object.fromEntries(protectedColumnsForCorrection(String(locked.fieldName)).map(column => [column, states[column].value])),
         analysisEntered: analysis.entered,
         analysisId: analysis.analysisId,
         analysisReason: analysis.reason,
@@ -709,7 +748,8 @@ async function decide(
     // 兜底分支只在极端情况下走到（重查没命中）：此时也必须给出真实的 hasDispatch，不能猜 false
     const item =
       items.find((x) => x.correctionId === correctionId) ??
-      rowToCorrectionItem(locked, await hasDispatchForComplaint(tx, complaintId));
+      rowToCorrectionItem({ ...locked, status, newValue, basis, editVersion: nextVersion, confirmedAt: now,
+        confirmerId: ctx.userId, confirmerName: ctx.userName }, await hasDispatchForComplaint(tx, complaintId));
     return {
       item,
       analysisEntered: analysis.entered,

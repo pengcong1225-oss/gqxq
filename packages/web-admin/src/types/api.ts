@@ -209,6 +209,9 @@ export interface LocationClueView {
 }
 
 export interface ComplaintDetail extends ComplaintListItem {
+  sourceFields: Record<string, unknown> | null;
+  effectiveFieldState: Record<string, unknown> | null;
+  editVersion: number;
   content: string | null;
   address: string | null;
   correctedAddress: string | null;
@@ -545,6 +548,8 @@ export interface SourceSyncResult {
 export type CorrectionItemStatus = 'pending' | 'confirmed' | 'rejected';
 
 export interface CorrectionItem {
+  editVersion: number;
+  effectiveValue: string | null;
   id: number;
   correctionId: string;
   complaintId: string;
@@ -560,7 +565,7 @@ export interface CorrectionItem {
   oldValue: string | null;
   newValue: string | null;
   basis: string | null;
-  status: CorrectionItemStatus;
+  status: CorrectionItemStatus | (string & {});
   statusName: string;
   confirmerId: string | null;
   confirmerName: string | null;
@@ -569,11 +574,13 @@ export interface CorrectionItem {
 }
 
 export interface CorrectionConfirmRequest {
+  expectedVersion: number;
   newValue?: string;
   basis?: string;
 }
 
 export interface CorrectionRejectRequest {
+  expectedVersion: number;
   basis?: string;
 }
 

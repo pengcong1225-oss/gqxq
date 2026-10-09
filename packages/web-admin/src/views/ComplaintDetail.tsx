@@ -664,7 +664,17 @@ const ComplaintDetail: React.FC = () => {
                 <Tag color="warning">待核实</Tag> {detail.addressCandidate.value}
                 <Typography.Text type="secondary">（{detail.addressCandidate.sourceField === 'title' ? '标题' : '正文'} · {detail.addressCandidate.extractorVersion}；证据：{detail.addressCandidate.evidence}）</Typography.Text>
               </Descriptions.Item>}
-              <Descriptions.Item label="原始地址">{detail.address ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="本次收到的来源地址">
+                {typeof detail.sourceFields?.address === 'string' ? detail.sourceFields.address
+                  : typeof detail.sourcePayload?.address === 'string' ? detail.sourcePayload.address : '未留存可核实的结构化来源原值'}
+                <Typography.Text type="secondary">（来源顺序未知）</Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="当前有效地址">{detail.address ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="有效值核验状态">
+                {detail.effectiveFieldState ? Object.entries(detail.effectiveFieldState)
+                  .filter(([, value]) => (value as { resolution?: string })?.resolution === 'needs_verification')
+                  .map(([field]) => field).join('、') || '已有字段保护记录' : '历史保护状态待核验'}
+              </Descriptions.Item>
               <Descriptions.Item label="纠偏后地址">{detail.correctedAddress ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="诉求时间">{fmtDateTime(detail.createdAt)}</Descriptions.Item>
               <Descriptions.Item label="系统接收时间">{fmtDateTime(detail.receivedAt)}</Descriptions.Item>

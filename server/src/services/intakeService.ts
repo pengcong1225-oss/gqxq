@@ -24,6 +24,9 @@ import { syncLocationClues } from '../repositories/locationClueRepo';
 import { buildRuleText, classify, CLASSIFY_RULE_VERSION, type Classification } from './rules/classify';
 import { detectSensitive, type SensitiveResult } from './rules/sensitive';
 import type { IntakeResponse } from '../types/api';
+import { EFFECTIVE_COLUMNS, EffectiveFieldPolicy } from '../domain/effectiveFieldPolicy';
+import { loadEffectiveFieldState } from '../repositories/effectiveFieldRepo';
+import { parseJsonColumn } from '../repositories/complaintMapper';
 
 /** 入站来源系统（固定值，与既有 8 条数据一致：source_system 存系统，source_channel 存渠道） */
 export const YIJIEJIEBAN_SYSTEM = '宜接就办';
@@ -81,7 +84,7 @@ export interface IntakeContext {
 // 任何使用它的查询都会 ER_BAD_FIELD_ERROR。接收层只需要"身份 + 可覆盖白名单列"，
 // 因此从冻结的 REDELIVERY_UPDATABLE_COLUMNS 派生，既不硬编码列名，也不受该缺陷影响。
 const SELECT_ROW =
-  'select c.complaint_id, c.complaint_no, ' +
+  'select c.complaint_id, c.complaint_no, c.source_fields, c.effective_field_state, c.edit_version, ' +
   REDELIVERY_UPDATABLE_COLUMNS.map((column) => 'c.' + column).join(', ') +
   ' from complaint c where c.source_system = ? and c.source_id = ?';
 
@@ -109,7 +112,7 @@ const NUMERIC_COLUMNS = new Set(['rule_confidence', 'location_lng', 'location_la
 
 const INSERT_COLUMNS = COMPLAINT_INSERT_COLUMNS.split(',').map((s) => s.trim());
 /** status 是平台侧仍在读写的兼容列，必须显式给值；created_at/updated_at 显式写 UTC，避免落进本地时区 */
-const EXTRA_INSERT_COLUMNS = ['status', 'created_at', 'updated_at'];
+const EXTRA_INSERT_COLUMNS = ['status', 'created_at', 'updated_at', 'source_fields', 'effective_field_state', 'edit_version'];
 
 function cutText(value: string | null, max: number): string | null {
   if (value === null) return null;
@@ -144,7 +147,7 @@ type SqlParam = string | number | Date | null;
 /** 绑定参数：json 列显式序列化，其余归一成驱动可接受的标量（Date 由驱动按 UTC 写入） */
 function toSqlParam(column: string, value: unknown): SqlParam {
   if (value === null || value === undefined) return null;
-  if (column === 'source_payload') return JSON.stringify(value);
+  if (column === 'source_payload' || column === 'source_fields' || column === 'effective_field_state') return JSON.stringify(value);
   if (value instanceof Date) return value;
   if (typeof value === 'number') return value;
   if (typeof value === 'boolean') return value ? 1 : 0;
@@ -225,6 +228,16 @@ function unknownFieldNotice(payload: Record<string, unknown>, known: readonly st
 
 function auditDetail(base: Record<string, unknown>): Record<string, unknown> {
   return base;
+}
+
+function receivedSourceFields(values: Record<string, unknown>, cmd: IntakeCommand, receivedAt: Date): Record<string, unknown> {
+  return { ...Object.fromEntries(EFFECTIVE_COLUMNS.map(column => [column, values[column] ?? null])),
+    _order: 'unknown', _receivedAt: receivedAt.toISOString(),
+    _valueOrigins: { business_type: cmd.explicitBusinessType === null ? 'rule_engine' : 'source',
+      complaint_type: cmd.explicitComplaintType === null ? 'rule_engine' : 'source',
+      urgency_level: cmd.explicitUrgencyLevel === null ? 'rule_engine' : 'source',
+      is_sensitive: 'rule_engine', sensitive_keywords: 'rule_engine', rule_confidence: 'rule_engine', rule_version: 'rule_engine' },
+  };
 }
 
 /** ─────────────── 事务外：被拒报文留痕（追加写，绝不静默丢弃） ─────────────── */
@@ -326,7 +339,12 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
     status: 'pending',
     created_at: receivedAt,
     updated_at: receivedAt,
+    edit_version: 1,
   };
+  values.source_fields = receivedSourceFields(values, cmd, receivedAt);
+  values.effective_field_state = Object.fromEntries(EFFECTIVE_COLUMNS.map(column => [column, {
+    resolution: 'unresolved', value: values[column] ?? null, version: 1, reason: '首次来源入站，尚未人工核验',
+  }]));
 
   const columns = [...INSERT_COLUMNS, ...EXTRA_INSERT_COLUMNS];
   const params = columns.map((column) => {
@@ -497,12 +515,31 @@ async function applyRedelivery(
     source_updated_at: receivedAt,
   };
 
-  // 只遍历白名单：受保护列根本不会进入集合，因此不可能出现在 UPDATE 里
+  const sourceFields = receivedSourceFields(target, cmd, receivedAt);
+  const previousSource = parseJsonColumn(row.source_fields);
+  const states = await loadEffectiveFieldState(tx, row);
+  const decisions: Record<string, unknown> = {};
+  const sourceVersions: FieldVersionEntry[] = [];
+  for (const column of EFFECTIVE_COLUMNS) {
+    // receivedAt/source_updated_at is receipt metadata, never a trustworthy source sequence.
+    const decision = EffectiveFieldPolicy.decide({ field: column, sourceValue: target[column], effectiveValue: row[column],
+      resolution: states[column].resolution, incomingOrder: 'unknown' });
+    decisions[column] = decision;
+    if (decision.action !== 'apply_source') target[column] = row[column];
+    if (normalizeForCompare(column, previousSource?.[column]) !== normalizeForCompare(column, sourceFields[column])) {
+      sourceVersions.push({ complaintId, fieldName: 'source.' + column,
+        oldValue: previousSource ? cutText(toFieldText(previousSource[column], canonicalJson), MAX_FIELD_TEXT) : null,
+        newValue: cutText(toFieldText(sourceFields[column], canonicalJson), MAX_FIELD_TEXT), changeSource: 'external_redelivery',
+        reason: (previousSource ? '' : '历史结构化来源原值未知；') + decision.reason,
+        operatorId: null, operatorName: YIJIEJIEBAN_SYSTEM, changedAt: receivedAt });
+    }
+  }
+
   const changedColumns = REDELIVERY_UPDATABLE_COLUMNS.filter(
     (column) => normalizeForCompare(column, row[column]) !== normalizeForCompare(column, target[column])
   );
 
-  const fieldVersions: FieldVersionEntry[] = [];
+  const fieldVersions: FieldVersionEntry[] = [...sourceVersions];
   for (const column of changedColumns) {
     // source_payload 本身可能接近 1 MiB，塞进 TEXT 会溢出；原始报文已落 complaint.source_payload
     // 与 complaint_source_log.payload，这里对整包只留摘要，避免越界写失败。
@@ -543,13 +580,15 @@ async function applyRedelivery(
   if (changedColumns.length > 0) {
     const setSql = changedColumns.map((column) => column + ' = ?').join(', ');
     const params = changedColumns.map((column) => toSqlParam(column, target[column]));
-    await tx.execute('update complaint set ' + setSql + ', updated_at = ? where complaint_id = ?', [...params, receivedAt, complaintId]);
+    await tx.execute('update complaint set ' + setSql + ', source_fields = ?, effective_field_state = ?, updated_at = ? where complaint_id = ?',
+      [...params, JSON.stringify(sourceFields), JSON.stringify(states), receivedAt, complaintId]);
   } else {
-    // 报文变了但白名单列无实际变化：只对齐 updated_at，不做其它写入
-    await tx.execute('update complaint set updated_at = ? where complaint_id = ?', [receivedAt, complaintId]);
+    await tx.execute('update complaint set source_fields = ?, effective_field_state = ?, updated_at = ? where complaint_id = ?',
+      [JSON.stringify(sourceFields), JSON.stringify(states), receivedAt, complaintId]);
   }
 
-  if (changedColumns.includes('title') || changedColumns.includes('content')) {
+  // Candidates describe the arriving source evidence, separately from protected effective values.
+  if (!previousSource || previousSource.title !== cmd.title || previousSource.content !== cmd.content) {
     await syncAddressCandidate(tx, complaintId, { title: cmd.title, content: cmd.content });
     await syncLocationClues(tx, complaintId, { title: cmd.title, content: cmd.content });
   }
@@ -604,6 +643,8 @@ async function applyRedelivery(
       result: 'updated',
       changedFields: changedColumns,
       fieldVersionRows: insertedVersions,
+      sourceOrder: 'unknown',
+      effectiveFieldDecisions: decisions,
       protectedFieldsRejected: attempted.map((a) => a.column),
       ruleVersion,
     }),
@@ -611,6 +652,7 @@ async function applyRedelivery(
   });
 
   const warnings = [...cmd.warnings];
+  warnings.push('来源顺序未知；本次收到的来源快照已留存，差异字段保留有效值待核验');
   if (sensitive.warning) warnings.push(sensitive.warning);
   if (keywords.dropped > 0) {
     warnings.push(

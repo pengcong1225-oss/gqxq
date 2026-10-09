@@ -30,6 +30,9 @@ import {
   generateCorrectionBatch,
   generateCorrections,
   listComplaintCorrections,
+  isCorrectionVersionConflict,
+  CORRECTION_CONFLICT_MESSAGE,
+  correctionEffectiveText,
 } from '../api/corrections';
 import { listPendingCorrectionComplaints } from '../api/corrections';
 import type { DispatchedFilter, PendingComplaintSummary } from '../api/corrections';
@@ -259,6 +262,7 @@ const AddressCorrection: React.FC = () => {
   const [verifyTarget, setVerifyTarget] = useState<CorrectionItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
+  const [versionConflict, setVersionConflict] = useState(false);
   const [verifyForm] = Form.useForm<{ basis: string }>();
   const [positionForm] = Form.useForm();
   const addressDraft = Form.useWatch('address', positionForm) as string | undefined;
@@ -354,6 +358,7 @@ const AddressCorrection: React.FC = () => {
     (complaintId: string, summary?: PendingComplaintSummary) => {
       const summarySeq = ++summarySeqRef.current;
       setSelectedComplaintId(complaintId);
+      setVersionConflict(false);
       setDrawerOpen(true);
       setItems([]);
       setItemsComplaintId(null);
@@ -467,11 +472,13 @@ const AddressCorrection: React.FC = () => {
       setSavingItemId(item.correctionId);
       const res = await confirmCorrection(item.correctionId, {
         newValue,
+        expectedVersion: item.editVersion,
         basis: basis || undefined,
       });
       await afterDecision(item.complaintId, res.analysisEntered === true);
     } catch (err) {
-      message.error('保存纠偏失败：' + errText(err));
+      if (isCorrectionVersionConflict(err)) { setVersionConflict(true); message.warning(CORRECTION_CONFLICT_MESSAGE); }
+      else message.error('保存纠偏失败：' + errText(err));
     } finally {
       setSavingItemId(null);
     }
@@ -493,7 +500,8 @@ const AddressCorrection: React.FC = () => {
     setSubmitting(true);
     try {
       const res = await confirmCorrection(verifyTarget.correctionId, {
-        newValue: verifyTarget.oldValue ?? '',
+        expectedVersion: verifyTarget.editVersion,
+        newValue: correctionEffectiveText(verifyTarget) || undefined,
         basis: '核验无误：' + values.basis.trim(),
       });
       const complaintId = verifyTarget.complaintId;
@@ -501,8 +509,8 @@ const AddressCorrection: React.FC = () => {
       verifyForm.resetFields();
       await afterDecision(complaintId, res.analysisEntered === true);
     } catch (err) {
-      message.error('核验未完成：' + errText(err));
-      await loadItems(verifyTarget.complaintId);
+      if (isCorrectionVersionConflict(err)) { setVersionConflict(true); message.warning(CORRECTION_CONFLICT_MESSAGE); }
+      else message.error('核验未完成：' + errText(err));
     } finally {
       setSubmitting(false);
     }
@@ -517,9 +525,9 @@ const AddressCorrection: React.FC = () => {
     const [address, lng, lat] = positionItems as [CorrectionItem, CorrectionItem, CorrectionItem];
     setPositionResult([]);
     positionForm.setFieldsValue({
-      address: address.newValue ?? address.oldValue ?? '',
-      lng: lng.newValue ?? lng.oldValue ?? '',
-      lat: lat.newValue ?? lat.oldValue ?? '',
+      address: correctionEffectiveText(address),
+      lng: correctionEffectiveText(lng),
+      lat: correctionEffectiveText(lat),
       basis: '',
     });
     setPositionModalOpen(true);
@@ -538,52 +546,74 @@ const AddressCorrection: React.FC = () => {
       { item: positionItems[2] as CorrectionItem, value: values.lat.trim() },
     ].filter(({ item }) => item.status === 'pending');
     if (fields.length === 0) return;
-    if (fields.every(({ item, value }) => value === (item.oldValue ?? ''))) {
+    if (fields.every(({ item, value }) => value === correctionEffectiveText(item))) {
       message.info('位置组没有任何新值；如原值无误，请逐项点“核验无误”');
       return;
     }
     setSubmitting(true);
     const outcomes: Array<{ label: string; ok: boolean; detail: string }> = [];
+    let expectedVersion = fields[0].item.editVersion;
     try {
       for (const { item, value } of fields) {
-        const changed = value !== (item.oldValue ?? '');
+        const changed = value !== correctionEffectiveText(item);
         try {
-          await confirmCorrection(item.correctionId, {
+          const res = await confirmCorrection(item.correctionId, {
+            expectedVersion,
             newValue: value,
             basis: changed
               ? values.basis?.trim() || '地图选点并人工核对位置'
               : '位置组核验无误：' + (values.basis?.trim() || '操作员复核位置'),
           });
+          expectedVersion = res.item.editVersion;
           outcomes.push({ label: item.fieldLabel ?? item.fieldName, ok: true, detail: changed ? '已保存纠偏' : '已核验原值' });
         } catch (err) {
           outcomes.push({ label: item.fieldLabel ?? item.fieldName, ok: false, detail: errText(err) });
+          if (isCorrectionVersionConflict(err)) { setVersionConflict(true); message.warning(CORRECTION_CONFLICT_MESSAGE); }
+          break;
         }
       }
       setPositionResult(outcomes);
-      await loadItems(selectedComplaintId ?? fields[0].item.complaintId);
       await loadQueue(page, size, dispatched);
-      setPositionModalOpen(false);
-      positionForm.resetFields();
       const successCount = outcomes.filter((outcome) => outcome.ok).length;
       if (successCount === fields.length) {
+        await loadItems(selectedComplaintId ?? fields[0].item.complaintId);
+        setPositionModalOpen(false);
+        positionForm.resetFields();
         message.success('本次提交的 ' + fields.length + ' 项位置字段均已处理完成');
       } else {
-        message.warning('位置组已逐项提交：成功 ' + successCount + '/' + fields.length + '，失败 ' + (fields.length - successCount) + ' 项。已刷新服务端状态，失败项仍可从位置组继续处理。', 8);
+        message.warning('位置组提交中止：成功 ' + successCount + '/' + fields.length + '。未提交内容已保留，请刷新核对再继续。', 8);
       }
     } finally {
       setSubmitting(false);
     }
   };
 
-  const pendingCount = items.filter((x) => x.status === 'pending').length;
+  const pendingCount = items.filter((x) => !['confirmed', 'rejected'].includes(x.status)).length;
+  const unknownStatusCount = items.filter((x) => !['pending', 'confirmed', 'rejected'].includes(x.status)).length;
   /**
    * 该诉求在**交办轴**上的状态：取自服务端给的 hasDispatch，一条诉求的各行取值相同。
    * 面板还没加载到任何项时为 null——这时候就是不知道，不能猜成"未交办"。
    */
   const selectedHasDispatch = items.length > 0 ? items[0].hasDispatch : null;
+  const sourceAddress = typeof selectedComplaintDetail?.sourceFields?.address === 'string'
+    ? selectedComplaintDetail.sourceFields.address
+    : typeof selectedComplaintDetail?.sourcePayload?.address === 'string' ? selectedComplaintDetail.sourcePayload.address : null;
+  const refreshConflict = async () => {
+    if (!selectedComplaintId) return;
+    try {
+      const current = await listComplaintCorrections(selectedComplaintId);
+      // Preserve mounted inline drafts and position form contents while showing the current server values.
+      setItems(current);
+      if (verifyTarget) setVerifyTarget(current.find(item => item.correctionId === verifyTarget.correctionId && item.status === 'pending') ?? null);
+      setVersionConflict(false);
+      message.info('已刷新当前有效值与版本；请逐项核对保留的草稿后再提交');
+    } catch (err) { message.error('刷新核对失败：' + errText(err)); }
+  };
 
   return (
     <div>
+      {versionConflict && <Alert type="warning" showIcon message={CORRECTION_CONFLICT_MESSAGE}
+        action={<Button onClick={() => void refreshConflict()}>刷新核对（保留草稿）</Button>} />}
       <h2 style={{ marginBottom: 8 }}>整体纠偏</h2>
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
@@ -759,7 +789,7 @@ const AddressCorrection: React.FC = () => {
                 </Descriptions>
                 <div style={{ marginBottom: 16 }}>
                   <AddressLocationEvidence
-                    sourceAddress={selectedComplaintDetail?.address ?? null}
+                    sourceAddress={sourceAddress}
                     candidate={selectedComplaintDetail?.addressCandidate ?? null}
                     pending={false}
                     conflict={selectedComplaintDetail?.locationConflict ?? false}
@@ -781,6 +811,8 @@ const AddressCorrection: React.FC = () => {
                     }
                   />
                 )}
+                {unknownStatusCount > 0 && <Alert type="warning" showIcon message={'有 ' + unknownStatusCount + ' 项历史状态待核验'}
+                  description="历史状态已保留，需核查处理依据；这些项不视为纠偏完成。" />}
 
                 {positionItems.some(Boolean) && (
                   <Card size="small" title="位置组：地址与经纬度" style={{ marginBottom: 16 }}>
@@ -835,11 +867,12 @@ const AddressCorrection: React.FC = () => {
                       render: (v: string | null, r: CorrectionItem) => v ?? r.fieldName,
                     },
                     {
-                      title: '原值 / 纠偏后取值',
+                      title: '初始值 / 当前有效值 / 纠偏后取值',
                       width: 430,
                       render: (_: unknown, r: CorrectionItem) => (
                         <div style={{ lineHeight: 1.6 }}>
-                          <div><b>原值：</b>{r.oldValue ?? '—'}</div>
+                          <div><b>初始值：</b>{r.oldValue ?? '—'}</div>
+                          <div><b>当前有效值：</b>{r.effectiveValue ?? '—'}</div>
                           {r.newValue && r.status !== 'pending' ? <div><b>确认值：</b>{r.newValue}</div> : null}
                           {r.status === 'pending' && !POSITION_FIELDS.includes(r.fieldName as typeof POSITION_FIELDS[number]) ? (
                             <div style={{ marginTop: 8 }}>
@@ -925,14 +958,19 @@ const AddressCorrection: React.FC = () => {
         width={1000}
         destroyOnClose
       >
+        {versionConflict && <Alert type="warning" showIcon message={CORRECTION_CONFLICT_MESSAGE}
+          action={<Button onClick={() => void refreshConflict()}>刷新核对（保留草稿）</Button>} />}
         <Form form={positionForm} layout="vertical">
           <Descriptions size="small" column={1} bordered style={{ marginBottom: 12 }}>
             <Descriptions.Item label="诉求 ID">{selectedComplaintId}</Descriptions.Item>
             <Descriptions.Item label="诉求标题">{selectedComplaintInfo?.title || '正在读取…'}</Descriptions.Item>
+            {positionItems.filter(Boolean).map(item => <Descriptions.Item key={item!.fieldName} label={'当前有效' + (item!.fieldLabel ?? item!.fieldName)}>
+              {correctionEffectiveText(item!) || '（空）'}
+            </Descriptions.Item>)}
           </Descriptions>
           <div style={{ marginBottom: 12 }}>
             <AddressLocationEvidence
-              sourceAddress={selectedComplaintDetail?.address ?? null}
+              sourceAddress={sourceAddress}
               candidate={selectedComplaintDetail?.addressCandidate ?? null}
               pending={positionItemsReady && positionItems[0]?.status === 'pending'}
               conflict={selectedComplaintDetail?.locationConflict ?? false}
@@ -971,8 +1009,8 @@ const AddressCorrection: React.FC = () => {
           </Space>
           <TiandituLocationPicker
             address={addressDraft}
-            lng={String(positionItems[1]?.newValue ?? positionItems[1]?.oldValue ?? '')}
-            lat={String(positionItems[2]?.newValue ?? positionItems[2]?.oldValue ?? '')}
+            lng={positionItems[1] ? correctionEffectiveText(positionItems[1]) : ''}
+            lat={positionItems[2] ? correctionEffectiveText(positionItems[2]) : ''}
             onPick={(point) => {
               const values: { lng?: string; lat?: string } = {};
               if (positionItems[1]?.status === 'pending') values.lng = point.lng;
@@ -1000,14 +1038,16 @@ const AddressCorrection: React.FC = () => {
         width={560}
         destroyOnClose
       >
+        {versionConflict && <Alert type="warning" showIcon message={CORRECTION_CONFLICT_MESSAGE}
+          action={<Button onClick={() => void refreshConflict()}>刷新核对（保留草稿）</Button>} />}
         {verifyTarget ? (
           <>
             <Descriptions size="small" column={1} bordered style={{ marginBottom: 16 }}>
               <Descriptions.Item label="诉求编号">{selectedComplaintInfo?.complaintNo || verifyTarget.complaintId}</Descriptions.Item>
               <Descriptions.Item label="诉求标题">{selectedComplaintInfo?.title || '正在读取…'}</Descriptions.Item>
               <Descriptions.Item label="字段">{verifyTarget.fieldLabel ?? verifyTarget.fieldName}</Descriptions.Item>
-              <Descriptions.Item label="当前原值">
-                {verifyTarget.oldValue === null || verifyTarget.oldValue === '' ? '当前为空' : verifyTarget.oldValue}
+              <Descriptions.Item label="当前有效值">
+                {correctionEffectiveText(verifyTarget) || '当前为空'}
               </Descriptions.Item>
             </Descriptions>
             <Form form={verifyForm} layout="vertical">

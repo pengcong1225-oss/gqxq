@@ -149,9 +149,12 @@ export async function updateComplaintSensitiveResult(
   }
 ): Promise<void> {
   await db.execute(
-    'update complaint set is_sensitive = ?, sensitive_keywords = ?, rule_confidence = ?,' +
+    'update complaint set edit_version = edit_version + case when (is_sensitive <=> ?) and (sensitive_keywords <=> ?) then 0 else 1 end,' +
+      ' is_sensitive = ?, sensitive_keywords = ?, rule_confidence = ?,' +
       ' rule_version = ?, updated_at = ? where complaint_id = ?',
     [
+      input.isSensitive ? 1 : 0,
+      input.keywords,
       input.isSensitive ? 1 : 0,
       input.keywords,
       input.confidence,

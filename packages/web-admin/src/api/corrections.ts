@@ -20,6 +20,15 @@ export interface ListResult<T> {
 /** 交办轴筛选：dispatched=只看交办过的，undispatched=只看没交办过的，不传=全部 */
 export type DispatchedFilter = 'dispatched' | 'undispatched';
 
+export function isCorrectionVersionConflict(error: unknown): boolean {
+  return (error as { status?: number } | null)?.status === 409;
+}
+export const CORRECTION_CONFLICT_MESSAGE = '该诉求已被其它窗口修改；未提交内容已保留，请刷新核对后重新提交';
+export function correctionEffectiveText(item: CorrectionItem): string {
+  // Missing property is only a legacy DTO fallback; an explicit null is the actual empty effective value.
+  return item.effectiveValue === undefined ? item.newValue ?? item.oldValue ?? '' : item.effectiveValue ?? '';
+}
+
 export interface PendingCorrectionParams {
   page?: number;
   size?: number;

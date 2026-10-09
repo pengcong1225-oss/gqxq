@@ -8,6 +8,21 @@ test('backfill endpoints are explicitly admin only', { concurrency: false }, asy
   assert.deepEqual(matchRule('POST', '/address-candidates/backfill')?.roles, [ROLE_ADMIN]);
 });
 
+test('backfill candidate evidence uses received source snapshot rather than protected human text', { concurrency: false }, async () => {
+  const { previewAddressCandidateBackfill, executeAddressCandidateBackfill } = await import('../src/services/addressCandidateBackfillService');
+  const { pool } = await import('../src/db/pool');
+  const db = new BackfillFake();
+  db.rows = [{ complaintId: 'synthetic-CPL', title: '人工标题', content: '人工摘要无地址',
+    sourceFields: { title: '来源标题', content: '点军区联棚乡示例小区18号1301的居民反映。' } }];
+  const restore = installFake(pool, db);
+  try {
+    assert.equal((await previewAddressCandidateBackfill()).extractable, 1);
+    await executeAddressCandidateBackfill({ userId: 'synthetic-admin', userName: 'Synthetic', clientIp: null });
+    assert.equal(db.candidates.get('synthetic-CPL')?.candidateText, '点军区联棚乡示例小区18号1301');
+    assert.equal(db.rows[0].title, '人工标题');
+  } finally { restore(); }
+});
+
 test('preview is read only and execution is repeatable for existing candidate rows', { concurrency: false }, async () => {
   const { previewAddressCandidateBackfill, executeAddressCandidateBackfill } =
     await import('../src/services/addressCandidateBackfillService');
@@ -247,7 +262,7 @@ function installFake(pool: import('mysql2/promise').Pool, db: BackfillFake): () 
 
 class BackfillFake {
   writes = 0;
-  rows: Array<{ complaintId: string; title: string | null; content: string | null }> = [
+  rows: Array<{ complaintId: string; title: string | null; content: string | null; sourceFields?: unknown; sourcePayload?: unknown }> = [
     { complaintId: 'C1', title: '燃气安装', content: '点军区联棚乡示例小区18号1301的居民反映进度。' },
     { complaintId: 'C2', title: '燃气报装', content: '请尽快处理。' },
   ];
