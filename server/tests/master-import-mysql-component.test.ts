@@ -21,7 +21,7 @@ test('B4 isolated real SQL unified import contracts',{skip:process.env.GQXQ_B4_C
    'create table dict_item(id bigint auto_increment primary key,item_id varchar(64),dict_type varchar(64),item_value varchar(64),item_label varchar(128),status varchar(16))',
    'create table complaint(complaint_id varchar(64) primary key,complaint_no varchar(64),enterprise_code varchar(64),district_code varchar(64),deleted int default 0)',
    'create table operation_audit_log(id bigint auto_increment primary key,audit_id varchar(64),user_id varchar(64),app_code varchar(64),resource_code varchar(128),action varchar(64),biz_type varchar(64),biz_id varchar(128),result varchar(32),client_ip varchar(64),detail json,created_at datetime)',
-   'create table app_user(user_id varchar(64) primary key,username varchar(64),roles json,status tinyint)',
+   'create table app_user(id bigint auto_increment primary key,user_id varchar(64) unique,username varchar(64),roles json,status tinyint)',
    'create table analysis_record(analysis_id varchar(64),complaint_id varchar(64))','create table business_event(event_id varchar(64),source_business_id varchar(64))',
    'create table service_grid(id bigint auto_increment primary key,grid_code varchar(64) not null unique,grid_name varchar(128) not null,business_type varchar(64),district_code varchar(64) null)',
    'create table grid_enterprise(id bigint auto_increment primary key,grid_code varchar(64) not null,enterprise_code varchar(64) not null,unique key uk_pair(grid_code,enterprise_code))'

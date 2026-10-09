@@ -16,9 +16,9 @@
 
 新接口必须具备 `statistics.read`，ledger 另需 `dashboard.read`，analysis 另需 `analysis.read`，明细再需 `complaint.read`。首次迁移按实际内置角色既有能力矩阵补统计能力，重跑不会恢复被撤销的授权。自定义角色须显式补授；页面使用相同有效能力控制查询、下钻和明细。所有对象仍受当前范围限制。
 
-旧 `/dashboard/overview?days` 保留 DTO，days 规范化为 ledger/current/custom 范围，所有面板共享该范围并追加 query/统计元数据。旧 `/analysis/records` 无日期请求保留原入库列、筛选、分页和排序（包括年代久远、日期未知的成员），追加 `legacy-membership/no-date` 元数据。它仅用于入库记录浏览，不计算有日期比较；传新统计参数清晰拒绝并指向新接口。代价是保留一个仅旧列表使用的无日期兼容分支。
+旧 `/dashboard/overview?days` 保留 DTO，days 规范化为 ledger/current/custom 范围，所有面板共享该范围并追加 query/统计元数据。旧 `/analysis/records` 无日期请求保留原入库列、筛选、分页和排序（包括年代久远、日期未知的成员），追加 `legacy-membership/no-date` 元数据。它仅用于入库记录浏览，不计算有日期比较；传新统计参数清晰拒绝并指向新接口。代价是保留一个仅旧列表使用的无日期兼容分支。分析库页面的“入库记录浏览”独立使用该旧接口，只需 `analysis.read`，按区域/业务类型/企业稳定编码筛选，保留服务端分页和确认时间、ID倒序及嵌套记录详情；没有业务日期仍可浏览，不请求字典或企业目录能力。统计页与来源原件弹窗在成功身份刷新后按账号、令牌和授权版本清除旧范围数据，并拒绝旧请求响应。
 
-后续 D2/D3 直接复用 `server/src/services/statisticsService.ts` 的 `captureStatistics` 和 `captureStatisticsIn`，以及 `server/src/types/statistics.ts`。前者拥有单一 READ ONLY REPEATABLE READ 事务；后者要求调用方传入同一读快照 executor。返回 summary、当期全部安全 rows、current/yoy/mom 实际 `periodFacts`（含 excludedRows 原因）、实际分类字典快照、授权历史覆盖几何/版本/原及当前归属、户数证据、全部统计贡献诉求的原及当前 `scopeFacts`。无原始来源 payload，不以 IDs 重新查询冒充冻结值。D3 仍须对冻结的全部原范围事实和当前对象再次授权；本批不实现报告 render/jobs。
+后续 D2/D3 直接复用 `server/src/services/statisticsService.ts` 的 `captureStatistics` 和 `captureStatisticsIn`，以及 `server/src/types/statistics.ts`。前者拥有单一 READ ONLY REPEATABLE READ 事务；后者要求调用方传入同一读快照 executor。返回 summary、当期全部安全 rows、current/yoy/mom 实际 `periodFacts`（含 excludedRows 原因）、实际分类字典快照、授权历史覆盖几何/版本/原及当前归属、户数证据、全部统计贡献诉求的原及当前 `scopeFacts`。无原始来源 payload，不以 IDs 重新查询冒充冻结值。当前 D3 已对冻结的全部原范围事实和当前对象再次授权，并实现工程草稿渲染、持久化作业和产物；候选统计政策仍不代表正式业务批准。
 
 审查修复后，内部 capture 还返回 `masterScopeFacts: {enterpriseCode:string; districtCode:string|null}[]`。这是通过同一 executor 读取并实际核验授权的户数企业 master 原归属；既不是诉求区划，也不是冻结后的当前企业值。确实未知的区划保持 null，不存在/没有主数据能力/主数据对象无权时不造 scope 事实，rate 保留相应不可用原因。该字段只属于内部冻结 DTO，不进入公开 summary 或前端户数 DTO。D3 必须分别检查冻结 master 原事实和当前企业 master 事实，不能凭投诉 scope 推断。
 

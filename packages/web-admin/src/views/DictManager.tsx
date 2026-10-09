@@ -1,5 +1,5 @@
 import MasterDataImportDialog from '../components/MasterDataImportDialog';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Select,
@@ -28,6 +28,7 @@ import {
   SearchOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
+import {useAppStore} from '../stores/appStore';
 import {usePermissionAccess} from '../stores/roleAccess';
 import type {DictionaryType,DictionaryItem} from '../types/masterData';
 import {listDictionaryTypes,listDictionaryItems,saveDictionaryType,saveDictionaryItem,deleteDictionaryItem,deleteDictionaryType,dictionaryReferences} from '../api/masterData';
@@ -332,35 +333,228 @@ export const SensitiveWordManager: React.FC = () => {
 };
 
 const fixedCodes:Record<string,string[]>={business_type:['water','gas','lpg'],complaint_type:['complaint','consult','suggest','report','help','other','praise'],urgency_level:['normal','urgent','critical']};
-const DictionaryAdmin:React.FC=()=>{
- const [types,setTypes]=useState<DictionaryType[]>([]);const [active,setActive]=useState('complaint_category');const [current,setCurrent]=useState<{type:DictionaryType;items:DictionaryItem[]}|null>(null);const [error,setError]=useState('');const [loading,setLoading]=useState(false);const [editor,setEditor]=useState(false);const [editing,setEditing]=useState<DictionaryItem|null>(null);const [saving,setSaving]=useState(false);const [typeEditor,setTypeEditor]=useState(false);const [editingType,setEditingType]=useState<DictionaryType|null>(null);const [references,setReferences]=useState<Awaited<ReturnType<typeof dictionaryReferences>>|null>(null);const [form]=Form.useForm();const [typeForm]=Form.useForm();
- const refresh=useCallback(async()=>{setLoading(true);try{setTypes(await listDictionaryTypes());if(active!=='sensitive_word')setCurrent(await listDictionaryItems(active));setError('');}catch(e){setError(errorText(e));}finally{setLoading(false);}},[active]);
- useEffect(()=>{void refresh();},[refresh]);
- const openItem=(item:DictionaryItem|null)=>{setEditing(item);form.setFieldsValue({code:item?.code??'',label:item?.label??'',parentCode:item?.parentCode??null,sort:item?.sort??0,status:item?.status??'enabled',published:item?.published??false,cascadeDisable:false});setError('');setEditor(true);};
- const saveItem=async()=>{if(!current)return;try{const v=await form.validateFields();setSaving(true);await saveDictionaryItem(active,{...v,parentCode:v.parentCode??null,expectedVersion:editing?.version??0,expectedTypeVersion:current.type.version},Boolean(editing));setEditor(false);await refresh();}catch(e){if(!(e as {errorFields?:unknown}).errorFields)setError(errorText(e));}finally{setSaving(false);}};
- const openType=(type:DictionaryType|null)=>{setEditingType(type);typeForm.setFieldsValue({code:type?.code??'',name:type?.name??'',status:type?.status??'enabled',published:type?.published??false,cascadeDisable:false});setTypeEditor(true);setError('');};
- const saveType=async()=>{try{const v=await typeForm.validateFields();setSaving(true);await saveDictionaryType({...v,expectedVersion:editingType?.version??0});setTypeEditor(false);setActive(v.code);await refresh();}catch(e){if(!(e as {errorFields?:unknown}).errorFields)setError(errorText(e));}finally{setSaving(false);}};
- const removeItem=(item:DictionaryItem)=>Modal.confirm({title:'删除未发布草稿？编码以后也不能复用。',onOk:async()=>{try{await deleteDictionaryItem(active,item.code,item.version);await refresh();}catch(e){setError(errorText(e));}}});
- const columns:ColumnsType<DictionaryItem>=[{title:'编码',dataIndex:'code'},{title:'标签',dataIndex:'label'},{title:'父项',dataIndex:'parentCode',render:v=>v??'大类 / 根项'},{title:'排序',dataIndex:'sort'},{title:'状态',dataIndex:'status',render:v=><Tag>{v==='enabled'?'启用':'停用'}</Tag>},{title:'版本',dataIndex:'version'},{title:'发布',dataIndex:'published',render:v=>v?'已发布':'草稿'},{title:'操作',render:(_,item)=><Space>{!current?.type.readOnly&&<Button size="small" onClick={()=>openItem(item)}>编辑条目</Button>}<Button size="small" onClick={async()=>{try{setReferences(await dictionaryReferences(active,item.code));}catch(e){setError(errorText(e));}}}>引用</Button>{!item.published&&!current?.type.readOnly&&!current?.type.fixedCodes&&<Button danger size="small" onClick={()=>removeItem(item)}>删除草稿</Button>}</Space>}];
- return <div><h2>字典管理</h2><Space style={{marginBottom:12}}><MasterDataImportDialog kinds={['dictionary_type','dictionary_item','category']} onImported={()=>void refresh()}/><Button onClick={()=>openType(null)}>新增字典类型</Button><Button onClick={()=>void refresh()}>刷新字典</Button></Space>{error&&!editor&&!typeEditor&&<Alert type="error" message={error}/>}
-  <Tabs activeKey={active} onChange={code=>{setCurrent(null);setActive(code);}} items={[...types.map(t=>({key:t.code,label:t.name})),{key:'sensitive_word',label:'敏感词'}]}/>
-  {active==='sensitive_word'?<SensitiveWordManager/>:<Card loading={loading}>
-   {current&&<><Space wrap style={{marginBottom:16}}><Tag>字典版本 {current.type.version}</Tag>{!current.type.readOnly&&<><Button onClick={()=>openType(current.type)}>编辑类型</Button><Button type="primary" onClick={()=>openItem(null)}>新增字典项</Button>{!current.type.published&&!current.type.fixedCodes&&current.type.code!=='complaint_category'&&<Button danger onClick={()=>Modal.confirm({title:'删除空草稿类型？编码以后不能复用。',onOk:async()=>{try{await deleteDictionaryType(active,current.type.version);setActive('complaint_category');}catch(e){setError(errorText(e));}}})}>删除类型草稿</Button>}</>}<Button onClick={async()=>{try{setReferences(await dictionaryReferences(active));}catch(e){setError(errorText(e));}}}>类型引用</Button></Space>
-   {current.type.readOnly&&<Alert type="info" message="状态机枚举仅供查看；状态流转由业务流程控制。"/>}{current.type.fixedCodes&&<Alert type="info" message="协议编码固定，可维护合法编码的标签、排序和停用。停用仅限制新的人工选择，来源事实继续如实保留。"/>}
+const DictionaryAdmin: React.FC = () => {
+    const user = useAppStore(s => s.userInfo), token = useAppStore(s => s.token);
+    const authKey = JSON.stringify([token, user?.userId, user?.authorizationVersion, user?.roles, user?.permissions, user?.mustChangePassword]);
+    const [active, setActive] = useState('complaint_category');
+    const contextKey = JSON.stringify([authKey, active]);
+    const keyRef = useRef(contextKey), epoch = useRef(0), serial = useRef(0), referenceSerial = useRef(0);
+    if (keyRef.current !== contextKey) {
+        keyRef.current = contextKey;
+        epoch.current++;
+        serial.current++;
+        referenceSerial.current++;
+    }
+    type Owner = {
+        key: string;
+        epoch: number;
+    };
+    type ActionOwner = Owner & {
+        action: number;
+    };
+    const actionSerial = useRef(0);
+    const capture = (): Owner => ({ key: contextKey, epoch: epoch.current });
+    const owns = (owner: Owner | null) => Boolean(owner && owner.key === keyRef.current && owner.epoch === epoch.current);
+    const captureAction = (): ActionOwner => ({ ...capture(), action: ++actionSerial.current });
+    const ownsAction = (owner: ActionOwner | null) => owns(owner) && owner!.action === actionSerial.current;
+    const [typeState, setTypes] = useState<{
+        key: string;
+        value: DictionaryType[];
+    }>({ key: authKey, value: [] });
+    const types = typeState.key === authKey ? typeState.value : [];
+    const [loaded, setLoaded] = useState<{
+        owner: Owner;
+        value: {
+            type: DictionaryType;
+            items: DictionaryItem[];
+        };
+    } | null>(null);
+    const current = owns(loaded?.owner ?? null) && loaded?.value.type.code === active ? loaded.value : null;
+    const [error, setError] = useState(''), [loading, setLoading] = useState(false), [editor, setEditor] = useState(false), [editing, setEditing] = useState<DictionaryItem | null>(null), [saving, setSaving] = useState(false), [typeEditor, setTypeEditor] = useState(false), [editingType, setEditingType] = useState<DictionaryType | null>(null);
+    const itemOwner = useRef<(ActionOwner & {
+        typeCode: string;
+        typeVersion: number;
+        itemVersion: number;
+    }) | null>(null), typeOwner = useRef<ActionOwner | null>(null);
+    const [referenceState, setReferences] = useState<{
+        owner: Owner;
+        value: Awaited<ReturnType<typeof dictionaryReferences>>;
+    } | null>(null);
+    const references = owns(referenceState?.owner ?? null) ? referenceState!.value : null;
+    const [form] = Form.useForm(), [typeForm] = Form.useForm();
+    const refresh = useCallback(async () => {
+        const owner = { key: contextKey, epoch: epoch.current }, request = ++serial.current;
+        const valid = () => owns(owner) && request === serial.current;
+        setLoading(true);
+        try {
+            const types = await listDictionaryTypes();
+            if (!valid())
+                return;
+            setTypes({ key: authKey, value: types });
+            if (active !== 'sensitive_word') {
+                const value = await listDictionaryItems(active);
+                if (!valid())
+                    return;
+                if (value.type.code !== active)
+                    throw Error('字典响应与当前选择不一致，请刷新');
+                setLoaded({ owner, value });
+            }
+            if (valid())
+                setError('');
+        }
+        catch (e) {
+            if (valid())
+                setError(errorText(e));
+        }
+        finally {
+            if (valid())
+                setLoading(false);
+        }
+    }, [contextKey, active, authKey]);
+    useEffect(() => {
+        setLoaded(null);
+        setEditor(false);
+        setTypeEditor(false);
+        setReferences(null);
+        setError('');
+        setSaving(false);
+        itemOwner.current = null;
+        typeOwner.current = null;
+        void refresh();
+        return () => { epoch.current++; serial.current++; referenceSerial.current++; };
+    }, [refresh]);
+    const changeActive = (code: string) => { epoch.current++; serial.current++; referenceSerial.current++; setLoaded(null); setEditor(false); setTypeEditor(false); setReferences(null); setActive(code); };
+    const openItem = (item: DictionaryItem | null) => {
+        if (!current || current.type.code !== active)
+            return;
+        itemOwner.current = { ...captureAction(), typeCode: current.type.code, typeVersion: current.type.version, itemVersion: item?.version ?? 0 };
+        setSaving(false);
+        setEditing(item);
+        form.setFieldsValue({ code: item?.code ?? '', label: item?.label ?? '', parentCode: item?.parentCode ?? null, sort: item?.sort ?? 0, status: item?.status ?? 'enabled', published: item?.published ?? false, cascadeDisable: false });
+        setError('');
+        setEditor(true);
+    };
+    const saveItem = async () => {
+        const owner = itemOwner.current;
+        if (!ownsAction(owner) || !current || owner!.typeCode !== active)
+            return;
+        try {
+            const v = await form.validateFields();
+            if (!ownsAction(owner))
+                return;
+            setSaving(true);
+            await saveDictionaryItem(owner!.typeCode, { ...v, parentCode: v.parentCode ?? null, expectedVersion: owner!.itemVersion, expectedTypeVersion: owner!.typeVersion }, Boolean(editing));
+            if (!ownsAction(owner))
+                return;
+            setEditor(false);
+            await refresh();
+        }
+        catch (e) {
+            if (ownsAction(owner) && !(e as {
+                errorFields?: unknown;
+            }).errorFields)
+                setError(errorText(e));
+        }
+        finally {
+            if (ownsAction(owner))
+                setSaving(false);
+        }
+    };
+    const openType = (type: DictionaryType | null) => { typeOwner.current = captureAction(); setSaving(false); setEditingType(type); typeForm.setFieldsValue({ code: type?.code ?? '', name: type?.name ?? '', status: type?.status ?? 'enabled', published: type?.published ?? false, cascadeDisable: false }); setTypeEditor(true); setError(''); };
+    const saveType = async () => {
+        const owner = typeOwner.current;
+        if (!ownsAction(owner))
+            return;
+        try {
+            const v = await typeForm.validateFields();
+            if (!ownsAction(owner))
+                return;
+            setSaving(true);
+            await saveDictionaryType({ ...v, expectedVersion: editingType?.version ?? 0 });
+            if (!ownsAction(owner))
+                return;
+            setTypeEditor(false);
+            if (v.code !== active)
+                changeActive(v.code);
+            else
+                await refresh();
+        }
+        catch (e) {
+            if (ownsAction(owner) && !(e as {
+                errorFields?: unknown;
+            }).errorFields)
+                setError(errorText(e));
+        }
+        finally {
+            if (ownsAction(owner))
+                setSaving(false);
+        }
+    };
+    const removeItem = (item: DictionaryItem) => {
+        if (!current)
+            return;
+        const owner = captureAction(), typeCode = current.type.code;
+        Modal.confirm({ title: '删除未发布草稿？编码以后也不能复用。', onOk: async () => { if (!ownsAction(owner))
+                return; try {
+                await deleteDictionaryItem(typeCode, item.code, item.version);
+                if (ownsAction(owner))
+                    await refresh();
+            }
+            catch (e) {
+                if (ownsAction(owner))
+                    setError(errorText(e));
+            } } });
+    };
+    const readReferences = async (code?: string) => {
+        if (!current)
+            return;
+        const owner = capture(), typeCode = current.type.code, request = ++referenceSerial.current;
+        try {
+            const value = await dictionaryReferences(typeCode, code);
+            if (owns(owner) && request === referenceSerial.current)
+                setReferences({ owner, value });
+        }
+        catch (e) {
+            if (owns(owner) && request === referenceSerial.current)
+                setError(errorText(e));
+        }
+    };
+    const removeType = () => {
+        if (!current)
+            return;
+        const owner = captureAction(), type = current.type;
+        Modal.confirm({ title: '删除空草稿类型？编码以后不能复用。', onOk: async () => { if (!ownsAction(owner))
+                return; try {
+                await deleteDictionaryType(type.code, type.version);
+                if (ownsAction(owner))
+                    changeActive('complaint_category');
+            }
+            catch (e) {
+                if (ownsAction(owner))
+                    setError(errorText(e));
+            } } });
+    };
+    const columns: ColumnsType<DictionaryItem> = [{ title: '编码', dataIndex: 'code' }, { title: '标签', dataIndex: 'label' }, { title: '父项', dataIndex: 'parentCode', render: v => v ?? '大类 / 根项' }, { title: '排序', dataIndex: 'sort' }, { title: '状态', dataIndex: 'status', render: v => <Tag>{v === 'enabled' ? '启用' : '停用'}</Tag> }, { title: '版本', dataIndex: 'version' }, { title: '发布', dataIndex: 'published', render: v => v ? '已发布' : '草稿' }, { title: '操作', render: (_, item) => <Space>{!current?.type.readOnly && <Button size="small" onClick={() => openItem(item)}>编辑条目</Button>}<Button size="small" onClick={() => void readReferences(item.code)}>引用</Button>{!item.published && !current?.type.readOnly && !current?.type.fixedCodes && <Button danger size="small" onClick={() => removeItem(item)}>删除草稿</Button>}</Space> }];
+    return <div><h2>字典管理</h2><Space style={{ marginBottom: 12 }}><MasterDataImportDialog kinds={['dictionary_type', 'dictionary_item', 'category']} onImported={() => void refresh()}/><Button onClick={() => openType(null)}>新增字典类型</Button><Button onClick={() => void refresh()}>刷新字典</Button></Space>{error && !editor && !typeEditor && <Alert type="error" message={error}/>}
+  <Tabs activeKey={active} onChange={changeActive} items={[...types.map(t => ({ key: t.code, label: t.name })), { key: 'sensitive_word', label: '敏感词' }]}/>
+  {active === 'sensitive_word' ? <SensitiveWordManager /> : <Card loading={loading}>
+   {current && <><Space wrap style={{ marginBottom: 16 }}><Tag>字典版本 {current.type.version}</Tag>{!current.type.readOnly && <><Button onClick={() => openType(current.type)}>编辑类型</Button><Button type="primary" onClick={() => openItem(null)}>新增字典项</Button>{!current.type.published && !current.type.fixedCodes && current.type.code !== 'complaint_category' && <Button danger onClick={removeType}>删除类型草稿</Button>}</>}<Button onClick={() => void readReferences()}>类型引用</Button></Space>
+   {current.type.readOnly && <Alert type="info" message="状态机枚举仅供查看；状态流转由业务流程控制。"/>}{current.type.fixedCodes && <Alert type="info" message="协议编码固定，可维护合法编码的标签、排序和停用。停用仅限制新的人工选择，来源事实继续如实保留。"/>}
    <Table rowKey="itemId" columns={columns} dataSource={current.items} pagination={false}/></>}
   </Card>}
-  <Modal title={editing?'编辑字典条目':'新增字典条目'} open={editor} onCancel={()=>setEditor(false)} onOk={()=>void saveItem()} okText="保存条目" confirmLoading={saving}>
-   {error&&<Alert type="error" message={error}/>}<Form form={form} layout="vertical">
-    <Form.Item label="编码" name="code" rules={[{required:true}]}>{current?.type.fixedCodes?<Select aria-label="条目编码" disabled={Boolean(editing)} options={(fixedCodes[active]??[]).filter(code=>code===editing?.code||!current.items.some(i=>i.code===code)).map(code=>({value:code,label:code}))}/>:<Input aria-label="条目编码" disabled={Boolean(editing)}/>}</Form.Item>
-    <Form.Item label="标签" name="label" rules={[{required:true}]}><Input aria-label="条目标签"/></Form.Item>
-    {!current?.type.fixedCodes&&<Form.Item label="父项（不选为大类）" name="parentCode"><Select aria-label="条目父项" allowClear options={current?.items.filter(i=>!i.parentCode&&i.code!==editing?.code).map(i=>({value:i.code,label:i.label}))}/></Form.Item>}
-    <Form.Item label="排序" name="sort"><InputNumber aria-label="条目排序"/></Form.Item><Form.Item label="状态" name="status"><Select options={[{value:'enabled',label:'启用'},{value:'disabled',label:'停用'}]}/></Form.Item>
+  <Modal key={contextKey + ':item:' + itemOwner.current?.action} title={editing ? '编辑字典条目' : '新增字典条目'} open={editor && ownsAction(itemOwner.current)} onCancel={() => { actionSerial.current++; setEditor(false); }} onOk={() => void saveItem()} okText="保存条目" confirmLoading={saving}>
+   {error && <Alert type="error" message={error}/>}<Form form={form} layout="vertical">
+    <Form.Item label="编码" name="code" rules={[{ required: true }]}>{current?.type.fixedCodes ? <Select aria-label="条目编码" disabled={Boolean(editing)} options={(fixedCodes[active] ?? []).filter(code => code === editing?.code || !current.items.some(i => i.code === code)).map(code => ({ value: code, label: code }))}/> : <Input aria-label="条目编码" disabled={Boolean(editing)}/>}</Form.Item>
+    <Form.Item label="标签" name="label" rules={[{ required: true }]}><Input aria-label="条目标签"/></Form.Item>
+    {!current?.type.fixedCodes && <Form.Item label="父项（不选为大类）" name="parentCode"><Select aria-label="条目父项" allowClear options={current?.items.filter(i => !i.parentCode && i.code !== editing?.code).map(i => ({ value: i.code, label: i.label }))}/></Form.Item>}
+    <Form.Item label="排序" name="sort"><InputNumber aria-label="条目排序"/></Form.Item><Form.Item label="状态" name="status"><Select options={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}/></Form.Item>
     <Form.Item name="published" valuePropName="checked"><Checkbox disabled={editing?.published}>发布后禁止物理删除</Checkbox></Form.Item><Form.Item name="cascadeDisable" valuePropName="checked"><Checkbox>明确确认：停用父项时同时停用所有小类</Checkbox></Form.Item>
    </Form>
   </Modal>
-  <Modal title="字典类型" open={typeEditor} onCancel={()=>setTypeEditor(false)} onOk={()=>void saveType()} okText="保存类型" confirmLoading={saving}>{error&&<Alert type="error" message={error}/>}<Form form={typeForm} layout="vertical"><Form.Item label="类型编码" name="code" rules={[{required:true}]}><Input disabled={Boolean(editingType)}/></Form.Item><Form.Item label="类型名称" name="name" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="状态" name="status"><Select options={[{value:'enabled',label:'启用'},{value:'disabled',label:'停用'}]}/></Form.Item><Form.Item name="published" valuePropName="checked"><Checkbox disabled={editingType?.published}>发布类型</Checkbox></Form.Item><Form.Item name="cascadeDisable" valuePropName="checked"><Checkbox>明确确认停用该类型的全部条目</Checkbox></Form.Item></Form></Modal>
-  <Modal title="可见引用（最多100条诉求）" open={references!==null} onCancel={()=>setReferences(null)} footer={null}><p>子项：{references?.children.join(' / ')||'无'}</p><Table rowKey="complaintId" dataSource={references?.complaints??[]} columns={[{title:'诉求编号',dataIndex:'complaintNo'}]} pagination={false}/><p>列表按当前数据范围显示；历史或范围外引用也会阻止删除。</p></Modal>
+  <Modal key={contextKey + ':type:' + typeOwner.current?.action} title="字典类型" open={typeEditor && ownsAction(typeOwner.current)} onCancel={() => { actionSerial.current++; setTypeEditor(false); }} onOk={() => void saveType()} okText="保存类型" confirmLoading={saving}>{error && <Alert type="error" message={error}/>}<Form form={typeForm} layout="vertical"><Form.Item label="类型编码" name="code" rules={[{ required: true }]}><Input disabled={Boolean(editingType)}/></Form.Item><Form.Item label="类型名称" name="name" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="状态" name="status"><Select options={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}/></Form.Item><Form.Item name="published" valuePropName="checked"><Checkbox disabled={editingType?.published}>发布类型</Checkbox></Form.Item><Form.Item name="cascadeDisable" valuePropName="checked"><Checkbox>明确确认停用该类型的全部条目</Checkbox></Form.Item></Form></Modal>
+  <Modal key={contextKey} title="可见引用（最多100条诉求）" open={references !== null} onCancel={() => setReferences(null)} footer={null}><p>子项：{references?.children.join(' / ') || '无'}</p><Table rowKey="complaintId" dataSource={references?.complaints ?? []} columns={[{ title: '诉求编号', dataIndex: 'complaintNo' }]} pagination={false}/><p>列表按当前数据范围显示；历史或范围外引用也会阻止删除。</p></Modal>
  </div>;
 };
+
 const DictManager:React.FC=()=>{const access=usePermissionAccess('system.dict.manage');return access.can?<DictionaryAdmin/>:<Alert type="error" message="无权限，请联系管理员"/>;};
 export default DictManager;

@@ -2,6 +2,7 @@ import ComplaintCategoryEditor from '../components/ComplaintCategoryEditor';
 import ComplaintFollowups from '../components/ComplaintFollowups';
 import SourceProcessTable from '../components/SourceProcessTable';
 import {useWriteAccess,usePermissionAccess} from '../stores/roleAccess';
+import {useAppStore} from '../stores/appStore';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -120,12 +121,46 @@ const ComplaintDetail: React.FC = () => {
   const correctionAccess=useWriteAccess('complaint.correct');
   const sourceAccess=useWriteAccess('complaint.source_sync');
   const documentAccess=usePermissionAccess('source_document.read');
-  const [sourceDocument,setSourceDocument]=useState<import('../types/api').ComplaintSourceDocument|null>(null);
-  const [documentLoading,setDocumentLoading]=useState(false);
-  const createAccess=useWriteAccess('dispatch.create');
-  const { id } = useParams<{ id: string }>();
+  const user = useAppStore(s => s.userInfo), actorToken = useAppStore(s => s.token);
+  const [documentState, setDocumentState] = useState<{
+      key: string;
+      value: import('../types/api').ComplaintSourceDocument;
+  } | null>(null);
+  const [documentLoading, setDocumentLoading] = useState(false);
+  const createAccess = useWriteAccess('dispatch.create');
+  const { id } = useParams<{
+      id: string;
+  }>();
   const navigate = useNavigate();
-  useEffect(()=>{setSourceDocument(null);},[id,documentAccess.can]);
+  const documentKey = JSON.stringify([id, actorToken, user?.userId, user?.authorizationVersion, user?.roles, user?.permissions, user?.mustChangePassword, documentAccess.can]);
+  const documentKeyRef = useRef(documentKey), documentSequence = useRef(0);
+  if (documentKeyRef.current !== documentKey) {
+      documentKeyRef.current = documentKey;
+      documentSequence.current++;
+  }
+  const sourceDocument = documentAccess.can && documentState?.key === documentKey ? documentState.value : null;
+  useEffect(() => { setDocumentState(null); setDocumentLoading(false); return () => { documentSequence.current++; }; }, [documentKey]);
+  const closeDocument = () => { documentSequence.current++; setDocumentState(null); setDocumentLoading(false); };
+  const readDocument = async () => {
+      if (!documentAccess.can || !id)
+          return;
+      const key = documentKey, sequence = ++documentSequence.current;
+      const owns = () => key === documentKeyRef.current && sequence === documentSequence.current;
+      setDocumentLoading(true);
+      try {
+          const value = await getComplaintSourceDocument(id);
+          if (owns())
+              setDocumentState({ key, value });
+      }
+      catch (error) {
+          if (owns())
+              message.error(error instanceof Error ? error.message : String(error));
+      }
+      finally {
+          if (owns())
+              setDocumentLoading(false);
+      }
+  };
 
   const [detail, setDetail] = useState<ComplaintDetailModel | null>(null);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
@@ -441,10 +476,8 @@ const ComplaintDetail: React.FC = () => {
           同步来源状态
         </Button>
       </Tooltip>
-      {documentAccess.can&&detail&&<Button loading={documentLoading} onClick={async()=>{
-        setDocumentLoading(true);try{setSourceDocument(await getComplaintSourceDocument(id!));}catch(e){message.error(e instanceof Error?e.message:String(e));}finally{setDocumentLoading(false);}
-      }}>查看来源原件</Button>}
-      <Modal title="来源原件" open={Boolean(sourceDocument)&&documentAccess.can} footer={null} width={800} onCancel={()=>setSourceDocument(null)}>
+      {documentAccess.can&&detail&&<Button loading={documentLoading} onClick={()=>void readDocument()}>查看来源原件</Button>}
+      <Modal key={documentKey} title="来源原件" open={Boolean(sourceDocument)} footer={null} width={800} onCancel={closeDocument}>
         <pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:'65vh',overflow:'auto'}}>{sourceDocument?JSON.stringify(sourceDocument,null,2):''}</pre>
       </Modal>
     </Space>

@@ -30,6 +30,9 @@ test('C2 real SQL location-group component on explicitly declared legacy contrac
   await db('enterprise').insert({enterprise_code:'E1',enterprise_name:'合成企业',business_type:'water',status:'enabled',version:1,district_code:'D2'});
   await require('../migrations/20261009090000__service_grid_coverage.js').up(db);await require('../migrations/20261009100001__service_grid_registration.js').up(db);
   await require('../migrations/20261009120000__location_correction_group.js').up(db);await require('../migrations/20261009120000__location_correction_group.js').up(db);
+  // Current analysis admission writes D1 facts; apply its real dependency chain.
+  await require('../migrations/20261009030000__account_role_permissions.js').up(db);
+  await require('../migrations/20261009150000__statistics_snapshots.js').up(db);
   await db('dict_type').insert({dict_type:'district',dict_name:'合成区划',status:'enabled',version:1,published:1});
   await db('dict_item').insert([{item_id:'D1',dict_type:'district',item_value:'D1',item_label:'合成区甲',status:'enabled',version:1,published:1},{item_id:'D2',dict_type:'district',item_value:'D2',item_label:'合成区乙',status:'enabled',version:1,published:1}]);
   await db('admin_grid').insert([{code:'A1',name:'同名行政网格',district_code:'D1',version:1},{code:'A2',name:'同名行政网格',district_code:'D2',version:1}]);
@@ -49,6 +52,37 @@ test('C2 real SQL location-group component on explicitly declared legacy contrac
   };
   const save=(id:string,extra:any={},actor:any=ctx)=>runWithAccessContext(actor.access,()=>service.confirmLocationGroup(input(id,extra),actor,clock));
   const snapshot=async(id:string)=>({row:await db('complaint').where('complaint_id',id).first(),items:await db('correction_item').where('complaint_id',id).orderBy('id'),versions:await db('complaint_field_version').where('complaint_id',id).orderBy('id'),audits:await db('operation_audit_log').where({biz_id:id}).orderBy('id'),analysis:await db('analysis_record').where('complaint_id',id)});
+  await t.test('actual assignment and responsibility correction contention roll back C2 and recover',async()=>{
+   for(const table of ['complaint_assignment','complaint_disposition'])await db.schema.dropTableIfExists(table);
+   await require('../migrations/20260917100600__m6_g2_dispatch_and_assignment.js').up(db);
+   const {assignEnterprise}=await import('../src/services/assignmentService');
+   for(const mode of ['assignment','correction']){
+    const id='busy-'+mode;await seed(id);
+    if(mode==='correction')await db('correction_item').insert({correction_id:id+'-enterprise',complaint_id:id,field_name:'enterprise_name',status:'pending',old_value:'合成企业'});
+    const before=await snapshot(id),deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>resolve=r);return {promise,resolve};};
+    const complaintHeld=deferred(),enterpriseHeld=deferred(),releaseWriter=deferred(),writerAttempt=deferred(),releaseLocation=deferred();
+    const originalGet=pool.getConnection.bind(pool);const connections:any[]=[];
+    const bounded=<T>(p:Promise<T>)=>Promise.race([p,new Promise<never>((_,reject)=>{const timer=setTimeout(()=>reject(Error('concurrency checkpoint timeout')),15000);timer.unref();})]);
+    pool.getConnection=(async()=>{const c=await originalGet();connections.push(c);const query=c.query.bind(c);c.query=(async(sql:any,args:any)=>{
+     if(typeof sql==='string'&&sql.includes('from enterprise e where e.enterprise_code=? for update')){complaintHeld.resolve();await releaseWriter.promise;writerAttempt.resolve();}
+     const result=await query(sql,args);
+     if(sql==='select enterprise_code from enterprise where enterprise_code=? for update'){enterpriseHeld.resolve();await releaseLocation.promise;}
+     return result;
+    }) as any;return c;}) as any;
+    let writer:Promise<any>|undefined,location:Promise<any>|undefined;
+    try{
+     writer=runWithAccessContext(ctx.access,()=>mode==='assignment'?assignEnterprise(id,{enterpriseCode:'E1',enterpriseName:'合成企业',reason:'concurrent proof'},ctx):service.confirmCorrection(id+'-enterprise',{expectedVersion:1,newValue:'E1',basis:'concurrent proof'},ctx)).then(()=>({ok:true}),e=>({ok:false,code:e.code??e.errorCode}));
+     await bounded(complaintHeld.promise);
+     await assert.rejects(()=>save(id,{}, {...ctx,access:{...access,rules:[{kind:'restricted' as const,enterpriseCodes:['E2'],districtCodes:[]}]}}),{status:404});
+     location=save(id).then(()=>({ok:true,status:200}),e=>({ok:false,status:e.status,code:e.errorCode??e.code}));
+     await bounded(enterpriseHeld.promise);releaseWriter.resolve();await bounded(writerAttempt.promise);releaseLocation.resolve();
+     const [w,l]=await bounded(Promise.all([writer,location]));assert.equal(w.ok,true,JSON.stringify(w));assert.equal(l.status,409,JSON.stringify(l));assert.equal(l.code,'DUPLICATE_CONFLICT');
+     const after=await snapshot(id);assert.equal(after.row.address,before.row.address);assert.equal(after.row.edit_version,2);assert.equal(after.audits.filter((a:any)=>a.action==='CORRECTION_LOCATION_GROUP').length,0);assert.equal(after.versions.some((v:any)=>v.field_name==='address'),false);assert.equal(after.analysis.length,0);
+     for(const item of before.items.filter((v:any)=>v.field_name!=='enterprise_name'))assert.deepEqual(after.items.find((v:any)=>v.correction_id===item.correction_id),item);
+    }finally{releaseWriter.resolve();releaseLocation.resolve();pool.getConnection=originalGet;await Promise.all([writer,location]);for(const c of connections)delete c.query;}
+    const result=await save(id,{expectedVersion:2});assert.equal(result.version,3);assert.equal((await snapshot(id)).row.enterprise_code,'E1');
+   }
+  });
   await t.test('one version settles the four related fields and protects complete group with proven coverage',async()=>{
    await seed('atomic');const result=await save('atomic');assert.equal(result.version,2);assert.equal(result.validationDate,'2026-10-09');assert.equal(result.spatialStatus,'verified');assert.equal(result.analysisEntered,false);
    const after=await snapshot('atomic');assert.equal(after.row.address,'人工地址B');assert.equal(after.row.district_name,'合成区甲');assert.equal(after.row.admin_grid_code,'A1');assert.equal(after.row.community_code,'X1');assert.equal(after.row.location_coordinate_system,'WGS84');assert.equal(after.row.edit_version,2);assert.equal(after.items.filter((i:any)=>i.status==='confirmed').length,4);assert.equal(after.items.find((i:any)=>i.field_name==='summary').status,'pending');

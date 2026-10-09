@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import type {Knex} from 'knex';
 import {prepareFollowupAuditFixture} from './followupAuditFixture';
+import {prepareReportAuditFixture} from './reportAuditFixture';
 const require=createRequire(import.meta.url);
 /** Empty synthetic masters for older audit-query fixtures. Uses the real B3
  * migration against the same declared legacy contract, never M0/canonical DDL. */
@@ -17,5 +18,6 @@ export async function prepareGridAuditFixture(db:Knex){
  await require('../../migrations/20261009090000__service_grid_coverage.js').up(db);
  await require('../../migrations/20261009100001__service_grid_registration.js').up(db);
  await prepareFollowupAuditFixture(db);
+ await prepareReportAuditFixture(db);
  if(await db.schema.hasColumn('app_user','scope_rules'))await require('../../migrations/20261009130000__account_identity_type.js').up(db);
 }
