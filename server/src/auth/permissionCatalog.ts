@@ -10,7 +10,7 @@ export const PERMISSION_CATALOG = [
   ['dispatch.cancel', '撤销交办'], ['dispatch.push', '推送交办'],
   ['dispatch.reconcile', '交办核对'], ['dispatch.archive', '交办归档'],
   ['analysis.read', '分析查询'], ['report.read', '报告查询'],
-  ['report.generate', '报告生成'], ['report.download', '报告下载'],
+  ['report.generate', '报告生成'], ['report.download', '报告下载'], ['report.retry', '报告重试'],
   ['source_document.read', '来源文档查询'], ['source_status.read', '来源状态查询'],
   ['grid.read', '网格查询'], ['grid.manage', '网格维护'],
   ['shutdown.read', '停供查询'], ['pipeline.read', '施工查询'], ['heatmap.read', '热力图查询'], ['heatmap.manage', '热力草稿与规则发布'],

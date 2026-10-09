@@ -4,13 +4,16 @@ import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { listReportTodos } from '../api/analysis';
 import type { ReportTodoItem, ReportTodoStatus } from '../types/api';
+import FixedReportPanel from './FixedReportPanel';
+import {useAppStore} from '../stores/appStore';
+import {useWriteAccess} from '../stores/roleAccess';
 
 /**
  * 待查报告待办（真实接口驱动）。
  *
  * ⚠️ 口径声明（必须显示在页面上）：
  *   报告**如何形成、是否需要审核与发布**，规则待业务方确认。
- *   本页当前只提供「待查入口」——待办是从分析库（已纠偏闭环的诉求）派生出来的，
+ *   待办区域提供「待查入口」——待办是从分析库（已纠偏闭环的诉求）派生出来的，
  *   不代表报告已经生成。
  */
 
@@ -35,6 +38,10 @@ function fmt(iso: string | null): React.ReactNode {
 
 const ReportView: React.FC = () => {
   const navigate = useNavigate();
+  const user=useAppStore(s=>s.userInfo),generate=useWriteAccess('report.generate');
+  const authKey=JSON.stringify([user?.userId,user?.authorizationVersion,user?.roles,user?.permissions,user?.mustChangePassword]);
+  const canTodos=Boolean(user&&!user.mustChangePassword&&['report.read','analysis.read','complaint.read'].every(c=>user.permissions.includes(c)));
+  const [selectedTodoIds,setSelectedTodoIds]=useState<string[]>([]);
 
   const [rows, setRows] = useState<ReportTodoItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -61,6 +68,7 @@ const ReportView: React.FC = () => {
         const res = await listReportTodos({ status: s, page: p, size: n });
         if (seq !== seqRef.current) return;
         setRows(res.content);
+        setSelectedTodoIds([]);
         setTotal(res.total);
         setObservedLabels((prev) => {
           const next = { ...prev };
@@ -81,24 +89,28 @@ const ReportView: React.FC = () => {
         }
       }
     },
-    []
+    [authKey]
   );
 
   useEffect(() => {
-    void load(status, page, size);
-  }, [load, status, page, size]);
+    seqRef.current++;setRows([]);setTotal(0);setSelectedTodoIds([]);setLoadError(null);
+    if(canTodos)void load(status, page, size);
+    return()=>{seqRef.current++;};
+  }, [load, status, page, size,canTodos]);
 
   const label = (code: ReportTodoStatus): string => observedLabels[code] ?? code;
 
   return (
     <div>
+      <FixedReportPanel todoIds={selectedTodoIds}/>
+      {canTodos&&<>
       <h2 style={{ marginBottom: 8 }}>待查报告待办</h2>
       <Alert
         type="warning"
         showIcon
         style={{ marginBottom: 16 }}
         message="报告的形成、审批与发布规则待业务方确认"
-        description="本页只提供「待查入口」：下列待办由分析库（已完成纠偏闭环的诉求）派生，用于提示哪些诉求需要出报告。不代表报告已经生成，也不代表可对外发布。"
+        description="待办区域提供「待查入口」：下列待办由分析库（已完成纠偏闭环的诉求）派生，用于提示哪些诉求需要出报告。待办本身不代表报告已经生成，也不代表可对外发布。"
       />
 
       <Card>
@@ -135,6 +147,7 @@ const ReportView: React.FC = () => {
           />
         ) : (
           <Table<ReportTodoItem>
+            rowSelection={generate.can?{selectedRowKeys:selectedTodoIds,onChange:keys=>setSelectedTodoIds(keys.map(String))}:undefined}
             rowKey="todoId"
             size="middle"
             loading={loading}
@@ -214,6 +227,7 @@ const ReportView: React.FC = () => {
           />
         )}
       </Card>
+      </>}
     </div>
   );
 };

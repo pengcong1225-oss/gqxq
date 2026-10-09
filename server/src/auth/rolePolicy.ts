@@ -116,7 +116,11 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   { method: 'PATCH', path: /^\/grids\/[^/]+$/, roles: A, permissionCode: 'grid.manage', desc: '网格覆盖版本维护' },
   { method: 'GET', path: new RegExp('^/shutdowns$'), roles: R, permissionCode: 'shutdown.read', desc: 'R19 停供（501 桩）' },
   { method: 'GET', path: new RegExp('^/pipeline-projects$'), roles: R, permissionCode: 'pipeline.read', desc: 'R20 管道施工（501 桩）' },
-  { method: 'GET', path: new RegExp('^/reports$'), roles: R, permissionCode: 'report.read', desc: 'R21 分析报告（501 桩）' },
+  { method: 'GET', path: /^\/reports$/, roles: R, permissionCode: 'report.read', desc: 'D3 报告列表（另需冻结数据能力）' },
+  { method: 'GET', path: /^\/reports\/[^/]+$/, roles: R, permissionCode: 'report.read', desc: 'D3 报告状态' },
+  { method: 'GET', path: /^\/reports\/[^/]+\/download$/, roles: R, permissionCode: 'report.download', desc: 'D3 全快照授权下载' },
+  { method: 'POST', path: /^\/reports$/, roles: A, permissionCode: 'report.generate', desc: 'D3 生成草稿（另需统计数据能力）' },
+  { method: 'POST', path: /^\/reports\/[^/]+\/retry$/, roles: A, permissionCode: 'report.retry', desc: 'D3 同快照重试' },
   { method: 'GET', path: new RegExp('^/heatmap/data$'), roles: R, permissionCode: 'heatmap.read', desc: 'D2 热力图（另需统计与数据集权限）' },
 
   // ---------- W：业务写端点（13 条，readonly 一律 403） ----------

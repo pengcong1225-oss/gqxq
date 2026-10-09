@@ -27,6 +27,7 @@ import { auditLogsRouter } from './auditLogs';
 import { usersRouter } from './users';
 import { addressCandidatesRouter } from './addressCandidates';
 import { requireAuth } from '../middleware/requireAuth';
+import {reportsRouter} from './reports';
 import { enforceRolePolicy } from '../middleware/requireRole';
 
 /**
@@ -76,6 +77,7 @@ export function buildRouter(): Router {
   root.use(usersRouter);
   root.use(rolesRouter);
   root.use(auditLogsRouter);
+  root.use(reportsRouter);
   root.use(heatRulesRouter);
   root.use(legacyRouter);
 

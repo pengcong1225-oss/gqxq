@@ -8,6 +8,7 @@ import type { Queryable } from './complaintSourceLogRepo';
 import { cut } from './complaintSourceLogRepo';
 import { buildComplaintScopeSql, type AccessContext } from '../auth/accessScope';
 import type { SqlExecutor } from './userRepo';
+import {reportAuthorizationSql} from '../auth/reportScope';
 import type { AuditLogFilter, Paged } from '../types/api';
 
 export type AuditResult = 'success' | 'duplicate' | 'rejected' | 'failed' | 'pending' | 'unknown';
@@ -68,7 +69,7 @@ const complaintLinkSql="((a.biz_type = 'complaint' and a.action in ('INTAKE_CREA
  "(a.biz_type = 'business_event' and a.action in ('CALLBACK_DUPLICATE','CALLBACK_IGNORED') and c.complaint_id = a.biz_id) or " +
  "(a.biz_type = 'business_event' and a.action = 'CALLBACK_REJECTED' and exists (select 1 from business_event be where be.event_id = a.biz_id and be.source_business_id = c.complaint_id)))";
 const enterpriseAuditSql="(a.biz_type='enterprise' and a.action in ('ENTERPRISE_SAVE','ENTERPRISE_HOUSEHOLDS_SAVE','ENTERPRISE_MAPPING_SAVE'))";
-function auditWhere(filter:AuditLogFilter,access:AccessContext):{sql:string;params:unknown[]} {
+function auditWhere(filter:AuditLogFilter,access:AccessContext & {permissionCodes?:readonly string[]}):{sql:string;params:unknown[]} {
  // Aggregate summaries require explicit complete scope. Per-object B1-B3
  // mutation audits retain their ordinary current master scope classification.
  const importSummary=access.rules.some(r=>r.kind==='all')?"(a.biz_type='master_import' and a.action in ('MASTER_IMPORT_COMMIT','MASTER_IMPORT_FAILED','MASTER_IMPORT_ERRORS_DOWNLOAD'))":'0=1';
@@ -78,8 +79,10 @@ function auditWhere(filter:AuditLogFilter,access:AccessContext):{sql:string;para
  const communityLinked="(a.biz_type='community' and a.action='COMMUNITY_SAVE' and exists (select 1 from community audit_co join admin_grid audit_cag on audit_cag.code=audit_co.admin_grid_code where audit_co.code=a.biz_id and "+communityScope.sql+'))';
  const spatialLinked='('+gridLinked+' or '+adminLinked+' or '+communityLinked+')';const spatialParams=[...gridScope.params,...adminScope.params,...communityScope.params];
  const scope=buildComplaintScopeSql(access,'c');const enterpriseScope=buildEnterpriseScopeSql(access,'audit_e');const enterpriseLinked=enterpriseAuditSql+' and exists (select 1 from enterprise audit_e where audit_e.enterprise_code=a.biz_id and '+enterpriseScope.sql+')';
- const clauses=[ '('+systemSql+' or '+importSummary+' or ('+enterpriseLinked+') or '+spatialLinked+' or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+'))' ];
- const params:unknown[]=[...enterpriseScope.params,...spatialParams,...scope.params];
+ const reportScope=access.permissionCodes?.includes('report.read')?reportAuthorizationSql(access,access.permissionCodes,'a.biz_id'):{sql:'0=1',params:[]};
+ const reportLinked="(a.biz_type='report_record' and a.action in ('REPORT_CREATE','REPORT_RETRY','REPORT_GENERATE','REPORT_DOWNLOAD') and "+reportScope.sql+')';
+ const clauses=[ '('+systemSql+' or '+importSummary+' or ('+enterpriseLinked+') or '+spatialLinked+' or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+') or '+reportLinked+')' ];
+ const params:unknown[]=[...enterpriseScope.params,...spatialParams,...scope.params,...reportScope.params];
  for(const [value,sql] of [[filter.category,categorySql+' = ?'],[filter.module,moduleSql+' = ?'],[filter.action,'a.action = ?'],[filter.result,resultSql+' = ?']] as const){
   if(value){clauses.push(sql);params.push(value);}
  }
@@ -87,15 +90,15 @@ function auditWhere(filter:AuditLogFilter,access:AccessContext):{sql:string;para
  if(filter.from){clauses.push('a.created_at >= ?');params.push(new Date(filter.from));}
  if(filter.to){clauses.push('a.created_at <= ?');params.push(new Date(filter.to));}
  if(filter.businessNo){
-  clauses.push("a.biz_type <> 'http' and a.action <> 'SENSITIVE_WORD_RESCAN' and (("+systemSql+' and a.biz_id = ?) or ('+importSummary+' and a.biz_id=?) or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+' and (c.complaint_id = ? or c.complaint_no = ?)) or ('+enterpriseLinked+' and a.biz_id=?) or ('+spatialLinked+' and a.biz_id=?))');
-  params.push(filter.businessNo,filter.businessNo,...scope.params,filter.businessNo,filter.businessNo,...enterpriseScope.params,filter.businessNo,...spatialParams,filter.businessNo);
+  clauses.push("a.biz_type <> 'http' and a.action <> 'SENSITIVE_WORD_RESCAN' and (("+systemSql+' and a.biz_id = ?) or ('+importSummary+' and a.biz_id=?) or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+' and (c.complaint_id = ? or c.complaint_no = ?)) or ('+enterpriseLinked+' and a.biz_id=?) or ('+spatialLinked+' and a.biz_id=?) or ('+reportLinked+' and a.biz_id=?))');
+  params.push(filter.businessNo,filter.businessNo,...scope.params,filter.businessNo,filter.businessNo,...enterpriseScope.params,filter.businessNo,...spatialParams,filter.businessNo,...reportScope.params,filter.businessNo);
  }
  return {sql:clauses.join(' and '),params};
 }
 const columns='a.id, a.audit_id, a.user_id, a.app_code, a.action, a.biz_type, a.biz_id, a.result, a.client_ip, a.detail, a.created_at, '+moduleSql+' as module';
 function selectedColumns(access:AccessContext):{sql:string;params:unknown[]} {
  const scope=buildComplaintScopeSql(access,'c');
- return {sql:columns+', (select c.complaint_no from complaint c where '+complaintLinkSql+' and '+scope.sql+' order by c.complaint_id limit 1) as business_no',params:scope.params};
+ return {sql:columns+", case when a.biz_type='report_record' and a.action in ('REPORT_CREATE','REPORT_RETRY','REPORT_GENERATE','REPORT_DOWNLOAD') then a.biz_id else (select c.complaint_no from complaint c where "+complaintLinkSql+' and '+scope.sql+' order by c.complaint_id limit 1) end as business_no',params:scope.params};
 }
 export async function queryAuditLogs(db:SqlExecutor,filter:AuditLogFilter,pagination:{page:number;size:number},access:AccessContext):Promise<Paged<AuditRow>> {
  const where=auditWhere(filter,access);const selected=selectedColumns(access);

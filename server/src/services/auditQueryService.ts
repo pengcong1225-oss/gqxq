@@ -66,6 +66,7 @@ function safeDetail(row:AuditRow):Record<string,unknown> {
   if(!['SENSITIVE_WORD_CREATE','SENSITIVE_WORD_UPDATE'].includes(action))return {};
   const out=pick(data,['operator']);for(const key of ['before','after'])if(data[key]!==undefined)out[key]=pick(data[key],['word','status']);return out;
  }
+ if(row.biz_type==='report_record'&&['REPORT_CREATE','REPORT_RETRY','REPORT_GENERATE','REPORT_DOWNLOAD'].includes(action))return pick(data,['templateCode','templateVersion','format','state','contentHash','byteLength','failureReason','fence']);
  if(row.biz_type==='service_grid'&&action==='SERVICE_GRID_REGISTER')return pick(data,['code','name','enterpriseCode','businessType','state','version']);
  if(row.biz_type==='service_grid'&&action==='SERVICE_GRID_SAVE')return pick(data,['code','enterpriseCode','businessType','version','validFrom','validTo','adminGridCount','communityCount']);
  if(row.biz_type==='admin_grid'&&action==='ADMIN_GRID_SAVE')return pick(data,['code','name','districtCode','version','hasGeometry']);

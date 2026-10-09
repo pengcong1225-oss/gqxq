@@ -6,6 +6,7 @@ import { reconcileOpenReporting } from './services/reportingEvidenceService';
 import {recoverPendingDispatches} from './services/dispatchRecoveryService';
 import { assertDbReachable, closePool } from './db/pool';
 import {pruneExpiredImports} from './services/masterDataImportService';
+import {startReportWorker} from './services/reportService';
 
 /**
  * 判定监听地址是否为回环（M1 的默认值）。
@@ -32,6 +33,7 @@ async function main(): Promise<void> {
   const deliver=async()=>{if(delivering)return;delivering=true;try{await recoverPendingDispatches();}catch{console.error('[delivery] durable jobs retained for recovery');}finally{delivering=false;}};
   const deliveryTimer=setInterval(()=>void deliver(),5_000);deliveryTimer.unref();void deliver();
   const app = createApp();
+  const stopReportWorker=startReportWorker();
   let pruning=false;
   const prune=async()=>{if(pruning)return;pruning=true;try{await pruneExpiredImports();}catch{console.error('[master-import] expired resource cleanup failed; retained for retry');}finally{pruning=false;}};
   const importRetentionTimer=setInterval(()=>void prune(),60_000);importRetentionTimer.unref();void prune();
@@ -53,6 +55,7 @@ async function main(): Promise<void> {
   });
 
   const shutdown = async (signal: string): Promise<void> => {
+    stopReportWorker();
     clearInterval(replayTimer);
     clearInterval(deliveryTimer);
     clearInterval(importRetentionTimer);

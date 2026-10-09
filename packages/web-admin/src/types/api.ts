@@ -1,3 +1,4 @@
+export type {ReportCreateInput,ReportArtifact,ReportPage} from './report';
 /**
  * 诉求平台管理后台 —— 接口类型定义
  *

@@ -1,4 +1,5 @@
 // 服务端对外 DTO —— **契约唯一真源**。
+export type {ReportCreateInput,ReportArtifact,ReportPage} from './report';
 // 与前端 packages/web-admin/src/types/api.ts 逐字段对齐；改这里必须同步改那边。
 //
 // 关键约定（见 docs/2026-09-17-gqxq_service现状核对与G1迁移设计.md §3）：
