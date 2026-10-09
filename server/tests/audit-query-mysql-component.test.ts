@@ -31,7 +31,7 @@ test('A6 isolated MySQL audit query component, not canonical baseline or restart
   await db.raw('create table business_event (id bigint auto_increment primary key,event_id varchar(128) unique,source_business_id varchar(128)) engine=InnoDB');
   await db.raw('create table correction_item (id bigint primary key auto_increment,correction_id varchar(64) unique,complaint_id varchar(64),assignment_id varchar(64),field_name varchar(64),field_label varchar(64),old_value text,new_value text,basis text,status varchar(32),confirmer_id varchar(64),confirmer_name varchar(64),confirmed_at datetime,created_at datetime) engine=InnoDB');
   await db.raw('create table complaint_field_version (id bigint primary key auto_increment,version_id varchar(64),complaint_id varchar(64),field_name varchar(64),old_value text,new_value text,change_source varchar(64),reason text,operator_id varchar(64),operator_name varchar(64),changed_at datetime) engine=InnoDB');
-  for(const [id,role,rules] of [['admin','admin',[]],['scoped','auditor',[{kind:'restricted',enterpriseCodes:['E1'],districtCodes:['G1']}]],['all','auditor',[{kind:'all'}]],['denied','handler',[{kind:'all'}]]] as const)
+  for(const [id,role,rules] of [['admin','admin',[]],['scoped','auditor',[{kind:'restricted',enterpriseCodes:['E1'],districtCodes:['G1']}]],['scoped2','auditor',[{kind:'restricted',enterpriseCodes:['E2'],districtCodes:['G2']}]],['all','auditor',[{kind:'all'}]],['denied','handler',[{kind:'all'}]]] as const)
    await db('app_user').insert({user_id:id,username:id,password_hash:await bcrypt.hash('Synthetic-Pass-1',4),real_name:'虚构',roles:JSON.stringify([role]),permissions:'[]',scope_rules:JSON.stringify(rules),session_version:1,must_change_password:0});
   await db('platform_role').insert({role_code:'auditor',name:'虚构审计员',enabled:1,built_in:0,version:1});
   await db('platform_role_permission').insert({role_code:'auditor',permission_code:'system.audit.read'});
@@ -47,9 +47,9 @@ test('A6 isolated MySQL audit query component, not canonical baseline or restart
    ['SEC','http','GET /complaints/FOREIGN_SECRET?token=TOKEN_SECRET','ACCESS_DENIED','rejected'],
    ['C1A','complaint','C1','CORRECTION_CONFIRM','success'],['C1B','complaint','C1','SOURCE_DOCUMENT_READ','success'],
    ['C2A','complaint','C2','CORRECTION_CONFIRM','success'],['DELETED','complaint','DEL','CORRECTION_CONFIRM','success'],
-   ['D2A','dispatch_order','D2','DISPATCH_PUSH','failed'],['D2B','dispatch_order','C2','DISPATCH_CREATE','success'],
+   ['D2A','dispatch_order','C2','DISPATCH_PUSH','failed'],['D2B','dispatch_order','C2','DISPATCH_CREATE','success'],
    ['ANA1A','analysis_record','ANA1','ANALYSIS_INCLUDED','success'],['ANA2A','analysis_record','ANA2','ANALYSIS_INCLUDED','success'],
-   ['EV1A','business_event','EV1','CALLBACK_DUPLICATE','duplicate'],['EV2A','business_event','EV2','CALLBACK_DUPLICATE','duplicate'],
+   ['EV1A','business_event','EV1','CALLBACK_REJECTED','rejected'],['EV2A','business_event','EV2','CALLBACK_REJECTED','rejected'],
    ['EV1B','business_event','C1','CALLBACK_DUPLICATE','duplicate'],['UNRESOLVED','business_event','UNKNOWN','CALLBACK_REJECTED','rejected'],
    ['UNKNOWN','mystery','C1','UNKNOWN_ACTION','success'],['REPORT','report','UNKNOWN','REPORT_GENERATE','success'],
   ];
@@ -76,6 +76,42 @@ test('A6 isolated MySQL audit query component, not canonical baseline or restart
    assert.equal((await api('get','/audit-logs?from=2026-10-09T00%3A00%3A00Z&to=2026-10-09T00%3A00%3A00Z')).body.data.total,12);
    for(const q of ['page=0','size=101','from=bad','category=unknown'])assert.equal((await api('get','/audit-logs?'+q)).status,400,q);
    assert.equal((await api('get','/audit-logs?businessNo=FOREIGN_SECRET')).body.data.total,0);
+   for(const key of ['target','auditor','word'])assert.equal((await api('get','/audit-logs?businessNo='+key)).body.data.total,1,'public system business key '+key);
+   assert.equal((await api('get','/audit-logs?businessNo=RESCAN_SECRET')).body.data.total,0,'rescan key stays withheld');
+  });
+  const collisionActor='collision-actor';
+  const seedCollision=async(rows:string[][])=>{
+   for(const [id,type,biz,action] of rows)await db('operation_audit_log').insert({audit_id:id,user_id:collisionActor,app_code:'gqxq',biz_type:type,biz_id:biz,action,result:'rejected',created_at:stamp,detail:JSON.stringify({eventId:'EV1',complaintId:'C1',assignmentId:'C1',marker:'UNCHANGED_COLLISION_SECRET'})});
+  };
+  const assertCollisionViews=async(rows:string[][],visible:string[][])=>{
+   for(const [user,complaint,expected] of [['scoped','C1',visible[0]],['scoped2','C2',visible[1]]] as const){
+    for(const business of ['',complaint,'NO-'+complaint]){
+     const q=await api('get','/audit-logs?actor='+collisionActor+(business?'&businessNo='+business:''),user);assert.equal(q.status,200);
+     assert.equal(q.body.data.total,expected.length,user+' count '+business);assert.deepEqual(q.body.data.content.map((v:any)=>v.auditId).sort(),[...expected].sort(),user+' rows '+business);
+     assert.ok(q.body.data.content.every((v:any)=>v.businessNo==='NO-'+complaint));
+    }
+    const foreign=complaint==='C1'?'C2':'C1';for(const business of [foreign,'NO-'+foreign])assert.equal((await api('get','/audit-logs?actor='+collisionActor+'&businessNo='+business,user)).body.data.total,0,user+' foreign business '+business);
+    for(const [id] of rows){const q=await api('get','/audit-logs/'+id,user);assert.equal(q.status,expected.includes(id)?200:404,user+' direct '+id);}
+   }
+   for(const [id] of rows){const stored=await db('operation_audit_log').where('audit_id',id).first();assert.ok(JSON.stringify(stored.detail).includes('UNCHANGED_COLLISION_SECRET'),'read projection must preserve original audit evidence');}
+  };
+  await t.test('callback complaint-key actions never rebind to colliding event IDs; rejected uses only event keys',async()=>{
+   const rows=[['COL-DUP','business_event','C1','CALLBACK_DUPLICATE'],['COL-IGN','business_event','C1','CALLBACK_IGNORED'],['COL-REJ','business_event','C1','CALLBACK_REJECTED'],['COL-DUP2','business_event','C2','CALLBACK_DUPLICATE'],['COL-REJ1','business_event','EV1','CALLBACK_REJECTED'],['COL-WRONG-DUP','business_event','EV1','CALLBACK_DUPLICATE']];
+   await db('business_event').insert({event_id:'C1',source_business_id:'C2'});await seedCollision(rows);
+   try{await assertCollisionViews(rows,[['COL-DUP','COL-IGN','COL-REJ1'],['COL-REJ','COL-DUP2']]);}
+   finally{await db('operation_audit_log').where('user_id',collisionActor).delete();await db('business_event').where('event_id','C1').delete();}
+  });
+  await t.test('unparsed callback headers and intake source IDs cannot become complaint keys by collision',async()=>{
+   const rows=[['COL-AUTH','business_event','C1','CALLBACK_AUTH_FAILED'],['COL-AUTH-EVENT','business_event','EV1','CALLBACK_AUTH_FAILED'],['COL-CONFIG','business_event','C1','CALLBACK_CONFIG_ERROR'],['COL-REJ-MISSING','business_event','C1','CALLBACK_REJECTED'],['COL-INTAKE','complaint','C1','INTAKE_REJECTED'],['COL-UNKNOWN','complaint','C1','UNKNOWN_ACTION']];
+   assert.equal((await db('business_event').where('event_id','C1')).length,0);await seedCollision(rows);
+   try{await assertCollisionViews(rows,[[],[]]);for(const [id] of rows)assert.equal((await api('get','/audit-logs/'+id,'all')).status,404,id+' unresolved even for all');}
+   finally{await db('operation_audit_log').where('user_id',collisionActor).delete();}
+  });
+  await t.test('dispatch complaint keys ignore colliding assignment IDs and exclude guessed assignment semantics',async()=>{
+   const rows=[['COL-CREATE','dispatch_order','C1','DISPATCH_CREATE'],['COL-PUSH','dispatch_order','C1','DISPATCH_PUSH'],['COL-CALLBACK','dispatch_order','C1','CALLBACK_APPLIED'],['COL-CREATE2','dispatch_order','C2','DISPATCH_CREATE'],['COL-WRONG-DISPATCH','dispatch_order','D2','DISPATCH_PUSH'],['COL-UNKNOWN-DISPATCH','dispatch_order','C1','UNKNOWN_ACTION']];
+   await db('dispatch_order').insert({assignment_id:'C1',complaint_id:'C2'});await seedCollision(rows);
+   try{await assertCollisionViews(rows,[['COL-CREATE','COL-PUSH','COL-CALLBACK'],['COL-CREATE2']]);}
+   finally{await db('operation_audit_log').where('user_id',collisionActor).delete();await db('dispatch_order').where('assignment_id','C1').delete();}
   });
   await t.test('unauthorized direct APIs deny and persisted revocation takes effect on existing token',async()=>{
    for(const path of ['/audit-logs','/audit-logs/USER1'])assert.equal((await api('get',path,'denied')).status,403);

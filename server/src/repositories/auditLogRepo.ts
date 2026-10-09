@@ -53,11 +53,17 @@ const categorySql="case when a.biz_type = 'auth' and a.action in ('LOGIN','LOGIN
 const resultSql="case when lower(a.result) in ('success','ok','created','updated','applied') then 'success' when lower(a.result) in ('failure','failed','error','timeout','network_error','auth_failed') then 'failed' when lower(a.result) in ('rejected','denied','ignored','validation_failed') then 'rejected' when lower(a.result) in ('duplicate','duplicate_same') then 'duplicate' else 'unknown' end";
 const moduleSql="case when a.biz_type = 'http' and a.action = 'ACCESS_DENIED' then 'security' when a.action like 'CORRECTION\\_%' then 'corrections' else a.biz_type end";
 const systemSql="((a.biz_type = 'auth' and a.action in ('LOGIN','LOGIN_FAILED')) or (a.biz_type = 'user' and a.action in ('USER_CREATE','USER_UPDATE','USER_SCOPE_UPDATE','PASSWORD_RESET','PASSWORD_CHANGE')) or (a.biz_type = 'role' and a.action in ('ROLE_CREATE','ROLE_UPDATE')) or (a.biz_type = 'sensitive_word' and a.action in ('SENSITIVE_WORD_CREATE','SENSITIVE_WORD_UPDATE','SENSITIVE_WORD_RESCAN')) or (a.biz_type = 'http' and a.action = 'ACCESS_DENIED'))";
-/** Resolve stable table keys, never trust arbitrary detail/JSON claims about ownership. */
-const complaintLinkSql="((a.biz_type in ('complaint','address_candidate') and c.complaint_id = a.biz_id) or " +
- "(a.biz_type = 'dispatch_order' and ((not exists (select 1 from dispatch_order d where d.assignment_id = a.biz_id) and c.complaint_id = a.biz_id) or exists (select 1 from dispatch_order d where d.assignment_id = a.biz_id and d.complaint_id = c.complaint_id))) or " +
- "(a.biz_type = 'analysis_record' and exists (select 1 from analysis_record ar where ar.analysis_id = a.biz_id and ar.complaint_id = c.complaint_id)) or " +
- "(a.biz_type = 'business_event' and ((not exists (select 1 from business_event be where be.event_id = a.biz_id) and c.complaint_id = a.biz_id) or exists (select 1 from business_event be where be.event_id = a.biz_id and be.source_business_id = c.complaint_id))))";
+/** Key meaning is the writer's type+action contract, never whichever table has
+ * a coincident identifier. New actions must register their proven key semantics.
+ * INTAKE_REJECTED uses an unresolved sourceId; CALLBACK_AUTH_FAILED/CONFIG_ERROR
+ * use unparsed headers. Neither can authorize a complaint through a collision.
+ * Rejected callback event keys require a persisted, resolvable event relation. */
+const complaintLinkSql="((a.biz_type = 'complaint' and a.action in ('INTAKE_CREATE','INTAKE_DUPLICATE_SAME','INTAKE_REDELIVERY','ASSIGN_ENTERPRISE','COMPLAINT_DISPOSITION','CORRECTION_GENERATE','CORRECTION_CONFIRM','CORRECTION_REJECT','COMPLAINT_CLOSE','SOURCE_DOCUMENT_READ') and c.complaint_id = a.biz_id) or " +
+ "(a.biz_type = 'address_candidate' and a.action = 'LOCATION_CLUE_BACKFILL_ROW' and c.complaint_id = a.biz_id) or " +
+ "(a.biz_type = 'dispatch_order' and a.action in ('DISPATCH_CREATE','DISPATCH_CANCEL','DISPATCH_PUSH','DISPATCH_ARCHIVE','CALLBACK_APPLIED','CALLBACK_IGNORED') and c.complaint_id = a.biz_id) or " +
+ "(a.biz_type = 'analysis_record' and a.action = 'ANALYSIS_INCLUDED' and exists (select 1 from analysis_record ar where ar.analysis_id = a.biz_id and ar.complaint_id = c.complaint_id)) or " +
+ "(a.biz_type = 'business_event' and a.action in ('CALLBACK_DUPLICATE','CALLBACK_IGNORED') and c.complaint_id = a.biz_id) or " +
+ "(a.biz_type = 'business_event' and a.action = 'CALLBACK_REJECTED' and exists (select 1 from business_event be where be.event_id = a.biz_id and be.source_business_id = c.complaint_id)))";
 function auditWhere(filter:AuditLogFilter,access:AccessContext):{sql:string;params:unknown[]} {
  const scope=buildComplaintScopeSql(access,'c');const clauses=[ '('+systemSql+' or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+'))' ];
  const params:unknown[]=[...scope.params];
@@ -68,7 +74,7 @@ function auditWhere(filter:AuditLogFilter,access:AccessContext):{sql:string;para
  if(filter.from){clauses.push('a.created_at >= ?');params.push(new Date(filter.from));}
  if(filter.to){clauses.push('a.created_at <= ?');params.push(new Date(filter.to));}
  if(filter.businessNo){
-  clauses.push("a.biz_type <> 'http' and a.action <> 'SENSITIVE_WORD_RESCAN' and (a.biz_id = ? or exists (select 1 from complaint c where "+complaintLinkSql+' and '+scope.sql+' and (c.complaint_id = ? or c.complaint_no = ?)))');
+  clauses.push("a.biz_type <> 'http' and a.action <> 'SENSITIVE_WORD_RESCAN' and (("+systemSql+' and a.biz_id = ?) or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+' and (c.complaint_id = ? or c.complaint_no = ?)))');
   params.push(filter.businessNo,...scope.params,filter.businessNo,filter.businessNo);
  }
  return {sql:clauses.join(' and '),params};
