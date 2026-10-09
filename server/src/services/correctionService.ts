@@ -57,6 +57,10 @@ import { GQXQ_APP_CODE } from './intakeService';
 import { optionalText, type OperatorContext } from './dispatchService';
 import { loadEffectiveFieldState } from '../repositories/effectiveFieldRepo';
 import { getTownshipSnapshot } from './rules/townshipGazetteer';
+import {parseLocationCorrectionInput,evaluateLocationEvidence,locationValidationDate,type LocationClock} from './locationValidationService';
+import {lockLocationFactsIn,readLocationOptionsIn,type LocationComplaint} from '../repositories/locationCorrectionRepo';
+import {LOCATION_GROUP_COLUMNS,LOCATION_CORRECTION_FIELDS,lockLocationCorrections,decideLocationCorrection} from '../repositories/correctionRepo';
+import type {LocationCorrectionResult,LocationCorrectionOptions} from '../types/locationCorrection';
 
 /* ==================== 参数解析 ==================== */
 
@@ -119,6 +123,8 @@ const COMPLAINT_FULL_COLUMNS =
   ' address, business_type, complaint_type, location_lng, location_lat, reporting_status, supervision_status,' +
   ' analysis_included, major_category_code, minor_category_code, category_dictionary_version, edit_version, effective_field_state, content, urgency_level, is_sensitive, sensitive_keywords, rule_confidence, rule_version';
 
+const LOCATION_EXTRA_COLUMNS=',admin_grid_code,community_code,location_coordinate_system,location_coordinate_source';
+
 async function resolveComplaintId(db: Tx | typeof pool, idOrNo: string): Promise<string> {
   const ref = await findComplaintRefByAnyKey(db, idOrNo);
   if (!ref) throw AppError.notFound('诉求不存在');
@@ -144,6 +150,76 @@ async function lockComplaintFull(tx: Tx, complaintId: string): Promise<Complaint
   if (!row) throw AppError.notFound('诉求不存在');
   assertComplaintAccess(row as unknown as Record<string,unknown>);
   return row;
+}
+
+function assertLocationPermission(ctx:MasterDataContext):void {
+ if(!ctx.userId||!ctx.permissionCodes.includes('complaint.correct'))throw AppError.forbidden();
+}
+function sameLocationValue(field:string,a:unknown,b:unknown):boolean {
+ if(a==null||b==null)return a==null&&b==null;
+ return field==='location_lng'||field==='location_lat'?Number(a)===Number(b):textOf(a)===textOf(b);
+}
+export async function locationCorrectionOptions(complaintId:string,ctx:MasterDataContext):Promise<LocationCorrectionOptions> {
+ assertLocationPermission(ctx);
+ return withTransaction(async tx=>{
+  const [rows]=await tx.query('select complaint_id,enterprise_code,district_code,business_type,deleted from complaint where complaint_id=?',[complaintId]);
+  const row=(rows as LocationComplaint[])[0];if(!row)throw AppError.notFound('诉求不存在');assertComplaintAccess(row,ctx.access);
+  const type=await readDictionaryType(tx,'district');const items=await readDictionaryItems(tx,'district');
+  return readLocationOptionsIn(tx,row,ctx,type?.published&&type.status==='enabled'?items.filter(i=>i.published&&i.status==='enabled').map(i=>({code:i.code,name:i.label})):[]);
+ });
+}
+
+export async function confirmLocationGroup(raw:unknown,ctx:MasterDataContext,clock:LocationClock=()=>new Date()):Promise<LocationCorrectionResult> {
+ assertLocationPermission(ctx);const input=parseLocationCorrectionInput(raw),now=clock(),validationDate=locationValidationDate(()=>now);
+ // Only a discovery probe: final scope/version/identity validation uses the locked row.
+ // No ordinary Tx read precedes the dictionary and enterprise FOR UPDATE reads.
+ const [probes]=await pool.query('select complaint_id,enterprise_code,district_code,business_type,deleted from complaint where complaint_id=?',[input.complaintId]);
+ const probe=(probes as LocationComplaint[])[0];if(!probe)throw AppError.notFound('诉求不存在');assertComplaintAccess(probe,ctx.access);
+ return withTransaction(async tx=>{
+  const type=await readDictionaryType(tx,'district',true),districts=await readDictionaryItems(tx,'district',true);
+  const facts=await lockLocationFactsIn(tx,probe,input.adminGridCode,input.communityCode,validationDate,ctx);
+  const [rows]=await tx.query('select '+COMPLAINT_FULL_COLUMNS+LOCATION_EXTRA_COLUMNS+' from complaint where complaint_id=? for update',[input.complaintId]);
+  const row=(rows as Array<LocationComplaint & ComplaintFullRow>)[0];if(!row)throw AppError.notFound('诉求不存在');assertComplaintAccess(row,ctx.access);
+  if(Number(row.edit_version)!==input.expectedVersion)throw AppError.conflict('该诉求已被其它窗口修改；未提交内容已保留，请刷新核对后重新提交');
+  if(row.enterprise_code!==probe.enterprise_code||row.business_type!==probe.business_type)throw AppError.conflict('诉求覆盖依赖已变化，请刷新核对');
+  assertComplaintAccess({...row,district_code:input.districtCode},ctx.access);
+  const selected=districts.find(d=>d.code===input.districtCode),available=type?.published&&type.status==='enabled'&&selected?.published&&selected.status==='enabled';
+  if(input.districtCode!==null&&input.districtCode!==row.district_code&&!available)throw AppError.validation('须选择已发布启用区划编码');
+  const districtName=input.districtCode===null?null:available?selected!.label:row.district_name;
+  const items=await lockLocationCorrections(tx,input.complaintId);
+  if(!items.some(i=>i.status==='pending'))throw new AppError('INVALID_STATE_TRANSITION','位置组已全部处理，不能重复提交');
+  if(!LOCATION_CORRECTION_FIELDS.every(field=>items.some(i=>i.fieldName===field)))throw AppError.validation('位置组纠偏清单不完整，请先补齐纠偏待办');
+  evaluateLocationEvidence(input,{...facts,districtName},validationDate);
+  const after:Record<string,string|number|null>={district_code:input.districtCode,district_name:districtName,address:input.address,location_lng:input.longitude,location_lat:input.latitude,admin_grid_code:input.adminGridCode,community_code:input.communityCode,location_coordinate_system:input.coordinateSystem,location_coordinate_source:input.coordinateSource};
+  const states=await loadEffectiveFieldState(tx,row),nextVersion=Number(row.edit_version)+1;
+  await tx.execute('update complaint set '+LOCATION_GROUP_COLUMNS.map(c=>c+'=?').join(',')+' where complaint_id=?',[...LOCATION_GROUP_COLUMNS.map(c=>after[c]),input.complaintId]);
+  const [storedRows]=await tx.query('select '+LOCATION_GROUP_COLUMNS.join(',')+' from complaint where complaint_id=? for update',[input.complaintId]);
+  const stored=(storedRows as Record<string,string|number|null>[])[0];
+  for(const field of LOCATION_GROUP_COLUMNS)after[field]=stored[field]??null;
+  after.location_lng=after.location_lng===null?null:Number(after.location_lng);after.location_lat=after.location_lat===null?null:Number(after.location_lat);
+  const location={districtCode:after.district_code as string|null,districtName:after.district_name as string|null,address:after.address as string|null,longitude:after.location_lng as number|null,latitude:after.location_lat as number|null,
+   adminGridCode:after.admin_grid_code as string|null,communityCode:after.community_code as string|null,coordinateSystem:after.location_coordinate_system as 'WGS84'|'unknown'|null,coordinateSource:after.location_coordinate_source as string|null};
+  const validation=evaluateLocationEvidence({...input,...location},{...facts,districtName},validationDate);
+  const changes=LOCATION_GROUP_COLUMNS.filter(field=>!sameLocationValue(field,row[field],after[field])).map(field=>({fieldName:field,oldValue:textOf(row[field]),newValue:textOf(after[field])}));
+  const decisions=[];
+  for(const item of items){
+   const field=String(item.fieldName),changed=!sameLocationValue(field,row[field],after[field]);
+   if(item.status!=='pending'&&!changed)continue;
+   if(!['pending','confirmed','rejected'].includes(String(item.status)))throw new AppError('INVALID_STATE_TRANSITION','位置组存在未知纠偏状态');
+   decisions.push({correctionId:item.correctionId,fieldName:field,statusBefore:item.status,newValueBefore:item.newValue,basisBefore:item.basis,confirmerIdBefore:item.confirmerId,confirmedAtBefore:item.confirmedAt,statusAfter:'confirmed',newValueAfter:textOf(after[field])});
+   await decideLocationCorrection(tx,item,{status:'confirmed',newValue:textOf(after[field]),basis:input.basis,confirmerId:ctx.userId,confirmerName:ctx.userName,decidedAt:now});
+  }
+  for(const field of LOCATION_GROUP_COLUMNS){
+   const prior=states[field],changed=!sameLocationValue(field,row[field],after[field]);
+   states[field]=!changed&&prior&&['confirmed','no_correction'].includes(prior.resolution)?prior:{resolution:'confirmed',value:after[field],version:nextVersion,reason:'人工位置组核对：'+input.basis};
+  }
+  await tx.execute('update complaint set effective_field_state=?,edit_version=?,updated_at=? where complaint_id=?',[JSON.stringify(states),nextVersion,now,input.complaintId]);
+  await insertFieldVersions(tx,changes.map(c=>({...c,complaintId:input.complaintId,changeSource:'manual_edit' as const,reason:input.basis,operatorId:ctx.userId,operatorName:ctx.userName,changedAt:now})));
+  const analysis=await maybeEnterAnalysis(tx,{complaintId:input.complaintId,operatorId:ctx.userId,operatorName:ctx.userName,now});
+  await insertAudit(tx,{userId:ctx.userId,appCode:GQXQ_APP_CODE,resourceCode:row.complaint_no,action:'CORRECTION_LOCATION_GROUP',bizType:'complaint',bizId:input.complaintId,result:'success',clientIp:ctx.clientIp,createdAt:now,
+   detail:{editVersion:nextVersion,basis:input.basis,coordinateSystem:input.coordinateSystem,coordinateSource:input.coordinateSource,provenanceKind:input.longitude===null?'absent':'operator_declared',changes,decisions,...validation,analysisEntered:analysis.entered}});
+  return {...validation,version:nextVersion,analysisEntered:analysis.entered,location};
+ });
 }
 
 function textOf(value: unknown): string | null {
@@ -704,6 +780,7 @@ async function decide(
       else newValue = optionalText(body.newValue, 'newValue', 2000);
       const currentColumn = fieldDef(String(locked.fieldName))?.column;
       const currentValue = currentColumn ? textOf((complaint as unknown as Record<string, unknown>)[currentColumn]) : locked.oldValue;
+      if(LOCATION_CORRECTION_FIELDS.includes(String(locked.fieldName) as typeof LOCATION_CORRECTION_FIELDS[number])&&newValue!==null&&newValue!==currentValue)throw AppError.validation('地址、区划和坐标的关联修改请使用“位置组纠偏”一次提交');
       if (fieldName!=='formal_category' && newValue !== null && newValue !== currentValue) {
         writtenBack = await writeBackToComplaint(tx, complaint, String(locked.fieldName), newValue, ctx, now);
       }

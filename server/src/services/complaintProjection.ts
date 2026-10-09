@@ -2,12 +2,13 @@ import type { AccessContext } from '../auth/accessScope';
 import { rowToDetail, toIso, type ComplaintRow } from '../repositories/complaintMapper';
 import type { ComplaintDetail } from '../types/api';
 import { EFFECTIVE_COLUMNS } from '../domain/effectiveFieldPolicy';
+import {LOCATION_GROUP_COLUMNS} from '../repositories/correctionRepo';
 /** Explicit mapper whitelist; documents are exclusively served by source-document. */
 export function projectComplaintDetail(row:ComplaintRow,_ctx:AccessContext):ComplaintDetail {
  const {sourcePayload:_payload,sourceFields:_fields,sourcePayloadHash:_hash,...detail}=rowToDetail(row);
  const fields=_fields ?? _payload;
  const effectiveFieldState=detail.effectiveFieldState===null?null:Object.fromEntries(
-  Object.entries(detail.effectiveFieldState).filter(([field])=>[...EFFECTIVE_COLUMNS,'enterprise_code','enterprise_name','major_category_code','minor_category_code','category_dictionary_version'].includes(field as typeof EFFECTIVE_COLUMNS[number])).map(([field,state])=>[field,pick(state,['resolution','value','version','reason','correctionId'])]));
+  Object.entries(detail.effectiveFieldState).filter(([field])=>[...EFFECTIVE_COLUMNS,...LOCATION_GROUP_COLUMNS,'enterprise_code','enterprise_name','major_category_code','minor_category_code','category_dictionary_version'].includes(field as typeof EFFECTIVE_COLUMNS[number])).map(([field,state])=>[field,pick(state,['resolution','value','version','reason','correctionId'])]));
  const sourceAddress=typeof fields?.address==='string'?fields.address:null;
  const sourceSnapshotAt=typeof _fields?._receivedAt==='string'?toIso(_fields._receivedAt):null;
  return {...detail,effectiveFieldState,sourceAddress,effectiveAddress:detail.address,

@@ -60,7 +60,7 @@ const systemSql="((a.biz_type = 'auth' and a.action in ('LOGIN','LOGIN_FAILED'))
  * INTAKE_REJECTED uses an unresolved sourceId; CALLBACK_AUTH_FAILED/CONFIG_ERROR
  * use unparsed headers. Neither can authorize a complaint through a collision.
  * Rejected callback event keys require a persisted, resolvable event relation. */
-const complaintLinkSql="((a.biz_type = 'complaint' and a.action in ('INTAKE_CREATE','INTAKE_DUPLICATE_SAME','INTAKE_REDELIVERY','ASSIGN_ENTERPRISE','COMPLAINT_DISPOSITION','CORRECTION_GENERATE','CORRECTION_CONFIRM','CORRECTION_REJECT','COMPLAINT_CLOSE','SOURCE_DOCUMENT_READ','CATEGORY_REVISE') and c.complaint_id = a.biz_id) or " +
+const complaintLinkSql="((a.biz_type = 'complaint' and a.action in ('INTAKE_CREATE','INTAKE_DUPLICATE_SAME','INTAKE_REDELIVERY','ASSIGN_ENTERPRISE','COMPLAINT_DISPOSITION','CORRECTION_GENERATE','CORRECTION_CONFIRM','CORRECTION_REJECT','CORRECTION_LOCATION_GROUP','COMPLAINT_CLOSE','SOURCE_DOCUMENT_READ','CATEGORY_REVISE') and c.complaint_id = a.biz_id) or " +
  "(a.biz_type = 'address_candidate' and a.action = 'LOCATION_CLUE_BACKFILL_ROW' and c.complaint_id = a.biz_id) or " +
  "(a.biz_type = 'dispatch_order' and a.action in ('DISPATCH_CREATE','DISPATCH_CANCEL','DISPATCH_PUSH','DISPATCH_ARCHIVE','CALLBACK_APPLIED','CALLBACK_IGNORED') and c.complaint_id = a.biz_id) or " +
  "(a.biz_type = 'analysis_record' and a.action = 'ANALYSIS_INCLUDED' and exists (select 1 from analysis_record ar where ar.analysis_id = a.biz_id and ar.complaint_id = c.complaint_id)) or " +

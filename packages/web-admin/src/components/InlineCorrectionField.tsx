@@ -31,6 +31,7 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
   const [natureError,setNatureError]=useState('');
   useEffect(()=>{if(item.fieldName==='complaint_type')getDictItems('complaint_type').then(setNatureOptions).catch(e=>setNatureError(e.message??'诉求性质加载失败'));},[item.fieldName]);
   const isEnterprise = item.fieldName === 'enterprise_name';
+  const isLocation=['district_name','address','location_lng','location_lat'].includes(item.fieldName);
   const label = item.fieldLabel ?? item.fieldName;
   const [localValue, setValue] = useState(isEnterprise ? '' : correctionEffectiveText(item));
   const [localBasis, setBasis] = useState(item.basis ?? '');
@@ -71,6 +72,7 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
 
   return (
     <Space direction="vertical" size={6} style={{ width: '100%' }}>
+      {isLocation?<Typography.Text type="secondary">关联位置字段请从“位置组纠偏”一起提交。</Typography.Text>:<>
       {item.fieldName==='formal_category'? <CategorySelector value={(()=>{try{return value?JSON.parse(value) as CategoryRef:null;}catch{return null;}})()} onChange={ref=>changeValue(ref?JSON.stringify(ref):'')} disabled={disabled}/>:item.fieldName==='complaint_type'? <><Select aria-label={'纠偏后取值：'+label} value={value||undefined} options={natureOptions} disabled={disabled||Boolean(natureError)} onChange={changeValue}/>{natureError&&<Typography.Text type='danger'>{natureError}</Typography.Text>}</>:isEnterprise ? (
         <Select
           aria-label={'纠偏后取值：' + label}
@@ -120,6 +122,7 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
       <Button type="primary" size="small" loading={saving} disabled={disabled || (isEnterprise && Boolean(enterpriseError))} onClick={save}>
         保存该项
       </Button>
+      </>}
     </Space>
   );
 };

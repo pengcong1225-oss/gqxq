@@ -120,6 +120,8 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   { method: 'POST', path: new RegExp('^/complaints/' + param + '/source-sync$'), roles: W, permissionCode: 'complaint.source_sync', desc: 'W5 来源状态回填' },
   { method: 'POST', path: new RegExp('^/corrections/generate-batch$'), roles: W, permissionCode: 'complaint.correct', desc: 'W6 批量补挂纠偏待办' },
   { method: 'POST', path: new RegExp('^/corrections/' + param + '/confirm$'), roles: W, permissionCode: 'complaint.correct', desc: 'W7 纠偏确认' },
+  {method:'POST',path:new RegExp('^/complaints/'+param+'/location-corrections$'),roles:W,permissionCode:'complaint.correct',desc:'原子位置组纠偏'},
+  {method:'GET',path:new RegExp('^/complaints/'+param+'/location-correction-options$'),roles:W,permissionCode:'complaint.correct',desc:'位置组业务选择'},
   { method: 'POST', path: new RegExp('^/corrections/' + param + '/reject$'), roles: W, permissionCode: 'complaint.correct', desc: 'W8 判定无需纠偏' },
   { method: 'POST', path: new RegExp('^/dispatch/orders$'), roles: W, permissionCode: 'dispatch.create', desc: 'W9 创建交办' },
   { method: 'POST', path: new RegExp('^/dispatch/orders/' + param + '/cancel$'), roles: W, permissionCode: 'dispatch.cancel', desc: 'W10 受控撤销（basis 必填 + 到人）' },

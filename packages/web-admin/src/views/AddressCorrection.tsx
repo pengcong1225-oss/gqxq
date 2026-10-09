@@ -35,6 +35,8 @@ import {
   isCorrectionVersionConflict,
   CORRECTION_CONFLICT_MESSAGE,
   correctionEffectiveText,
+  confirmLocationGroup,
+  getLocationCorrectionOptions,
 } from '../api/corrections';
 import { listPendingCorrectionComplaints } from '../api/corrections';
 import type { DispatchedFilter, PendingComplaintSummary } from '../api/corrections';
@@ -44,6 +46,8 @@ import type { AddressCandidateView, ComplaintDetail, CorrectionItem, EnterpriseO
 import TiandituLocationPicker from '../components/TiandituLocationPicker';
 import LocationClues from '../components/LocationClues';
 import InlineCorrectionField, { type InlineCorrectionDraft } from '../components/InlineCorrectionField';
+import {LocationCorrectionFields,locationDraftInput,type LocationDraft} from '../components/LocationCorrectionFields';
+import type {LocationCorrectionOptions} from '../types/locationCorrection';
 import { useWriteAccess, WriteGate } from '../stores/roleAccess';
 import { useAdminAccess } from '../stores/roleAccess';
 import { previewAddressBackfill, executeAddressBackfill } from '../api/addressCandidates';
@@ -119,7 +123,7 @@ export const AddressLocationEvidence: React.FC<{
   <LocationClues clues={clues} conflict={conflict} />
 </>;
 
-const POSITION_FIELDS = ['address', 'location_lng', 'location_lat'] as const;
+const POSITION_FIELDS = ['address', 'location_lng', 'location_lat','district_name'] as const;
 
 /** 交办轴筛选（两条轴并行，页面要能分别看） */
 const DISPATCHED_OPTIONS: Array<{ label: string; value: DispatchedFilter | 'all' }> = [
@@ -273,6 +277,10 @@ const AddressCorrection: React.FC = () => {
   const adminAccess = useAdminAccess('system.address.backfill');
   const [positionModalOpen, setPositionModalOpen] = useState(false);
   const [positionResult, setPositionResult] = useState<Array<{ label: string; ok: boolean; detail: string }>>([]);
+  const [positionVersion,setPositionVersion]=useState(1);
+  const [locationOptions,setLocationOptions]=useState<LocationCorrectionOptions|null>(null);
+  const [locationOptionsError,setLocationOptionsError]=useState<string|null>(null);
+  const locationOptionsSeqRef=useRef(0);
 
   const fetchEnterprises = useCallback(async (keyword?: string) => {
     const seq = ++enterpriseSeqRef.current;
@@ -366,6 +374,7 @@ const AddressCorrection: React.FC = () => {
       setItems([]);
       setItemsComplaintId(null);
       setPositionModalOpen(false);
+      ++locationOptionsSeqRef.current;setLocationOptions(null);setLocationOptionsError(null);
       positionForm.resetFields();
       const row = summary ?? queue.find((item) => item.complaintId === complaintId);
       setSelectedComplaintDetail(null);
@@ -525,71 +534,51 @@ const AddressCorrection: React.FC = () => {
 
   const positionItems = POSITION_FIELDS.map((fieldName) => items.find((item) => item.fieldName === fieldName));
   const positionItemsReady = positionItemsMatchSelection(itemsLoading, itemsComplaintId, selectedComplaintId);
-  const canEditPositionGroup = positionItemsReady && Boolean(selectedComplaintInfo) && positionItems.every(Boolean) && positionItems.some((item) => item?.status === 'pending');
+  const canEditPositionGroup = positionItemsReady && Boolean(selectedComplaintInfo) && Boolean(selectedComplaintDetail) && positionItems.every(Boolean) && positionItems.some((item) => item?.status === 'pending');
 
   const openPositionGroup = () => {
-    if (!canEditPositionGroup) return;
-    const [address, lng, lat] = positionItems as [CorrectionItem, CorrectionItem, CorrectionItem];
+    if (!writeAccess.can||!canEditPositionGroup||!selectedComplaintDetail||!selectedComplaintId) return;
+    const [address, lng, lat] = positionItems as CorrectionItem[];
     setPositionResult([]);
+    setPositionVersion(address.editVersion);setLocationOptions(null);setLocationOptionsError(null);
+    const seq=++locationOptionsSeqRef.current;
+    void getLocationCorrectionOptions(selectedComplaintId).then(options=>{
+      if(seq!==locationOptionsSeqRef.current)return;
+      const currentDistrict=selectedComplaintDetail.districtCode;
+      if(currentDistrict&&!options.districts.some(d=>d.code===currentDistrict))options.districts.unshift({code:currentDistrict,name:selectedComplaintDetail.districtName??currentDistrict});
+      setLocationOptions(options);
+    }).catch(e=>{if(seq===locationOptionsSeqRef.current)setLocationOptionsError(errText(e));});
     positionForm.setFieldsValue({
       address: correctionEffectiveText(address),
       lng: correctionEffectiveText(lng),
       lat: correctionEffectiveText(lat),
       basis: '',
+      districtCode:selectedComplaintDetail.districtCode,adminGridCode:selectedComplaintDetail.adminGridCode??null,communityCode:selectedComplaintDetail.communityCode??null,
+      coordinateSystem:selectedComplaintDetail.locationCoordinateSystem??'unknown',coordinateSource:selectedComplaintDetail.locationCoordinateSource??'现有坐标，坐标系未核实',
     });
     setPositionModalOpen(true);
   };
 
   const savePositionGroup = async () => {
-    let values: { address: string; lng: string; lat: string; basis?: string };
+    if(!writeAccess.can||!positionItemsReady||!selectedComplaintId||versionConflict)return;
+    let values: LocationDraft;
     try {
       values = await positionForm.validateFields();
     } catch {
       return;
     }
-    const fields = [
-      { item: positionItems[0] as CorrectionItem, value: values.address.trim() },
-      { item: positionItems[1] as CorrectionItem, value: values.lng.trim() },
-      { item: positionItems[2] as CorrectionItem, value: values.lat.trim() },
-    ].filter(({ item }) => item.status === 'pending');
-    if (fields.length === 0) return;
-    if (fields.every(({ item, value }) => value === correctionEffectiveText(item))) {
-      message.info('位置组没有任何新值；如原值无误，请逐项点“核验无误”');
-      return;
-    }
+    let body;try{body=locationDraftInput(selectedComplaintId,positionVersion,values);}catch(e){message.error(errText(e));return;}
     setSubmitting(true);
-    const outcomes: Array<{ label: string; ok: boolean; detail: string }> = [];
-    let expectedVersion = fields[0].item.editVersion;
     try {
-      for (const { item, value } of fields) {
-        const changed = value !== correctionEffectiveText(item);
-        try {
-          const res = await confirmCorrection(item.correctionId, {
-            expectedVersion,
-            newValue: value,
-            basis: changed
-              ? values.basis?.trim() || '地图选点并人工核对位置'
-              : '位置组核验无误：' + (values.basis?.trim() || '操作员复核位置'),
-          });
-          expectedVersion = res.item.editVersion;
-          outcomes.push({ label: item.fieldLabel ?? item.fieldName, ok: true, detail: changed ? '已保存纠偏' : '已核验原值' });
-        } catch (err) {
-          outcomes.push({ label: item.fieldLabel ?? item.fieldName, ok: false, detail: errText(err) });
-          if (isCorrectionVersionConflict(err)) { setVersionConflict(true); message.warning(CORRECTION_CONFLICT_MESSAGE); }
-          break;
-        }
-      }
-      setPositionResult(outcomes);
-      await loadQueue(page, size, dispatched);
-      const successCount = outcomes.filter((outcome) => outcome.ok).length;
-      if (successCount === fields.length) {
-        await loadItems(selectedComplaintId ?? fields[0].item.complaintId);
-        setPositionModalOpen(false);
-        positionForm.resetFields();
-        message.success('本次提交的 ' + fields.length + ' 项位置字段均已处理完成');
-      } else {
-        message.warning('位置组提交中止：成功 ' + successCount + '/' + fields.length + '。未提交内容已保留，请刷新核对再继续。', 8);
-      }
+      const result=await confirmLocationGroup(body);
+      setPositionResult([{label:'位置组一次保存完成',ok:true,detail:result.validationDate+'：'+result.spatialReason}]);
+      setPositionModalOpen(false);positionForm.resetFields();
+      message.success(result.spatialStatus==='verified'?'位置组已保存，当日空间复核通过':'位置组已保存；空间依据尚未核实');
+      await afterDecision(selectedComplaintId,result.analysisEntered);
+      setSelectedComplaintDetail(await getComplaint(selectedComplaintId));
+    } catch(err){
+      if(isCorrectionVersionConflict(err)){setVersionConflict(true);message.warning(CORRECTION_CONFLICT_MESSAGE);}
+      else message.error('位置组未保存，全部输入已保留：'+errText(err));
     } finally {
       setSubmitting(false);
     }
@@ -609,6 +598,8 @@ const AddressCorrection: React.FC = () => {
       const current = await listComplaintCorrections(selectedComplaintId);
       // Preserve mounted inline drafts and position form contents while showing the current server values.
       setItems(current);
+      if(current[0])setPositionVersion(current[0].editVersion);
+      setSelectedComplaintDetail(await getComplaint(selectedComplaintId));
       if (verifyTarget) setVerifyTarget(current.find(item => item.correctionId === verifyTarget.correctionId && item.status === 'pending') ?? null);
       setVersionConflict(false);
       message.info('已刷新当前有效值与版本；请逐项核对保留的草稿后再提交');
@@ -825,15 +816,15 @@ const AddressCorrection: React.FC = () => {
                       type="info"
                       showIcon
                       style={{ marginBottom: 12 }}
-                      message="地址、经度、纬度作为一组核对"
-                      description="可在位置窗体输入地址搜索并选择地点，自动定位地图、回填待处理的地址与坐标；也可直接点地图。确认后再保存，搜索本身不会修改诉求。"
+                      message="区划、地址、坐标及网格小区作为一组核对"
+                      description="地图只提供待核实候选，也可人工录入。填写依据后一次保存位置组，失败时整组不写入。"
                     />
                     <Space wrap>
-                      <WriteGate allowed={writeAccess.can && canEditPositionGroup} tip={!selectedComplaintInfo ? '正在读取诉求编号与标题' : writeAccess.tip || '位置字段需全部存在且仍有待处理项'}>
+                      {writeAccess.can&&<WriteGate allowed={canEditPositionGroup} tip={!selectedComplaintInfo ? '正在读取诉求编号与标题' : '位置字段需全部存在且仍有待处理项'}>
                         <Button type="primary" onClick={openPositionGroup}>打开位置组纠偏</Button>
-                      </WriteGate>
+                      </WriteGate>}
                       {!canEditPositionGroup ? (
-                        <span style={{ color: '#8c8c8c' }}>位置字段需完整且仍有待处理项，才能保存未完成部分。</span>
+                        <span style={{ color: '#8c8c8c' }}>位置字段需完整且仍有待处理项，才能组提交。</span>
                       ) : null}
                     </Space>
                     {positionResult.length > 0 ? (
@@ -977,20 +968,26 @@ const AddressCorrection: React.FC = () => {
         onCancel={() => setPositionModalOpen(false)}
         onOk={() => void savePositionGroup()}
         confirmLoading={submitting}
+        okButtonProps={{disabled:!writeAccess.can||versionConflict||!canEditPositionGroup}}
         okText="保存位置组"
         width={1000}
         destroyOnClose
       >
         {versionConflict && <Alert type="warning" showIcon message={CORRECTION_CONFLICT_MESSAGE}
           action={<Button onClick={() => void refreshConflict()}>刷新核对（保留草稿）</Button>} />}
-        <Form form={positionForm} layout="vertical">
+        <Form form={positionForm} layout="vertical" onValuesChange={changed=>{
+          if(Object.prototype.hasOwnProperty.call(changed,'lng')||Object.prototype.hasOwnProperty.call(changed,'lat'))positionForm.setFieldsValue({coordinateSystem:'unknown',coordinateSource:'人工录入，坐标系未核实'});
+        }}>
           <Descriptions size="small" column={1} bordered style={{ marginBottom: 12 }}>
             <Descriptions.Item label="诉求 ID">{selectedComplaintId}</Descriptions.Item>
             <Descriptions.Item label="诉求标题">{selectedComplaintInfo?.title || '正在读取…'}</Descriptions.Item>
             {positionItems.filter(Boolean).map(item => <Descriptions.Item key={item!.fieldName} label={'当前有效' + (item!.fieldLabel ?? item!.fieldName)}>
               {correctionEffectiveText(item!) || '（空）'}
             </Descriptions.Item>)}
+            <Descriptions.Item label="当前行政网格 / 小区">{selectedComplaintDetail?.adminGridCode??'（空）'} / {selectedComplaintDetail?.communityCode??'（空）'}</Descriptions.Item>
+            <Descriptions.Item label="当前坐标系 / 来源">{selectedComplaintDetail?.locationCoordinateSystem??'未核实'} / {selectedComplaintDetail?.locationCoordinateSource??'未留存可核实来源'}</Descriptions.Item>
           </Descriptions>
+          <Typography.Paragraph type="secondary">下列输入为本次提交的新值。已处理成员如有变化，将记录旧决定与本次依据；未变化的已处理成员保留原决定。</Typography.Paragraph>
           <div style={{ marginBottom: 12 }}>
             <AddressLocationEvidence
               sourceAddress={sourceAddress}
@@ -1005,48 +1002,14 @@ const AddressCorrection: React.FC = () => {
               }}
             />
           </div>
-          <Form.Item name="address" label="核实后的地址" rules={positionItems[0]?.status === 'pending' ? [{ required: true, whitespace: true, message: '请输入核实后的地址' }] : []}>
-            <Input disabled={positionItems[0]?.status !== 'pending'} placeholder="人工核对后填写地址" />
-          </Form.Item>
-          <Space style={{ display: 'flex' }} align="start" size={16}>
-            <Form.Item
-              name="lng"
-              label="经度"
-              style={{ flex: 1 }}
-              rules={positionItems[1]?.status === 'pending' ? [
-                { required: true, message: '请选择或输入经度' },
-                { pattern: /^-?\d+(\.\d+)?$/, message: '请输入有效经度' },
-                { validator: async (_, value) => { const n = Number(value); if (Number.isFinite(n) && n >= -180 && n <= 180) return; throw new Error('经度范围应为 -180 至 180'); } },
-              ] : []}
-            ><Input disabled={positionItems[1]?.status !== 'pending'} /></Form.Item>
-            <Form.Item
-              name="lat"
-              label="纬度"
-              style={{ flex: 1 }}
-              rules={positionItems[2]?.status === 'pending' ? [
-                { required: true, message: '请选择或输入纬度' },
-                { pattern: /^-?\d+(\.\d+)?$/, message: '请输入有效纬度' },
-                { validator: async (_, value) => { const n = Number(value); if (Number.isFinite(n) && n >= -90 && n <= 90) return; throw new Error('纬度范围应为 -90 至 90'); } },
-              ] : []}
-            ><Input disabled={positionItems[2]?.status !== 'pending'} /></Form.Item>
-          </Space>
+          <LocationCorrectionFields form={positionForm} options={locationOptions} optionsError={locationOptionsError}/>
           <TiandituLocationPicker
             address={addressDraft}
             lng={positionItems[1] ? correctionEffectiveText(positionItems[1]) : ''}
             lat={positionItems[2] ? correctionEffectiveText(positionItems[2]) : ''}
-            onPick={(point) => {
-              const values: { lng?: string; lat?: string } = {};
-              if (positionItems[1]?.status === 'pending') values.lng = point.lng;
-              if (positionItems[2]?.status === 'pending') values.lat = point.lat;
-              positionForm.setFieldsValue(values);
-            }}
-            onUseAddressSuggestion={positionItems[0]?.status === 'pending'
-              ? (address) => positionForm.setFieldsValue({ address })
-              : undefined}
+            onPick={(point) => positionForm.setFieldsValue({lng:point.lng,lat:point.lat,coordinateSystem:point.coordinateSystem,coordinateSource:point.coordinateSource})}
+            onUseAddressSuggestion={(address) => positionForm.setFieldsValue({ address })}
           />
-          <Form.Item name="basis" label="核对依据（可选）" style={{ marginTop: 12 }}>
-            <Input.TextArea rows={2} placeholder="例如：地图定位、现场核对、来电确认" />
-          </Form.Item>
         </Form>
       </Modal>
 

@@ -225,6 +225,10 @@ export interface ComplaintDetail extends ComplaintListItem {
   correctedAddress: string | null;
   locationLng: number | null;
   locationLat: number | null;
+  adminGridCode:string|null;
+  communityCode:string|null;
+  locationCoordinateSystem:'WGS84'|'unknown'|null;
+  locationCoordinateSource:string|null;
 
   ruleConfidence: number | null;
   ruleVersion: string | null;

@@ -7,6 +7,7 @@ import { queryAuditLogs, findAuditLog, type AuditRow } from '../repositories/aud
 import { toIso } from '../repositories/complaintMapper';
 import { projectAuditDetail } from './complaintProjection';
 import { isPermissionCode } from '../auth/permissionCatalog';
+import {LOCATION_GROUP_COLUMNS} from '../repositories/correctionRepo';
 import type { AuditLogFilter, AuditLogView, Paged } from '../types/api';
 
 export interface AuditQueryAccess extends AccessContext {permissionCodes:readonly string[]}
@@ -71,6 +72,17 @@ function safeDetail(row:AuditRow):Record<string,unknown> {
  if(row.biz_type==='enterprise'&&['ENTERPRISE_SAVE','ENTERPRISE_HOUSEHOLDS_SAVE','ENTERPRISE_MAPPING_SAVE'].includes(action))return pick(data,['enterpriseCode','enterpriseName','businessType','status','districtCode','version','households','validFrom','validTo','closedVersion','sourceSystem','sourceDepartmentCode','verified']);
  if(row.biz_type==='dictionary'&&['DICTIONARY_TYPE_SAVE','DICTIONARY_ITEM_SAVE','DICTIONARY_TYPE_DELETE','DICTIONARY_ITEM_DELETE'].includes(action))return pick(data,['typeCode','itemCode','label','parentCode','status','version','dictionaryVersion','published']);
  if(row.biz_type==='complaint'&&action==='CATEGORY_REVISE')return pick(data,['oldMajorCode','oldMinorCode','oldDictionaryVersion','majorCode','minorCode','dictionaryVersion','editVersion']);
+ if(row.biz_type==='complaint'&&action==='CORRECTION_LOCATION_GROUP'){
+  const out=pick(data,['editVersion','basis','validationDate','spatialStatus','spatialReason','coordinateSystem','coordinateSource','provenanceKind','analysisEntered']);
+  out.changes=Array.isArray(data.changes)?data.changes.flatMap(value=>{
+   const v=record(value);return LOCATION_GROUP_COLUMNS.includes(v.fieldName as typeof LOCATION_GROUP_COLUMNS[number])?[pick(v,['fieldName','oldValue','newValue'])]:[];
+  }):[];
+  out.decisions=Array.isArray(data.decisions)?data.decisions.map(v=>pick(v,['correctionId','fieldName','statusBefore','statusAfter'])):[];
+  out.coverageEvidence=Array.isArray(data.coverageEvidence)?data.coverageEvidence.map(value=>{
+   const v=record(value);return {...pick(v,['code','version','validFrom','validTo']),sources:Array.isArray(v.sources)?v.sources.filter((s):s is string=>typeof s==='string'&&s.length<=500):[]};
+  }):[];
+  return out;
+ }
  const out=pick(data,['assignmentId','complaintId','correctionId','eventId','eventType','taskId','approvalConclusion','statusBefore','statusAfter','dispatchStatusBefore','dispatchStatusAfter','fromStatus','toStatus','reportingStatus','supervisionStatus','supervisionStatusBefore','supervisionStatusAfter','scopeVersion','editVersion','itemCount','writtenBack','analysisEntered','analysisId','disposition','beforeCode','beforeName','afterCode','afterName','unchanged']);
  if(typeof data.fieldName==='string'&&valueFields.has(data.fieldName))Object.assign(out,projectAuditDetail({fieldName:data.fieldName,oldValue:data.oldValue,newValue:data.newValue}));
  // basis/reason/message and effectiveValues may embed source prose or a transport body.

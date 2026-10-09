@@ -12,6 +12,8 @@ import {
   listPendingComplaintSummaries,
   listPendingCorrections,
   rejectCorrection,
+  confirmLocationGroup,
+  locationCorrectionOptions,
 } from '../services/correctionService';
 import { closeComplaint } from '../services/closureService';
 
@@ -25,6 +27,13 @@ import { closeComplaint } from '../services/closureService';
 //   * 责任单位在纠偏里确认：编码走企业主数据校验，code + name 成对写回（见 assignmentService）；
 //   * 办结是**人的显式决定**，机器只在条件不满足时拦下（basis 必填）。
 export const correctionsRouter = Router();
+
+correctionsRouter.get('/complaints/:idOrNo/location-correction-options',async(req,res,next)=>{
+ try{ok(res,await locationCorrectionOptions(String(req.params.idOrNo),ctxOf(req)));}catch(err){next(err);}
+});
+correctionsRouter.post('/complaints/:idOrNo/location-corrections',async(req,res,next)=>{
+ try{ok(res,await confirmLocationGroup({...req.body,complaintId:String(req.params.idOrNo)},ctxOf(req)));}catch(err){next(err);}
+});
 
 /** 操作者上下文：用户来自 requireAuth 注入的 req.user，IP 来自 requestContext */
 function ctxOf(req: Request): MasterDataContext {

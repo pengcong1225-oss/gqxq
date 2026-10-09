@@ -190,7 +190,7 @@ test('older matching manual version cannot prove a later diverged legacy decisio
 test('decision rollback leaves values/version/resolution/correction untouched', async () => {
   db.reset(); db.failAudit = true;
   const before = structuredClone([db.complaint, db.corrections]);
-  await assert.rejects(confirmCorrection('COR-address', { expectedVersion: 1, newValue: 'D' }, ctx), /synthetic audit failure/);
+  await assert.rejects(confirmCorrection('COR-summary', { expectedVersion: 1, newValue: '人工摘要 D' }, ctx), /synthetic audit failure/);
   assert.deepEqual([db.complaint, db.corrections], before);
 });
 test('policy retains resolved values and holds uncertain or older source order', async () => {
@@ -204,30 +204,25 @@ test('policy retains resolved values and holds uncertain or older source order',
   assert.equal(decide({ ...input, resolution: 'unresolved', incomingOrder: 'older' }).action, 'hold_for_review');
   assert.equal(decide({ ...input, resolution: 'unresolved', incomingOrder: 'newer' }).action, 'apply_source');
 });
-test('summary maps to title and coordinate confirmation captures the pair', async () => {
+test('summary maps to title and changed single coordinate requires the atomic group', async () => {
   db.reset();
   await confirmCorrection('COR-summary', { expectedVersion: 1, newValue: '人工标题 D' }, ctx);
-  await confirmCorrection('COR-location_lng', { expectedVersion: 2, newValue: '110.5' }, ctx);
+  const before=structuredClone([db.complaint,db.corrections,db.versions]);
+  await assert.rejects(confirmCorrection('COR-location_lng', { expectedVersion: 2, newValue: '110.5' }, ctx),/位置组/);
+  assert.deepEqual([db.complaint,db.corrections,db.versions],before);
   const states = JSON.parse(db.complaint.effective_field_state);
   assert.equal(states.title.value, '人工标题 D');
-  assert.equal(states.location_lng.value, 110.5);
-  assert.equal(states.location_lat.value, 30);
-  assert.equal(states.location_lat.resolution, 'confirmed');
   await intakeAppeal(command());
   assert.equal(db.complaint.title, '人工标题 D');
-  assert.equal(db.complaint.location_lng, 110.5);
+  assert.equal(db.complaint.location_lng, 111);
   assert.equal(db.complaint.location_lat, 30);
-  assert.equal(db.complaint.edit_version, 3, 'source snapshots do not change effective version');
+  assert.equal(db.complaint.edit_version, 2, 'rejected separate coordinate and source snapshots do not change effective version');
 });
-test('district confirmation writes catalog name/code together and records the actual name', async () => {
+test('changed standalone district correction directs to B1-backed atomic group without writes', async () => {
   db.reset();
-  await confirmCorrection('COR-district_name', { expectedVersion: 1, newValue: '420504' }, ctx);
-  assert.equal(db.complaint.district_name, '点军区');
-  assert.equal(db.complaint.district_code, '420504');
-  assert.ok(db.versions.some(v => v[2] === 'district_name' && v[4] === '点军区'));
-  const states = JSON.parse(db.complaint.effective_field_state);
-  assert.equal(states.district_code.value, '420504');
-  assert.equal(states.district_name.value, '点军区');
+  const before=structuredClone([db.complaint,db.corrections,db.versions]);
+  await assert.rejects(confirmCorrection('COR-district_name', { expectedVersion: 1, newValue: '420504' }, ctx),/位置组/);
+  assert.deepEqual([db.complaint,db.corrections,db.versions],before);
 });
 test('legacy rejected and unknown statuses preserve effective values without fabricating decision snapshots', async () => {
   db.reset(); db.corrections[0].status = 'rejected';

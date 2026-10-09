@@ -30,6 +30,8 @@ export interface PlaceCandidate {
   address: string;
   lng: string;
   lat: string;
+  coordinateSystem:'unknown';
+  coordinateSource:string;
 }
 
 declare global {
@@ -56,7 +58,7 @@ function loadSdk(key: string): Promise<TiandituSdk> {
     script.src = 'https://api.tianditu.gov.cn/api?v=4.0&tk=' + encodeURIComponent(key);
     script.async = true;
     script.onload = () => window.T ? resolve(window.T) : reject(new Error('天地图 JS API 未能初始化'));
-    script.onerror = () => reject(new Error('天地图 JS API 加载失败，请检查网络、Key 权限与域名白名单'));
+    script.onerror = () => reject(new Error('地图暂时不可用，可继续人工录入地址和坐标'));
     if (!existing) document.head.appendChild(script);
   }).catch((error: unknown) => {
     sdkPromise = null;
@@ -113,7 +115,7 @@ export async function searchTiandituPlaces(
   return (data.pois ?? []).flatMap((poi) => {
     const [lng = '', lat = ''] = (poi.lonlat ?? '').split(',').map((part) => part.trim());
     if (validCoordinate(lng, -180, 180) === null || validCoordinate(lat, -90, 90) === null) return [];
-    return [{ name: poi.name?.trim() || poi.address?.trim() || term, address: poi.address?.trim() || poi.name?.trim() || term, lng, lat }];
+    return [{ name: poi.name?.trim() || poi.address?.trim() || term, address: poi.address?.trim() || poi.name?.trim() || term, lng, lat,coordinateSystem:'unknown' as const,coordinateSource:'天地图地址搜索候选，坐标系未核实' }];
   });
 }
 
@@ -121,7 +123,7 @@ export interface TiandituLocationPickerProps {
   address?: string | null;
   lng?: string | null;
   lat?: string | null;
-  onPick: (point: { lng: string; lat: string; addressSuggestion: string | null }) => void;
+  onPick: (point: { lng: string; lat: string; addressSuggestion: string | null;coordinateSystem:'unknown';coordinateSource:string }) => void;
   onUseAddressSuggestion?: (address: string) => void;
 }
 
@@ -154,7 +156,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
       return;
     }
     if (!key) {
-      setSearchError('未配置天地图 Key，无法搜索定位');
+      setSearchError('地址搜索暂时不可用，可继续人工录入地址和坐标');
       return;
     }
     setSearching(true);
@@ -173,18 +175,13 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
   const selectPlace = (place: PlaceCandidate) => {
     const sdk = window.T;
     const map = mapRef.current;
-    if (!sdk || !map) {
-      setSearchError('地图尚未加载完成，请稍后再选');
-      return;
-    }
     ++requestIdRef.current; // 废弃更早的地图点选反查，避免旧地址覆盖搜索结果。
-    const location = new sdk.LngLat(Number(place.lng), Number(place.lat));
-    if (markerRef.current) map.removeOverLay(markerRef.current);
-    const marker = new sdk.Marker(location);
-    map.addOverLay(marker);
-    markerRef.current = marker;
-    map.centerAndZoom(location, 16);
-    const point = { lng: place.lng, lat: place.lat, addressSuggestion: place.address };
+    if(sdk&&map){
+      const location = new sdk.LngLat(Number(place.lng), Number(place.lat));
+      if (markerRef.current) map.removeOverLay(markerRef.current);
+      const marker = new sdk.Marker(location);map.addOverLay(marker);markerRef.current = marker;map.centerAndZoom(location, 16);
+    }
+    const point = { lng: place.lng, lat: place.lat, addressSuggestion: place.address,coordinateSystem:place.coordinateSystem,coordinateSource:place.coordinateSource };
     setPicked(point);
     onPick(point);
     onUseAddressSuggestion?.(place.address);
@@ -196,7 +193,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
     let active = true;
     if (!key) {
       setLoading(false);
-      setError('未配置 VITE_TIANDITU_TK。请在本机 packages/web-admin/.env.local 中配置天地图浏览器 Key。');
+      setError('地图暂时不可用，可继续人工录入地址和坐标');
       return () => { active = false; };
     }
     void loadSdk(key).then((sdk) => {
@@ -219,7 +216,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
         const pickedLng = event.lnglat.getLng();
         const pickedLat = event.lnglat.getLat();
         if (!Number.isFinite(pickedLng) || !Number.isFinite(pickedLat)) return;
-        const point = { lng: pickedLng.toFixed(6), lat: pickedLat.toFixed(6), addressSuggestion: null as string | null };
+        const point = { lng: pickedLng.toFixed(6), lat: pickedLat.toFixed(6), addressSuggestion: null as string | null,coordinateSystem:'unknown' as const,coordinateSource:'天地图人工选点，坐标系未核实' };
         if (markerRef.current) map.removeOverLay(markerRef.current);
         const marker = new sdk.Marker(new sdk.LngLat(pickedLng, pickedLat));
         map.addOverLay(marker);
@@ -247,7 +244,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
     }).catch((cause: unknown) => {
       if (active) {
         setLoading(false);
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setError('地图暂时不可用，可继续人工录入地址和坐标');
       }
     });
     return () => { active = false; mapRef.current = null; markerRef.current = null; };

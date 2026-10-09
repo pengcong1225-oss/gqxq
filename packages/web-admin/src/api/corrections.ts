@@ -1,4 +1,11 @@
 import request from './request';
+import type {LocationCorrectionInput,LocationCorrectionOptions,LocationCorrectionResult} from '../types/locationCorrection';
+export async function confirmLocationGroup(body:LocationCorrectionInput):Promise<LocationCorrectionResult>{
+ return request.post<never,LocationCorrectionResult>('/complaints/'+encodeURIComponent(body.complaintId)+'/location-corrections',body);
+}
+export async function getLocationCorrectionOptions(complaintId:string):Promise<LocationCorrectionOptions>{
+ return request.get<never,LocationCorrectionOptions>('/complaints/'+encodeURIComponent(complaintId)+'/location-correction-options');
+}
 import type {
   CloseComplaintRequest,
   CloseComplaintResult,

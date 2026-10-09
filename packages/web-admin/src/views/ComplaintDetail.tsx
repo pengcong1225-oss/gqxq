@@ -116,6 +116,7 @@ export function sensitiveRuleScoreLabel(confidence: number | null, version: stri
 }
 
 const ComplaintDetail: React.FC = () => {
+  const correctionAccess=useWriteAccess('complaint.correct');
   const sourceAccess=useWriteAccess('complaint.source_sync');
   const documentAccess=usePermissionAccess('source_document.read');
   const [sourceDocument,setSourceDocument]=useState<import('../types/api').ComplaintSourceDocument|null>(null);
@@ -891,6 +892,8 @@ const ComplaintDetail: React.FC = () => {
                 description="无定位信息（该诉求未提供坐标，可在整体纠偏中补全）"
               />
             )}
+            <Typography.Paragraph type="secondary" style={{marginTop:8}}>坐标系：{detail.locationCoordinateSystem==='WGS84'?'WGS84（操作者声明）':'未核实'}；来源：{detail.locationCoordinateSource??'未留存可核实来源'}。网格：{detail.adminGridCode??'—'}；小区：{detail.communityCode??'—'}。</Typography.Paragraph>
+            {correctionAccess.can&&<Button onClick={()=>navigate('/address-correction?complaintId='+encodeURIComponent(detail.complaintId))}>前往位置组纠偏</Button>}
           </Card>
 
           <Card

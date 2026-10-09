@@ -317,6 +317,19 @@ export async function lockCorrection(tx: Tx, correctionId: string): Promise<Corr
   return row ?? null;
 }
 
+export const LOCATION_CORRECTION_FIELDS=['district_name','address','location_lng','location_lat'] as const;
+export const LOCATION_GROUP_COLUMNS=['district_code','district_name','address','location_lng','location_lat','admin_grid_code','community_code','location_coordinate_system','location_coordinate_source'] as const;
+export async function lockLocationCorrections(tx:Tx,complaintId:string):Promise<CorrectionRow[]> {
+ const [rows]=await tx.query('select '+SELECT_COLUMNS+' from correction_item where complaint_id = ? and field_name in (?,?,?,?) order by field_name, correction_id for update',[complaintId,...LOCATION_CORRECTION_FIELDS]);
+ return rows as CorrectionRow[];
+}
+/** Caller holds the complaint/group locks and appends the old decision to audit in the same Tx. */
+export async function decideLocationCorrection(tx:Tx,row:CorrectionRow,input:DecideCorrectionInput):Promise<void> {
+ const [result]=await tx.execute('update correction_item set status=?,new_value=?,basis=?,confirmer_id=?,confirmer_name=?,confirmed_at=? where correction_id=? and status=?',
+  [input.status,input.newValue,cut(input.basis,500),input.confirmerId,input.confirmerName,input.decidedAt,row.correctionId,row.status]);
+ if(Number((result as {affectedRows:number}).affectedRows)!==1)throw new Error('位置组纠偏决定并发变化');
+}
+
 export interface DecideCorrectionInput {
   status: Exclude<CorrectionItemStatus, 'pending'>;
   newValue: string | null;
