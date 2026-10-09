@@ -20,9 +20,9 @@ export function buildLegacyAnalysisWhere(filter:{districtCode?:string;businessTy
  for(const [name,column] of [['districtCode','district_code'],['businessType','business_type'],['enterpriseCode','enterprise_code']] as const)if(filter[name]!==undefined){parts.push(column+'=?');params.push(filter[name]);}
  return {text:parts.join(' and '),params};
 }
-export interface CoverageEvidence {coverage:GridCoverage;current:{enterpriseCode:string;districtCodes:(string|null)[]};original:{enterpriseCode:string;districtCodes:(string|null)[]}}
+export interface CoverageEvidence {coverage:GridCoverage;selectedBusinessDays:string[];current:{enterpriseCode:string;districtCodes:(string|null)[]};original:{enterpriseCode:string;districtCodes:(string|null)[]}}
 export interface CoverageDemand {enterpriseCode:string;businessType:string;dates:string[]}
-export const STATISTICS_COVERAGE_LIMITS=Object.freeze({populationGroups:200,versions:1000,snapshotBytes:4*1024*1024,adminReferences:4000,geometryVertices:100000});
+export const STATISTICS_COVERAGE_LIMITS=Object.freeze({populationGroups:200,versions:1000,snapshotBytes:4*1024*1024,adminReferences:4000,geometryVertices:100000,winnerDayChecks:2000000});
 /** Count the bounded data work conservatively; malformed geometry still remains C2 unknown evidence. */
 export function coverageVertexCount(coverage: GridCoverage): number {
     let total = 0;
@@ -61,14 +61,18 @@ export async function readStatisticsCoverage(db: SqlExecutor, access: AccessCont
         throw AppError.validation('统计覆盖企业与业务组合超过200，拒绝返回截断证据');
     const scope = buildGridScopeSql(access);
     const demanded = new Map(demands.map(d => [JSON.stringify([d.enterpriseCode, d.businessType]), d.dates]));
+    const demandedDaySets = new Map(demands.map(d => [JSON.stringify([d.enterpriseCode, d.businessType]), new Set(d.dates)]));
     const pairs = demands.map(() => '(?,?)').join(',');
     const intervals = ranges.map(() => '(r.valid_from<=? and (r.valid_to is null or r.valid_to>?))').join(' or ');
-    const params = [...scope.params, ...ranges.flatMap(r => [r.to, r.from]), ...demands.flatMap(d => [d.enterpriseCode, d.businessType])];
+    const candidateIntervals = intervals.replaceAll('r.', 'candidate_r.');
+    const params = [...scope.params, ...ranges.flatMap(r => [r.to, r.from]), ...ranges.flatMap(r => [r.to, r.from]), ...demands.flatMap(d => [d.enterpriseCode, d.businessType])];
     // First read only bounded metadata; reject oversized evidence before fetching its JSON.
-    const metadata = await rowsIn(db, 'select g.grid_code,g.version as current_version,ge.enterprise_code as current_enterprise_code,r.version,r.valid_from,r.valid_to,octet_length(cast(r.snapshot as char)) as snapshot_bytes ' +
+    // Candidate population limits grids, never sibling versions: the actual highest version must shadow older geometry even when unusable.
+    const metadata = await rowsIn(db, "select g.grid_code,g.version as current_version,ge.enterprise_code as current_enterprise_code,r.version,r.valid_from,r.valid_to,json_unquote(json_extract(r.snapshot,'$.enterpriseCode')) as population_enterprise,json_unquote(json_extract(r.snapshot,'$.businessType')) as population_business,octet_length(cast(r.snapshot as char)) as snapshot_bytes " +
         'from service_grid g left join grid_enterprise ge on ge.grid_code=g.grid_code join service_grid_revision r on r.grid_code=g.grid_code ' +
         'where ' + scope.sql + " and g.import_state<>'draft' and (" + intervals + ') ' +
-        "and (json_unquote(json_extract(r.snapshot,'$.enterpriseCode')),json_unquote(json_extract(r.snapshot,'$.businessType'))) in (" + pairs + ') ' +
+        'and exists (select 1 from service_grid_revision candidate_r where candidate_r.grid_code=g.grid_code and (' + candidateIntervals + ') ' +
+        "and (json_unquote(json_extract(candidate_r.snapshot,'$.enterpriseCode')),json_unquote(json_extract(candidate_r.snapshot,'$.businessType'))) in (" + pairs + ')) ' +
         'order by g.grid_code,r.version desc limit ' + (STATISTICS_COVERAGE_LIMITS.versions + 1), params);
     if (metadata.length > STATISTICS_COVERAGE_LIMITS.versions)
         throw AppError.validation('统计有效覆盖版本超过1000，拒绝返回截断证据');
@@ -76,8 +80,50 @@ export async function readStatisticsCoverage(db: SqlExecutor, access: AccessCont
         throw AppError.validation('统计覆盖快照超过4MiB，拒绝返回截断证据');
     if (!metadata.length)
         return [];
-    const keys = metadata.map(() => '(?,?)').join(',');
-    const revisions = await rowsIn(db, 'select grid_code,version,valid_from,valid_to,snapshot from service_grid_revision where (grid_code,version) in (' + keys + ')', metadata.flatMap(r => [r.grid_code, r.version]));
+    for (const r of metadata) {
+        r.from_day = date(r.valid_from);
+        r.to_day = r.valid_to == null ? null : date(r.valid_to);
+    }
+    const byGrid = new Map<string, typeof metadata>();
+    for (const r of metadata) {
+        const group = byGrid.get(String(r.grid_code)) ?? [];
+        group.push(r);
+        byGrid.set(String(r.grid_code), group);
+    }
+    const selectedDays = new Map<string, string[]>();
+    let winnerDayChecks = 0;
+    for (const versions of byGrid.values()) {
+        const distinctPopulations = new Set<string>();
+        const daySet = new Set<string>();
+        for (const r of versions) {
+            const population = JSON.stringify([r.population_enterprise, r.population_business]);
+            if (distinctPopulations.has(population)) continue;
+            distinctPopulations.add(population);
+            for (const day of demanded.get(population) ?? []) daySet.add(day);
+        }
+        const days = [...daySet].sort();
+        winnerDayChecks += days.length * versions.length;
+        if (winnerDayChecks > STATISTICS_COVERAGE_LIMITS.winnerDayChecks)
+            throw AppError.validation('统计最高覆盖版本日期选择超过2000000次，拒绝返回截断证据');
+        versions.sort((a, b) => BigInt(a.version as string) > BigInt(b.version as string) ? -1 : BigInt(a.version as string) < BigInt(b.version as string) ? 1 : 0);
+        for (const day of days) {
+            const winner = versions.find(r => (r.from_day as string) <= day && (r.to_day === null || (r.to_day as string) > day));
+            if (!winner)
+                continue;
+            const populationDays = demandedDaySets.get(JSON.stringify([winner.population_enterprise, winner.population_business]));
+            if (!populationDays?.has(day))
+                continue;
+            const key = JSON.stringify([String(winner.grid_code), String(winner.version)]);
+            const selected = selectedDays.get(key) ?? [];
+            selected.push(day);
+            selectedDays.set(key, selected);
+        }
+    }
+    const selectedMetadata = metadata.filter(r => selectedDays.has(JSON.stringify([String(r.grid_code), String(r.version)])));
+    if (!selectedMetadata.length)
+        return [];
+    const keys = selectedMetadata.map(() => '(?,?)').join(',');
+    const revisions = await rowsIn(db, 'select grid_code,version,valid_from,valid_to,snapshot from service_grid_revision where (grid_code,version) in (' + keys + ')', selectedMetadata.flatMap(r => [r.grid_code, r.version]));
     const byKey = new Map(metadata.map(r => [JSON.stringify([String(r.grid_code), String(r.version)]), r]));
     const candidates: {
         coverage: GridCoverage;
@@ -115,7 +161,7 @@ export async function readStatisticsCoverage(db: SqlExecutor, access: AccessCont
         const originalDistricts = coverage.adminGridCodes.map(code => districts.get(code) ?? null);
         if (!canAccessGridCoverage(access, currentEnterprise, currentDistricts) || !canAccessGridCoverage(access, coverage.enterpriseCode, originalDistricts))
             continue;
-        result.push({ coverage, current: { enterpriseCode: currentEnterprise, districtCodes: currentDistricts }, original: { enterpriseCode: coverage.enterpriseCode, districtCodes: originalDistricts } });
+        result.push({ coverage, selectedBusinessDays: selectedDays.get(JSON.stringify([coverage.code, coverage.version]))!, current: { enterpriseCode: currentEnterprise, districtCodes: currentDistricts }, original: { enterpriseCode: coverage.enterpriseCode, districtCodes: originalDistricts } });
     }
     return result;
 }

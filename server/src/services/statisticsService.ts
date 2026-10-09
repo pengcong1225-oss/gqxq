@@ -119,7 +119,7 @@ export async function captureStatisticsIn(db: SqlExecutor, q: StatisticsQuery, a
     }
     const demands: CoverageDemand[] = [...demandMap.values()].map(d => ({ ...d, dates: [...d.dates].sort() }));
     const coverages = await readStatisticsCoverage(db, access, demands, relevantRanges);
-    const prepared = coverages.map(e => ({ coverage: e.coverage, matches: createCoveragePointMatcher(e.coverage), vertices: coverageVertexCount(e.coverage) }));
+    const prepared = coverages.map(e => ({ coverage: e.coverage,selectedDays:new Set(e.selectedBusinessDays), matches: createCoveragePointMatcher(e.coverage), vertices: coverageVertexCount(e.coverage) }));
     const byPopulation = new Map<string, typeof prepared>();
     for (const c of prepared) {
         const key = JSON.stringify([c.coverage.enterpriseCode, c.coverage.businessType]);
@@ -141,10 +141,10 @@ export async function captureStatisticsIn(db: SqlExecutor, q: StatisticsQuery, a
             intervalChecks += group.length;
             if (intervalChecks > STATISTICS_MATCH_LIMITS.intervalChecks)
                 throw AppError.validation('统计覆盖日期匹配超过2000000次，拒绝返回截断结果');
-            // Preserve the existing highest-version selector if inconsistent legacy intervals overlap.
+            // Honor the pre-authorization actual-winner mask; rejected siblings cannot revive older evidence.
             const latestByGrid = new Map<string, (typeof prepared)[number]>();
             for (const c of group) {
-                if (c.coverage.validFrom! > row.businessDay! || c.coverage.validTo !== null && c.coverage.validTo <= row.businessDay!)
+                if (!c.selectedDays.has(row.businessDay!))
                     continue;
                 const previous = latestByGrid.get(c.coverage.code);
                 if (!previous || BigInt(c.coverage.version) > BigInt(previous.coverage.version))

@@ -40,5 +40,7 @@ test('coverage resource guards reject before fetching/truncating JSON and malfor
  await assert.rejects(()=>readStatisticsCoverage(fake([]) as any,access as any,Array.from({length:201},(_,i)=>({...demands[0],enterpriseCode:'E'+i})),ranges),/超过200/);assert.equal(calls,0);
  await assert.rejects(()=>readStatisticsCoverage(fake(Array.from({length:1001},()=>({snapshot_bytes:1}))) as any,access as any,demands,ranges),/超过1000/);assert.equal(calls,1);
  await assert.rejects(()=>readStatisticsCoverage(fake([{snapshot_bytes:4*1024*1024+1}]) as any,access as any,demands,ranges),/超过4MiB/);assert.equal(calls,2);
+ const siblingMetadata=Array.from({length:1000},(_,i)=>({grid_code:'G1',version:i+1,snapshot_bytes:1,valid_from:'2020-01-01',valid_to:null,population_enterprise:'E1',population_business:'water'}));
+ await assert.rejects(()=>readStatisticsCoverage(fake(siblingMetadata) as any,access as any,[{...demands[0],dates:Array.from({length:2001},(_,i)=>api.addDays('2021-01-01',i))}],ranges),/最高覆盖版本日期选择超过2000000/);assert.equal(calls,3,'winner work is rejected before fetching JSON');
  const bad:any={coordinateSystem:'WGS84',geometrySources:['synthetic'],adminGridCodes:['A'],geometry:{features:[{geometry:null}]}};assert.equal(coverageVertexCount(bad),0);assert.equal(createCoveragePointMatcher(bad)([1,1]),false);
 });

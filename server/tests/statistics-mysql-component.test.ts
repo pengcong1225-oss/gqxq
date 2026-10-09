@@ -144,6 +144,22 @@ test('D1 declared isolated real MySQL contract (not M0/canonical/restart)',{skip
     console.log('D1_BOUNDED_CAPACITY='+JSON.stringify({syntheticRows:3000,grids:12,businessDays:92,short:{queries:short.queries,coverageQueries:short.coverageQueries,elapsedMs:short.elapsedMs},long:{queries:long.queries,coverageQueries:long.coverageQueries,elapsedMs:long.elapsedMs},selectedRows:long.value.summary.total,coverageVersions:long.value.coverageEvidence.length}));
    }finally{await db('complaint').where('complaint_id','like','CAP%').delete();for(const table of ['service_grid_admin','service_grid_revision','grid_enterprise','service_grid'])await db(table).whereIn(table==='service_grid'?'grid_code':'grid_code',gridCodes).delete();}
   });
+  await t.test('overlapping legacy winners denied historical scope or mismatching population never revive older geometry',async overlap=>{
+   const codes=['SCOPEBLOCK','POPBLOCK'];
+   for(const code of codes){
+    await db('service_grid').insert({grid_code:code,grid_name:code,business_type:'water',version:3,import_state:'legacy'});await db('grid_enterprise').insert({grid_code:code,enterprise_code:'E1'});await db('service_grid_admin').insert({grid_code:code,version:3,admin_grid_code:'A1'});
+    const admin=code==='SCOPEBLOCK'?'A2':'A1';const high={...coverage(code),version:'2',validFrom:'2026-09-01',validTo:'2026-10-01',businessType:code==='POPBLOCK'?'gas':'water',adminGridCodes:[admin],geometry:{type:'FeatureCollection',features:[{type:'Feature',properties:{adminGridCode:admin},geometry:boundary}]},geometrySources:['DENIED_WINNER_CONTENT']};
+    await db('service_grid_revision').insert([{grid_code:code,version:1,valid_from:'2025-01-01',snapshot:JSON.stringify(coverage(code)),operator_id:'synthetic',created_at:new Date()},{grid_code:code,version:2,valid_from:'2026-09-01',valid_to:'2026-10-01',snapshot:JSON.stringify(high),operator_id:'synthetic',created_at:new Date()},{grid_code:code,version:3,valid_from:'2026-10-01',snapshot:JSON.stringify({...coverage(code),version:'3',validFrom:'2026-10-01'}),operator_id:'synthetic',created_at:new Date()}]);
+   }
+   try{
+    const restricted={...access,rules:[{kind:'restricted',enterpriseCodes:['E1'],districtCodes:['D1']}]};
+    const denied=await capture({enterpriseCode:'E1'},restricted);const mismatch=await capture({enterpriseCode:'E1'});
+    await overlap.test('denied highest historic scope shadows older authorized geometry',()=>assert.equal(denied.rows.find(r=>r.complaintId==='NOW0')!.grids.includes('SCOPEBLOCK'),false));
+    await overlap.test('mismatching highest population shadows older matching geometry',()=>assert.equal(mismatch.rows.find(r=>r.complaintId==='NOW0')!.grids.includes('POPBLOCK'),false));
+    const prior=denied.coverageEvidence.find(e=>e.coverage.code==='SCOPEBLOCK'&&e.coverage.version==='1')!;assert.ok(prior.selectedBusinessDays.includes('2025-09-10'));assert.equal(prior.selectedBusinessDays.includes('2026-09-10'),false);assert.equal(mismatch.rows.find(r=>r.complaintId==='NOW0')!.grids.includes('SCOPEBLOCK'),true,'authorized real highest geometry remains usable');
+    assert.equal(JSON.stringify(denied).includes('DENIED_WINNER_CONTENT'),false);assert.equal(mismatch.coverageEvidence.some(e=>e.coverage.code==='POPBLOCK'&&e.coverage.version==='2'),false);
+   }finally{for(const table of ['service_grid_admin','service_grid_revision','grid_enterprise','service_grid'])await db(table).whereIn('grid_code',codes).delete();}
+  });
   await t.test('migration preflights zero-mutation conflicts and once-seeds actual builtin capabilities',async()=>{
    const before=await db('analysis_record').where('analysis_id','OLD').first();await migration.up(db);assert.deepEqual(await db('analysis_record').where('analysis_id','OLD').first(),before);
    const roles=await db('platform_role_permission').where('permission_code','statistics.read');assert.ok(roles.length>0);await db('platform_role_permission').where({role_code:roles[0].role_code,permission_code:'statistics.read'}).delete();await migration.up(db);assert.equal((await db('platform_role_permission').where({role_code:roles[0].role_code,permission_code:'statistics.read'})).length,0);
