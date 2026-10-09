@@ -83,6 +83,7 @@ usersRouter.get('/users', requirePermission('system.users.manage'), async (req, 
 });
 
 const createSchema = z.object({
+  accountType: z.enum(['internal','enterprise','unknown']).optional(),
   username: usernameSchema,
   realName: realNameSchema,
   role: roleSchema,
@@ -101,11 +102,12 @@ usersRouter.post('/users', requirePermission('system.users.manage'), async (req,
 
 const updateSchema = z
   .object({
+    accountType: z.enum(['internal','enterprise','unknown']).optional(),
     realName: realNameSchema.optional(),
     role: roleSchema.optional(),
     status: z.union([z.literal(0), z.literal(1)]).optional(),
   })
-  .refine((v) => v.realName !== undefined || v.role !== undefined || v.status !== undefined, {
+  .refine((v) => v.accountType !== undefined || v.realName !== undefined || v.role !== undefined || v.status !== undefined, {
     message: '至少给出一个要改的字段（realName / role / status）',
   });
 

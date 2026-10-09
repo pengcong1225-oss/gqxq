@@ -47,6 +47,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     }
     const authorization = await resolveAuthorization(identity.userId);
     req.user = {
+      accountType: identity.accountType,
       id: identity.userId,
       username: identity.username,
       roles: authorization.roleCodes,

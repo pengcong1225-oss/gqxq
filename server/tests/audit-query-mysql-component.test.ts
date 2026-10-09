@@ -24,9 +24,10 @@ test('A6 isolated MySQL audit query component, not canonical baseline or restart
   await require('../migrations/20261009040000__user_object_scopes.js').up(db);
   const migration='../migrations/20261009050000__audit_query_indexes.js';if(existsSync(new URL(migration,import.meta.url)))await require(migration).up(db);
   const {COMPLAINT_COLUMNS}=await import('../src/repositories/complaintMapper');
-  const columns=[...new Set(COMPLAINT_COLUMNS.split(', ').map(c=>c.slice(2)).concat(['deleted']))];
+  const columns=[...new Set(COMPLAINT_COLUMNS.split(', ').map(c=>c.slice(2)).filter(c=>!['admin_grid_code','community_code','location_coordinate_system','location_coordinate_source'].includes(c)).concat(['deleted']))];
   const json=new Set(['source_payload','source_fields','effective_field_state']);const nums=new Set(['edit_version','deleted','is_sensitive','closed_in_system','analysis_included','overtime_flag']);
   await db.raw('create table complaint ('+columns.map(c=>c==='id'?'id bigint auto_increment primary key':c==='complaint_id'?'complaint_id varchar(64) unique':json.has(c)?c+' json':nums.has(c)?c+' bigint default '+(c==='edit_version'?1:0):c.endsWith('_at')?c+' datetime':c+' text').join(',')+') engine=InnoDB');
+ await require('../migrations/20261009120000__location_correction_group.js').up(db);
   await db.raw('create table dispatch_order (id bigint auto_increment primary key,assignment_id varchar(64) unique,complaint_id varchar(64),reporting_task_id varchar(128)) engine=InnoDB');
   await db.raw('create table analysis_record (id bigint auto_increment primary key,analysis_id varchar(64) unique,complaint_id varchar(64)) engine=InnoDB');
   await db.raw('create table business_event (id bigint auto_increment primary key,event_id varchar(128) unique,source_business_id varchar(128)) engine=InnoDB');
@@ -131,8 +132,10 @@ test('A6 isolated MySQL audit query component, not canonical baseline or restart
    for(const action of ['USER_CREATE','USER_UPDATE']){const q=await api('get','/audit-logs?actor=admin&action='+action);assert.equal(q.body.data.total,1);assert.equal(JSON.stringify(q.body).includes('Synthetic-Initial'),false);}
    await db('platform_role_permission').insert({role_code:'auditor',permission_code:'complaint.correct'});
    await db('correction_item').insert([{correction_id:'COR1',complaint_id:'C1',field_name:'address',old_value:'旧地址',status:'pending',created_at:stamp},{correction_id:'COR2',complaint_id:'C1',field_name:'title',old_value:'RAW_CONTENT_SECRET',status:'pending',created_at:stamp}]);
-   const correction=await api('post','/corrections/COR1/confirm','scoped',{expectedVersion:1,newValue:'人工核实地址',basis:'synthetic'});assert.equal(correction.status,200);
-   const q=await api('get','/audit-logs?actor=scoped&businessNo=NO-C1&action=CORRECTION_CONFIRM');assert.equal(q.body.data.total,2);assert.equal(q.body.data.content[0].detail.newValue,'人工核实地址');
+   // C2 requires location-group submission for changed address/coordinate facts.
+   // This A6-only fixture confirms the existing address without bypassing C2.
+   const correction=await api('post','/corrections/COR1/confirm','scoped',{expectedVersion:1,newValue:'旧地址',basis:'synthetic'});assert.equal(correction.status,200);
+   const q=await api('get','/audit-logs?actor=scoped&businessNo=NO-C1&action=CORRECTION_CONFIRM');assert.equal(q.body.data.total,2);assert.equal(q.body.data.content[0].detail.newValue,'旧地址');
    assert.equal(JSON.stringify(q.body).includes('SECRET'),false);const row=await db('operation_audit_log').where('audit_id','C1A').first();const detail=typeof row.detail==='string'?JSON.parse(row.detail):row.detail;assert.equal(detail.password,'PASSWORD_SECRET','stored audit remains intact');
   });
   await t.test('incremental query indexes are applied and rerunning never restores revoked permissions',async()=>{

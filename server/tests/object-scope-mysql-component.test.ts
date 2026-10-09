@@ -21,11 +21,13 @@ test('A2 isolated MySQL object scope component, not canonical M0 acceptance',{sk
  // Existing enabled legacy user receives explicit migration bootstrap exactly once.
  await db('app_user').insert({user_id:'legacy',username:'legacy',password_hash:'unused',real_name:'虚构',roles:'["handler"]',permissions:'[]'});
  await require('../migrations/20261009040000__user_object_scopes.js').up(db);
+ await require('../migrations/20261009130000__account_identity_type.js').up(db);
  const {COMPLAINT_COLUMNS}=await import('../src/repositories/complaintMapper');
- const columns=[...new Set(COMPLAINT_COLUMNS.split(', ').map(c=>c.slice(2)).concat(['source_payload_hash','source_synced_at','deleted']))];
+ const columns=[...new Set(COMPLAINT_COLUMNS.split(', ').map(c=>c.slice(2)).filter(c=>!['admin_grid_code','community_code','location_coordinate_system','location_coordinate_source'].includes(c)).concat(['source_payload_hash','source_synced_at','deleted']))];
  const json=new Set(['source_payload','source_fields','effective_field_state']);
  const nums=new Set(['edit_version','deleted','is_sensitive','closed_in_system','analysis_included','overtime_flag']);
  await db.raw('create table complaint ('+columns.map(c=>c==='id'?'id bigint auto_increment primary key':c==='complaint_id'?'complaint_id varchar(64) unique':json.has(c)?c+' json':nums.has(c)?c+' bigint default '+(c==='edit_version'?1:0):c.endsWith('_at')?c+' datetime':c+' text').join(',')+') engine=InnoDB');
+ await require('../migrations/20261009120000__location_correction_group.js').up(db);
  const {ORDER_SELECT_COLUMNS}=await import('../src/repositories/dispatchRepo');
  const dispatchColumns=[...new Set([...ORDER_SELECT_COLUMNS.matchAll(/\bd\.(\w+)/g)].map(m=>m[1]).concat(['active_complaint_id','reporting_item_id','last_event_sequence']))];
  await db.raw('create table dispatch_order ('+dispatchColumns.map(c=>c==='id'?'id bigint primary key auto_increment':c.endsWith('_at')||c==='deadline'?c+' datetime':c==='template_version'||c==='approval_definition_version'?c+' bigint':c+' varchar(255)').join(',')+', unique key uk_assignment(assignment_id), key idx_task(reporting_task_id)) engine=InnoDB');

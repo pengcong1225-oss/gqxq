@@ -24,6 +24,7 @@ export interface FieldError {
 // Current authenticated identity plus effective authorization loaded for this request.
 // Permission fields are not trusted JWT claims; requireAuth always loads them from DB.
 export interface AuthUser {
+  accountType?: import('../types/api').AccountType;
   /** app_user.user_id */
   id: string;
   username: string;

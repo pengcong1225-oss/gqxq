@@ -1,3 +1,4 @@
+import {prepareFollowupAuditFixture} from './helpers/followupAuditFixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createRequire} from 'node:module';
@@ -84,7 +85,7 @@ test('B3 guarded real SQL component with explicitly declared legacy contract',{s
  const api=await request(app).get('/grids');assert.equal(api.status,200);assert.ok(api.body.data.content.every((x:any)=>x.code!=='MULTI'));
  await db('complaint').insert({complaint_id:'MULTI',complaint_no:'collision',enterprise_code:'E1',district_code:'D1'});
  await db('operation_audit_log').insert([{audit_id:'COLLISION',biz_type:'service_grid',biz_id:'MULTI',action:'SERVICE_GRID_SAVE',result:'success',created_at:new Date(),detail:JSON.stringify({code:'SHAPE',secret:'SECRET'})},{audit_id:'UNKNOWN',biz_type:'service_grid',biz_id:'SHAPE',action:'LOGIN',result:'success',created_at:new Date(),detail:'{}'}]);
- const {AuditQueryService}=await import('../src/services/auditQueryService');const query=new AuditQueryService();const access={...scoped.access,permissionCodes:['system.audit.read']};await assert.rejects(()=>query.detail('COLLISION',access),{status:404});await assert.rejects(()=>query.detail('UNKNOWN',{...all.access,permissionCodes:['system.audit.read']}),{status:404});
+ await prepareFollowupAuditFixture(db);const {AuditQueryService}=await import('../src/services/auditQueryService');const query=new AuditQueryService();const access={...scoped.access,permissionCodes:['system.audit.read']};await assert.rejects(()=>query.detail('COLLISION',access),{status:404});await assert.rejects(()=>query.detail('UNKNOWN',{...all.access,permissionCodes:['system.audit.read']}),{status:404});
  const logs=await query.list({module:'service_grid'},{page:1,size:100},access);assert.ok(logs.total>0);assert.equal(JSON.stringify(logs).includes('SECRET'),false);assert.ok(logs.content.every(x=>x.bizId!=='MULTI'));
  const admins=await query.list({module:'admin_grid'},{page:1,size:100},access);assert.ok(admins.total>0);assert.ok(admins.content.every(x=>x.bizId==='A1'));
  });

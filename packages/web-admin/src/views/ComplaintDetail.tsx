@@ -1,4 +1,5 @@
 import ComplaintCategoryEditor from '../components/ComplaintCategoryEditor';
+import ComplaintFollowups from '../components/ComplaintFollowups';
 import SourceProcessTable from '../components/SourceProcessTable';
 import {useWriteAccess,usePermissionAccess} from '../stores/roleAccess';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -703,6 +704,7 @@ const ComplaintDetail: React.FC = () => {
           </Card>
 
           <SourceProcessTable complaintId={detail.complaintId}/>
+          <ComplaintFollowups complaintId={detail.complaintId}/>
           <Card title="本平台处理记录" style={{ marginTop: 16 }}>
             {timelineError && (
               <Alert

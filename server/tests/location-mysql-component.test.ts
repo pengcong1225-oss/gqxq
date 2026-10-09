@@ -1,3 +1,4 @@
+import {prepareFollowupAuditFixture} from './helpers/followupAuditFixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createRequire} from 'node:module';
@@ -97,7 +98,7 @@ test('C2 real SQL location-group component on explicitly declared legacy contrac
    assert.equal((await request(app).post('/corrections/api-address/confirm').send({expectedVersion:1,newValue:'separate change'})).status,400);assert.equal((await request(app).post('/complaints/api/location-corrections').send(input('api'))).status,200);
   });
   await t.test('A6 links new group action to actual complaint scope and exposes only approved typed details',async()=>{
-   const {queryAuditLogs}=await import('../src/repositories/auditLogRepo');const {projectAuditLog}=await import('../src/services/auditQueryService');
+   await prepareFollowupAuditFixture(db);const {queryAuditLogs}=await import('../src/repositories/auditLogRepo');const {projectAuditLog}=await import('../src/services/auditQueryService');
    const rows=await queryAuditLogs(pool,{action:'CORRECTION_LOCATION_GROUP'},{page:1,size:100},scoped.access);assert.ok(rows.total>0);const row=rows.content.find((r:any)=>r.biz_id==='atomic')!;assert.equal(row.business_no,'LOCAL-atomic');const projected=projectAuditLog(row);assert.equal(projected.detail.validationDate,'2026-10-09');assert.ok(Array.isArray(projected.detail.changes));assert.equal(JSON.stringify(projected).includes('basisBefore'),false);
    await db('complaint').where('complaint_id','atomic').update({district_code:'D2'});const denied=await queryAuditLogs(pool,{action:'CORRECTION_LOCATION_GROUP',businessNo:'LOCAL-atomic'},{page:1,size:100},scoped.access);assert.equal(denied.total,0);await db('complaint').where('complaint_id','atomic').update({district_code:'D1'});
    await db('business_event').insert({event_id:'atomic',source_business_id:'hidden'});await db('operation_audit_log').insert({audit_id:'collision',biz_type:'business_event',biz_id:'atomic',action:'CORRECTION_LOCATION_GROUP',result:'success',created_at:new Date()});assert.equal((await queryAuditLogs(pool,{action:'CORRECTION_LOCATION_GROUP',businessNo:'LOCAL-atomic'},{page:1,size:100},scoped.access)).content.some((r:any)=>r.audit_id==='collision'),false);

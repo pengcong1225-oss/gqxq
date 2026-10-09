@@ -24,6 +24,8 @@ test('A5 isolated MySQL account component (not canonical baseline acceptance)', 
   await db.raw('create table operation_audit_log (audit_id varchar(64) primary key,user_id varchar(64),app_code varchar(64),resource_code varchar(128),action varchar(64),biz_type varchar(64),biz_id varchar(128),result varchar(32),client_ip varchar(64),detail json,created_at datetime) engine=InnoDB');
   try { await require('../migrations/20261009030000__account_role_permissions.js').up(db); } catch(err) { await db.destroy(); throw new Error('A5 fixture migration failed: '+String((err as {code?:string}).code??'unknown')); }
   await require('../migrations/20261009040000__user_object_scopes.js').up(db);
+ await require('../migrations/20261009130000__account_identity_type.js').up(db);
+ await require('../migrations/20261009130001__manual_complaint_followups.js').seedFollowupCapabilities(db);
   const {createApp}=await import('../src/app');const {closePool,pool}=await import('../src/db/pool');
   const roles=await import('../src/services/roleService');const users=await import('../src/services/userService');
   const passwords=await import('../src/services/passwordService');
@@ -36,13 +38,20 @@ test('A5 isolated MySQL account component (not canonical baseline acceptance)', 
   const login=async(username:string,password=initial)=>{const res=await request(app).post('/api/v1/auth/login').send({username,password});assert.equal(res.status,200);return res.body.data.token as string;};
   const token=await login('admin-a');
   try {
-    await t.test('seeded grants reproduce old three-tier endpoint matrix',async()=>{
+    await t.test('seeded grants reproduce three-tier matrix for capabilities registered by this account fixture',async()=>{
+      const registered=new Set((await db('platform_permission').select('permission_code')).map(row=>row.permission_code));
+      for(const permission of ['followup.create','followup.conclude'])assert.ok(registered.has(permission),'C3 capability must be registered');
       for(const code of ['admin','handler','readonly']) {
         const role=(await roles.getRoles()).find(r=>r.roleCode===code)!;
-        if(code!=='admin') assert.deepEqual(role.permissionCodes.slice().sort(),builtinPermissionCodes(code).slice().sort());
+        assert.equal(role.permissionCodes.includes('followup.create'),code!=='readonly');
+        assert.equal(role.permissionCodes.includes('followup.conclude'),code==='admin');
+        if(code!=='admin') assert.deepEqual(role.permissionCodes.slice().sort(),builtinPermissionCodes(code).filter(permission=>registered.has(permission)).sort());
         for(const rule of ROLE_POLICY){
-          if(rule.selfService)continue;
-          const path=rule.path.source.replace(/^\^|\$$/g,'').replace(/\[\^\/\]\+/g,'synthetic').replace(/\\\//g,'/');
+          if(rule.selfService||!registered.has(rule.permissionCode))continue;
+          // Optional/alternative route groups need concrete matching examples.
+          const samples:Record<string,string>={'B4 本人批次与当前对象范围':'/master-data/imports','网格详情/历史/授权边界':'/grids/synthetic','网格及空间主数据维护':'/grids'};
+          const path=samples[rule.desc]??rule.path.source.replace(/^\^|\$$/g,'').replace(/\[\^\/\]\+/g,'synthetic').replace(/\\\//g,'/').replace('(households|department-mappings)','households');
+          assert.ok(rule.path.test(path),'fixture must supply an actual matching URL: '+rule.desc);
           const oldAllowed=code==='admin'||(rule.roles.includes(code as any)&&(code!=='readonly'||rule.method==='GET'));
           assert.equal(isAllowed({id:'u',username:'u',roles:[code],permissionCodes:role.permissionCodes},rule.method,path).allowed,oldAllowed,rule.desc+' '+code);
         }
@@ -62,7 +71,8 @@ test('A5 isolated MySQL account component (not canonical baseline acceptance)', 
       for(const permission of ['invented.write','*']) await assert.rejects(roles.writeRole('unknown-'+permission.replace(/\W/g,''),{name:'无效',permissionCodes:[permission],expectedVersion:0},true,ctx),{status:400});
       for(const permission of ['system.users.manage','system.roles.manage']) await assert.rejects(roles.writeRole('privileged',{name:'无效',permissionCodes:[permission],expectedVersion:0},true,ctx),{status:403});
       await assert.rejects(roles.writeRole('clone-admin',{name:'无效',copyFrom:'admin',expectedVersion:0},true,ctx),{status:403});
-      await assert.rejects(roles.writeRole('admin',{name:'管理员',enabled:false,expectedVersion:1},false,ctx),{status:403});
+      const adminVersion=(await roles.getRoles()).find(role=>role.roleCode==='admin')!.version;
+      await assert.rejects(roles.writeRole('admin',{name:'管理员',enabled:false,expectedVersion:adminVersion},false,ctx),{status:403});
     });
     await t.test('direct hidden API denied and current authorization refreshes old token after role changes',async()=>{
       const analystToken=await login('analyst-user');

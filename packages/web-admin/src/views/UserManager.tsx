@@ -47,6 +47,7 @@ function fmt(iso: string | null): React.ReactNode {
 }
 
 interface CreateForm {
+  accountType?: import('../types/api').AccountType;
   username: string;
   realName: string;
   role: AppRole;
@@ -54,6 +55,7 @@ interface CreateForm {
 }
 
 interface EditForm {
+  accountType?: import('../types/api').AccountType;
   realName: string;
   role: AppRole;
   status: 0 | 1;
@@ -167,7 +169,7 @@ const UserManager: React.FC = () => {
 
   const openEdit = (row: UserAdminItem) => {
     setEditing(row);
-    editForm.setFieldsValue({ realName: row.realName, role: row.roles[0], status: row.status });
+    editForm.setFieldsValue({ realName: row.realName, role: row.roles[0], status: row.status, accountType: row.accountType });
   };
 
   const submitEdit = async () => {
@@ -206,6 +208,7 @@ const UserManager: React.FC = () => {
   const columns = [
     { title: '用户名', dataIndex: 'username', width: 160 },
     { title: '姓名', dataIndex: 'realName', width: 120 },
+    {title:'账号类型',dataIndex:'accountType',render:(value:import('../types/api').AccountType)=>({internal:'内部',enterprise:'企业',unknown:'未确认'}[value]??'未确认')},
     {
       title: '角色',
       dataIndex: 'roleNames',
@@ -411,6 +414,7 @@ const UserManager: React.FC = () => {
           >
             <Input placeholder="登录用户名，如 zhangsan" autoComplete="off" />
           </Form.Item>
+          <Form.Item name="accountType" label="账号类型"><Select placeholder="未填写则未确认" options={[{value:'internal',label:'内部'},{value:'enterprise',label:'企业'},{value:'unknown',label:'未确认'}]} /></Form.Item>
           <Form.Item name="realName" label="姓名" rules={[{ required: true, message: '请输入真实姓名' }, { max: 64 }]}>
             <Input placeholder="真实姓名" />
           </Form.Item>
@@ -438,6 +442,7 @@ const UserManager: React.FC = () => {
         width={520}
       >
         <Form form={editForm} layout="vertical" disabled={submitting}>
+          <Form.Item name="accountType" label="账号类型"><Select placeholder="未填写则未确认" options={[{value:'internal',label:'内部'},{value:'enterprise',label:'企业'},{value:'unknown',label:'未确认'}]} /></Form.Item>
           <Form.Item name="realName" label="姓名" rules={[{ required: true, message: '请输入真实姓名' }, { max: 64 }]}>
             <Input />
           </Form.Item>

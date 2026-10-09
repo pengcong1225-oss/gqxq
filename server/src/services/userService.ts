@@ -83,6 +83,7 @@ export async function updateUserScope(userId:string,rules:ScopeRule[],expectedVe
 }
 
 export interface CreateUserInput {
+  accountType?: import('../types/api').AccountType;
   username: string;
   realName: string;
   role: string;
@@ -95,6 +96,7 @@ export interface CreateUserInput {
  * 兜住并发竞态 —— 捕获 ER_DUP_ENTRY 后同样回 409，绝不退化成 500。
  */
 export async function createUser(input: CreateUserInput, ctx: OperatorContext): Promise<UserAdminItem> {
+  validateAccountType(input.accountType);
   validatePassword(input.password);
   const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
   const roles: string[] = [input.role];
@@ -118,6 +120,7 @@ export async function createUser(input: CreateUserInput, ctx: OperatorContext): 
       realName: input.realName,
       roles,
       permissions,
+      accountType: input.accountType,
       now,
     });
     await writeUserAudit(tx, ctx, ACTION_USER_CREATE, userId, {
@@ -125,6 +128,7 @@ export async function createUser(input: CreateUserInput, ctx: OperatorContext): 
       realName: input.realName,
       role: input.role,
       status: 1,
+      accountType: input.accountType ?? 'unknown',
       // 口令不进审计：只记"设过初始口令"这个事实
       passwordSet: true,
     });
@@ -147,6 +151,7 @@ export async function createUser(input: CreateUserInput, ctx: OperatorContext): 
 }
 
 export interface UpdateUserInput {
+  accountType?: import('../types/api').AccountType;
   realName?: string;
   role?: string;
   status?: 0 | 1;
@@ -171,6 +176,7 @@ export async function updateUserByAdmin(
   input: UpdateUserInput,
   ctx: OperatorContext
 ): Promise<UpdateUserResult> {
+  validateAccountType(input.accountType);
   const isSelf = ctx.userId === targetUserId;
   return withTransaction(async (tx: Tx): Promise<UpdateUserResult> => {
     await lockAuthorization(tx);
@@ -201,6 +207,7 @@ export async function updateUserByAdmin(
     }
 
     const changed: string[] = [];
+    if (input.accountType !== undefined && input.accountType !== target.accountType) changed.push('accountType');
     if (input.realName !== undefined && input.realName !== target.realName) changed.push('realName');
     if (input.role !== undefined && !(target.roles.length === 1 && target.roles[0] === input.role)) {
       changed.push('roles');
@@ -209,6 +216,7 @@ export async function updateUserByAdmin(
 
     if (changed.length > 0) {
       await updateUser(tx, targetUserId, {
+        accountType: input.accountType,
         realName: input.realName,
         roles: input.role === undefined ? undefined : [input.role],
         status: input.status,
@@ -217,8 +225,9 @@ export async function updateUserByAdmin(
       await bumpAuthorization(tx);
       await writeUserAudit(tx, ctx, ACTION_USER_UPDATE, targetUserId, {
         username: target.username,
-        before: { realName: target.realName, roles: target.roles, status: target.status },
+        before: { realName: target.realName, roles: target.roles, status: target.status, accountType: target.accountType },
         after: {
+          accountType: input.accountType ?? target.accountType,
           realName: input.realName ?? target.realName,
           roles: input.role === undefined ? target.roles : [input.role],
           status: input.status ?? target.status,
@@ -233,6 +242,8 @@ export async function updateUserByAdmin(
     return {user:{...toItem(row),roleNames:row.roles.map(code=>role?.roleCode===code?role.name:code)},changed};
   });
 }
+
+function validateAccountType(value:unknown):void {if(value!==undefined&&(typeof value!=='string'||!['internal','enterprise','unknown'].includes(value)))throw AppError.validation('账号类型不合法');}
 
 /**
  * 用户管理自身的审计（目标 5「审计到人」）。

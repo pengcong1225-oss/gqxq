@@ -407,6 +407,7 @@ export interface DashboardOverview {
 /* ==================== 鉴权（方案 §5.9） ==================== */
 
 export interface UserInfo {
+  accountType: AccountType;
   /** 数值主键 */
   id: number;
   /** app_user.user_id 业务键 */
@@ -431,6 +432,7 @@ export type AppRole = string;
 
 /** 用户管理列表项：**接口永不返回口令**（仓储层不 select password_hash） */
 export interface UserAdminItem {
+  accountType: AccountType;
   userId: string;
   username: string;
   realName: string;
@@ -456,6 +458,7 @@ export type UserAdminListResult = Paged<UserAdminItem>;
 
 /** POST /users：初始口令只在请求里出现一次，响应不回显 */
 export interface CreateUserRequest {
+  accountType?: AccountType;
   username: string;
   realName: string;
   role: AppRole;
@@ -464,6 +467,7 @@ export interface CreateUserRequest {
 
 /** PATCH /users/:userId：未传的字段不动。没有 DELETE —— 禁用代替删除 */
 export interface UpdateUserRequest {
+  accountType?: AccountType;
   realName?: string;
   role?: AppRole;
   status?: 0 | 1;
@@ -908,3 +912,13 @@ export interface SourceProcessResult {
   complaintId:string; nodes:SourceProcessRevision[]; revisions:SourceProcessRevision[]; complete:boolean;
   cutoffAt:string|null; state:'unavailable'|'partial'|'complete'|'error'; syncError:string|null; missingTimeNodeIds:string[];
 }
+
+// C3 local facts and supervisor conclusions are independent of Q5 formal satisfaction.
+export type AccountType = 'internal'|'enterprise'|'unknown';
+export interface FollowupFacts {contacted:boolean;occurredAt:string;evaluationCode:'satisfied'|'dissatisfied'|null;dissatisfactionReason:string|null;notes:string|null}
+export interface FollowupInput extends FollowupFacts {complaintId:string;requestId:string}
+export interface FollowupView extends FollowupFacts {followupId:string;complaintId:string;ownerId:string;version:number;order:number;action:'create'|'revise'|'conclude';operatorId:string;operatorName:string;reason:string|null;createdAt:string;revisedAt:string;conclusion:string|null;concludedBy:string|null;concludedAt:string|null}
+export interface SourceEvaluationView {state:'available'|'unavailable'|'withheld';label:string|null;reason:string|null;provenance:string}
+export interface ComplaintFollowupsView {complaintId:string;records:FollowupView[];history:FollowupView[];sourceEvaluation:SourceEvaluationView;formalEvaluation:{state:'unavailable';reason:string}}
+export interface FollowupRevisionInput extends FollowupFacts {requestId:string;expectedVersion:number;reason:string}
+export interface FollowupConclusionInput {requestId:string;expectedVersion:number;conclusion:string;reason:string}

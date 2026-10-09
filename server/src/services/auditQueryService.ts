@@ -34,7 +34,7 @@ function pick(value:unknown,keys:readonly string[]):Record<string,unknown> {
 }
 const codeArray=(v:unknown):string[]=>Array.isArray(v)?v.filter((x):x is string=>typeof x==='string'&&/^[a-zA-Z0-9_.-]{1,64}$/.test(x)):[];
 function accountSnapshot(value:unknown,role:boolean):Record<string,unknown> {
- const data=record(value);const projected=pick(data,role?['roleCode','name','enabled','builtIn','version']:['realName','status','scopeVersion']);
+ const data=record(value);const projected=pick(data,role?['roleCode','name','enabled','builtIn','version']:['realName','status','scopeVersion','accountType']);
  if(Array.isArray(data.roles))projected.roles=codeArray(data.roles);
  if(role&&Array.isArray(data.permissionCodes))projected.permissionCodes=data.permissionCodes.filter((v):v is string=>typeof v==='string'&&isPermissionCode(v));
  if(Array.isArray(data.rules))projected.rules=data.rules.flatMap(value=>{
@@ -46,6 +46,7 @@ const valueFields=new Set(['address','district_code','district_name','location_l
 /** All responses use action-specific allowlists; stored audit evidence is untouched. */
 function safeDetail(row:AuditRow):Record<string,unknown> {
  const data=record(row.detail);const action=String(row.action??'');
+ if(row.biz_type==='manual_followup'&&['FOLLOWUP_CREATE','FOLLOWUP_REVISE','FOLLOWUP_CONCLUDE'].includes(action))return pick(data,['followupId','version','operation','contacted','evaluationCode']);
  if(row.biz_type==='master_import'&&['MASTER_IMPORT_COMMIT','MASTER_IMPORT_FAILED','MASTER_IMPORT_ERRORS_DOWNLOAD'].includes(action))return pick(data,['batchId','kind','templateVersion','previewVersion','created','updated','unchanged','state']);
  if(row.biz_type==='http'&&action==='ACCESS_DENIED'){
   const reason=String(data.reason??'');
@@ -55,9 +56,9 @@ function safeDetail(row:AuditRow):Record<string,unknown> {
   const out=pick(data,['username','requestId']);if(['unknown_user','bad_password','disabled_user'].includes(String(data.reason)))out.reason=data.reason;return out;
  }
  if(row.biz_type==='user'&&['USER_CREATE','USER_UPDATE','USER_SCOPE_UPDATE','PASSWORD_RESET','PASSWORD_CHANGE'].includes(action)||row.biz_type==='role'&&['ROLE_CREATE','ROLE_UPDATE'].includes(action)){
-  const out=pick(data,['username','realName','role','status','passwordSet','forceChange','targetUserId','operator']);
+  const out=pick(data,['username','realName','role','status','accountType','passwordSet','forceChange','targetUserId','operator']);
   for(const key of ['before','after'])if(data[key]!==undefined)out[key]=accountSnapshot(data[key],row.biz_type==='role');
-  if(Array.isArray(data.changed))out.changed=data.changed.filter(v=>['realName','roles','status'].includes(String(v)));
+  if(Array.isArray(data.changed))out.changed=data.changed.filter(v=>['realName','roles','status','accountType'].includes(String(v)));
   return out;
  }
  if(row.biz_type==='sensitive_word'){
