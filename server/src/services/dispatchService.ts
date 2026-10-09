@@ -40,7 +40,7 @@ import {
   updatePushSuccess,
   type LockedComplaint,
 } from '../repositories/dispatchRepo';
-import { insertAssignment, updateComplaintEnterprise } from '../repositories/assignmentRepo';
+import { assertTargetEnterprise, confirmResponsibleEnterpriseInTx } from './assignmentService';
 import { GQXQ_APP_CODE } from './intakeService';
 import { parseShanghaiBoundary } from './complaintService';
 
@@ -231,8 +231,8 @@ export async function createDispatch(
     return value;
   };
   const complaintIdOrNo = requiredField('complaintId', 64);
-  const targetEnterpriseCode = requiredField('targetEnterpriseCode', 64);
-  const targetEnterpriseName = requiredField('targetEnterpriseName', 255);
+  const targetEnterpriseCodeInput = requiredField('targetEnterpriseCode', 64);
+  const targetEnterpriseNameInput = requiredField('targetEnterpriseName', 255);
   if (fieldErrors.length > 0) {
     throw AppError.validation('必填参数缺失或为空：' + fieldErrors.map((e) => e.field).join(', '), fieldErrors);
   }
@@ -255,31 +255,27 @@ export async function createDispatch(
     await withTransaction(async (tx) => {
       const complaint = await lockComplaintByAnyKey(tx, complaintIdOrNo);
       if (!complaint) throw AppError.notFound('诉求不存在');
+      const target = await assertTargetEnterprise(tx, targetEnterpriseCodeInput, targetEnterpriseNameInput,
+        { code: 'targetEnterpriseCode', name: 'targetEnterpriseName' });
+      const targetEnterpriseCode = target.code;
+      const targetEnterpriseName = target.name;
 
       // 交办前必须明确责任单位：请求必须给出，且诉求若此前没有责任单位则本次补上
       if (!hasEnterprise(complaint)) {
-        const logId = await insertAssignment(tx, {
+        await confirmResponsibleEnterpriseInTx(tx, {
           complaintId: complaint.complaint_id,
-          beforeCode: null,
-          beforeName: null,
-          afterCode: targetEnterpriseCode,
-          afterName: targetEnterpriseName,
-          matchType: 'manual',
-          reason: '创建交办时首次明确责任单位',
-          operatorId: ctx.userId,
-          operatorName: ctx.userName,
-          createdAt: receivedAt,
-        });
-        await updateComplaintEnterprise(tx, {
-          complaintId: complaint.complaint_id,
+          complaintNo: complaint.complaint_no,
+          currentEnterpriseCode: complaint.enterprise_code,
+          currentEnterpriseName: complaint.enterprise_name,
+          currentSupervisionStatus: complaint.supervision_status,
+        }, {
           enterpriseCode: targetEnterpriseCode,
           enterpriseName: targetEnterpriseName,
-          matchedAt: receivedAt,
-          matchReason: '创建交办时首次明确责任单位',
-          supervisionStatus: complaint.supervision_status === 'pending_match' ? 'none' : complaint.supervision_status,
-          updatedAt: receivedAt,
+          reason: '创建交办时首次明确责任单位',
+          ctx,
+          now: receivedAt,
+          source: 'dispatch',
         });
-        void logId;
       }
 
       const assignmentId = await allocateBizNo(tx, 'assignment', 'ASGN', isoDate);

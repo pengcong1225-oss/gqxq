@@ -432,7 +432,7 @@ function isDuplicateKey(err: unknown): boolean {
   return e?.code === 'ER_DUP_ENTRY' || e?.errno === 1062;
 }
 
-/** 先按 task_id（G3 推送成功后回填的 reporting_task_id）找，再退回按 source_business_id 找 */
+/** v1 按已登记 taskId，v2 按 assignmentId 精确锁定；不回退到案件最新交办。 */
 async function findDispatchRef(tx: { query: (sql:string, params?:unknown[]) => Promise<unknown> }, event: ParsedEvent): Promise<DispatchRef | null> {
   const predicate = event.contractVersion === 2 ? 'assignment_id = ?' : 'reporting_task_id = ?';
   const [rows] = await tx.query('select d.assignment_id as assignmentId, d.complaint_id as complaintId,d.status,d.request_id as requestId,d.target_enterprise_code as subjectCode,d.reporting_task_id as taskId,d.last_event_sequence as lastEventSequence,d.reporting_item_id as reportingItemId,ps.body as pushPayload from dispatch_order d left join dispatch_push_snapshot ps on ps.assignment_id=d.assignment_id where d.'+predicate+' for update',[event.contractVersion === 2 ? event.assignmentId : event.taskId]) as [DispatchRef[],unknown];
