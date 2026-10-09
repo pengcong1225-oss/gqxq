@@ -8,6 +8,8 @@ import request from 'supertest';
 const require=createRequire(import.meta.url);
 const enabled=process.env.GQXQ_D2_COMPONENT_DB==='gqxq_d2_contract_test';
 test('D2 declared isolated real MySQL contract (not M0/canonical/restart)',{skip:!enabled},async t=>{
+ const reviewOnly=process.env.GQXQ_D2_FOCUS==='review1';
+ const runCase=(name:string,fn:()=>Promise<void>)=>t.test(name,{skip:reviewOnly},fn);
  for(const [key,value] of Object.entries({GQXQ_DB_NAME:'gqxq_d2_contract_test',GQXQ_DB_HOST:'127.0.0.1',GQXQ_DB_PORT:'3306'}))assert.equal(process.env[key],value);
  const db=knexFactory({client:'mysql2',connection:{host:'127.0.0.1',port:3306,user:process.env.GQXQ_DB_USER,password:process.env.GQXQ_DB_PASSWORD,database:'gqxq_d2_contract_test',timezone:'+08:00'}});let close:(()=>Promise<void>)|undefined;
  try{
@@ -39,14 +41,14 @@ test('D2 declared isolated real MySQL contract (not M0/canonical/restart)',{skip
   await db('dict_item').insert([{item_id:'synthetic-major',dict_type:'complaint_category',item_value:'fee',item_label:'Synthetic fee',parent_code:null,published:1,status:'enabled',version:1},{item_id:'synthetic-minor',dict_type:'complaint_category',item_value:'price',item_label:'Synthetic price',parent_code:'fee',published:1,status:'enabled',version:1}]);
   const policy={anchor:'upper',endpointOwner:'lower',zero:'green',belowFirst:'green',top:'red',day:'shanghai_inclusive',classFallback:'minor_then_major',noRule:'null',ruleSelection:'query_end'};
   const input={ruleId:'synthetic-rule',category:{majorCode:'fee',minorCode:null,dictionaryVersion:'10'},coefficients:['1','5','10','20','30'],policyId:'synthetic-policy',policyVersion:1,policy,effectiveFrom:'2026-10-10',expectedVersion:0};
-  await t.test('unconfirmed drafts cannot publish and client confirmation cannot be forged',async()=>{
+  await runCase('unconfirmed drafts cannot publish and client confirmation cannot be forged',async()=>{
    const saved=await heat.saveHeatDraft(input,ctx);assert.equal(saved.editVersion,1);
    await assert.rejects(()=>heat.publishHeatDraft(input.ruleId,1,ctx,clock),/确认/);
    await assert.rejects(()=>heat.saveHeatDraft({...input,confirmed:true},ctx));
    await assert.rejects(()=>heat.saveHeatDraft({...input,coefficients:['1','1','2','3','4']},ctx));
    assert.equal((await db('heat_rule_published')).length,0);assert.equal((await db('heat_policy_confirmation')).length,0);
   });
-  await t.test('exact synthetic confirmation publishes, frozen version survives newer append',async()=>{
+  await runCase('exact synthetic confirmation publishes, frozen version survives newer append',async()=>{
    const fp=domain.policyFingerprint(policy as any);
    await db('heat_policy_confirmation').insert({policy_id:input.policyId,policy_version:1,fingerprint:fp,truth_table:JSON.stringify([{count:450,days:30,coefficients:input.coefficients,level:'orange'}]),evidence_ref:'SYNTHETIC ONLY - NOT Q7 APPROVAL',confirmed_by:'synthetic',confirmed_at:new Date()});
    const published=await heat.publishHeatDraft(input.ruleId,1,ctx,clock);assert.ok(published.version);
@@ -61,7 +63,7 @@ test('D2 declared isolated real MySQL contract (not M0/canonical/restart)',{skip
    await heat.saveHeatDraft({...input,expectedVersion:4,effectiveFrom:'2026-10-09'},ctx);
    await assert.rejects(()=>heat.publishHeatDraft(input.ruleId,5,ctx,clock));
   });
-  await t.test('real D1 capture and heat share counts, scope, temporal memberships and detail permission',async()=>{
+  await runCase('real D1 capture and heat share counts, scope, temporal memberships and detail permission',async()=>{
    await db('enterprise').insert({enterprise_code:'E1',enterprise_name:'Synthetic',business_type:'water',status:'enabled',version:1,district_code:'D1'});
    await db('admin_grid').insert({code:'A1',name:'Synthetic grid',district_code:'D1',version:1});
    const coverage=(code:string)=>({code,serviceGridCode:code,enterpriseCode:'E1',businessType:'water',adminGridCodes:['A1'],communityCodes:[],version:'1',validFrom:'2026-01-01',validTo:null,geometry:{type:'FeatureCollection',features:[{type:'Feature',properties:{adminGridCode:'A1'},geometry:{type:'Polygon',coordinates:[[[0,0],[4,0],[4,4],[0,4],[0,0]]]}}]},coordinateSystem:'WGS84',geometrySources:['Synthetic evidence'],coverageState:'maintained'});
@@ -75,7 +77,7 @@ test('D2 declared isolated real MySQL contract (not M0/canonical/restart)',{skip
    await assert.rejects(()=>heat.getHeatData(q,{...ctx,permissionCodes:['heatmap.read','dashboard.read']},clock));
    const scoped=await heat.getHeatData(q,{...ctx,access:{...access,rules:[{kind:'restricted',enterpriseCodes:['E2'],districtCodes:[]}]}},clock);assert.equal(scoped.total,0);assert.equal(scoped.points.length,0);
   });
-  await t.test('permissions and exact configuration audit classification remain explicit',async()=>{
+  await runCase('permissions and exact configuration audit classification remain explicit',async()=>{
    await assert.rejects(()=>heat.saveHeatDraft(input,{...ctx,permissionCodes:['heatmap.read']}));
    const {heatRulesRouter}=await import('../src/routes/heatRules');const {enforceRolePolicy}=await import('../src/middleware/requireRole');const {errorHandler}=await import('../src/middleware/errorHandler');
    const app=express();app.use(express.json());app.use((req,res,next)=>{req.user={id:'synthetic',username:'Synthetic',roles:['custom'],permissionCodes:['heatmap.read'],authorizationVersion:1} as any;req.accessContext=access;next();});app.use(enforceRolePolicy());app.use(heatRulesRouter);app.use(errorHandler);
@@ -83,15 +85,32 @@ test('D2 declared isolated real MySQL contract (not M0/canonical/restart)',{skip
    const {queryAuditLogs}=await import('../src/repositories/auditLogRepo');const conn=await pool.getConnection();try{const result=await queryAuditLogs(conn,{module:'heat_rule'},{page:1,size:100},access);assert.ok(result.total>=4);}finally{conn.release();}
    await db('platform_role_permission').where({role_code:'admin',permission_code:'heatmap.manage'}).delete();await hm.up(db);assert.equal((await db('platform_role_permission').where({role_code:'admin',permission_code:'heatmap.manage'})).length,0);
   });
-  await t.test('same-category concurrent publication has one winner and no overlapping starts',async()=>{
+  await runCase('same-category concurrent publication has one winner and no overlapping starts',async()=>{
    await heat.saveHeatDraft({...input,ruleId:'synthetic-minor',category:{...input.category,minorCode:'price'},expectedVersion:0,effectiveFrom:'2026-10-12'},ctx);
    const attempts=await Promise.allSettled([heat.publishHeatDraft('synthetic-minor',1,ctx,clock),heat.publishHeatDraft('synthetic-minor',1,ctx,clock)]);assert.equal(attempts.filter(r=>r.status==='fulfilled').length,1);assert.equal(attempts.filter(r=>r.status==='rejected').length,1);
    assert.equal((await db('heat_rule_published').where('category_key','fee|price')).length,1);
   });
-  await t.test('owned prefix identity conflict refuses all DDL before repairing a missing table',async()=>{
+  await runCase('owned prefix identity conflict refuses all DDL before repairing a missing table',async()=>{
    await db.schema.dropTable('heat_policy_version');await db.raw('alter table heat_rule_head drop primary key, add unique key bad_prefix(category_key(16))');
    await assert.rejects(()=>hm.up(db),/full unique/);assert.equal(await db.schema.hasTable('heat_policy_version'),false);
    await db.raw('alter table heat_rule_head drop key bad_prefix, add primary key(category_key)');await hm.up(db);
+  });
+  await t.test('review1 preview revision and actual D1 point provenance contract',async()=>{
+   await db('dict_item').insert({item_id:'review-major',dict_type:'complaint_category',item_value:'review',item_label:'Synthetic review',parent_code:null,published:1,status:'enabled',version:1});
+   const draft={...input,ruleId:'review-rule',category:{...input.category,majorCode:'review'}};
+   await heat.saveHeatDraft(draft,ctx);
+   const first=await heat.previewHeatDraft(draft.ruleId,{count:450,days:30,expectedVersion:1},ctx);
+   assert.equal(first.ruleVersion,'draft:1');
+   await heat.saveHeatDraft({...draft,expectedVersion:1,coefficients:['2','6','11','21','31']},ctx);
+   const {heatRulesRouter}=await import('../src/routes/heatRules');const {enforceRolePolicy}=await import('../src/middleware/requireRole');const {errorHandler}=await import('../src/middleware/errorHandler');
+   const app=express();app.use(express.json());app.use((req,res,next)=>{req.user={id:'synthetic',username:'Synthetic',roles:['custom'],permissionCodes:ctx.permissionCodes,authorizationVersion:1} as any;req.accessContext=access;next();});app.use(enforceRolePolicy());app.use(heatRulesRouter);app.use(errorHandler);
+   assert.equal((await request(app).post('/heat-rules/review-rule/preview').send({count:450,days:30,expectedVersion:1})).status,409);
+   assert.equal((await request(app).post('/heat-rules/review-rule/preview').send({count:450,days:30})).status,400);
+   assert.equal((await heat.previewHeatDraft(draft.ruleId,{count:450,days:30,expectedVersion:2},ctx)).ruleVersion,'draft:2');
+   for(const [id,source] of [['REVIEW-MISSING',null],['REVIEW-SOURCED','Synthetic evidence']])await db('complaint').insert({complaint_id:id,complaint_no:id,source_reported_at:'2026-10-10 08:00:00',received_at:'2026-10-10 08:00:00',business_type:'water',enterprise_code:'REVIEW-E',district_code:'REVIEW-D',major_category_code:'review',category_dictionary_version:10,location_lng:1,location_lat:1,location_coordinate_system:'WGS84',location_coordinate_source:source,edit_version:1});
+   const result=await heat.getHeatData({dataset:'ledger',projection:'current',periodKind:'custom',from:'2026-10-10',to:'2026-10-10',comparisonPolicyId:'candidate-calendar-v1',majorCode:'review'},ctx,clock);
+   assert.equal(result.total,2);assert.equal(result.unlocatedCount,2);
+   assert.deepEqual(result.points.map(p=>p.complaintId),['REVIEW-SOURCED']);assert.deepEqual(result.points[0].grids,[]);
   });
  }finally{if(close)await close();await db.destroy();}
 });

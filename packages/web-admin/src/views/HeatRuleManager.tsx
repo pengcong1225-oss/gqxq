@@ -9,11 +9,33 @@ export default function HeatRuleManager(){
  const can=usePermissionAccess('heatmap.manage').can;const [rows,setRows]=useState<HeatDraftRow[]>([]);const [items,setItems]=useState<DictionaryItem[]>([]);const [dictVersion,setDictVersion]=useState('');const [draft,setDraft]=useState<HeatDraft>(blank);const [savedInput,setSavedInput]=useState('');const [preview,setPreview]=useState('');const [count,setCount]=useState('');const [days,setDays]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const owner=useRef(0);
  const refresh=async()=>{const generation=++owner.current;setError('');setBusy(true);try{const [r,c]=await Promise.all([listHeatRules(),heatCategoryOptions()]);if(generation!==owner.current)return;setRows(r);setItems(c.items);setDictVersion(c.dictionaryVersion);}catch(e){if(generation===owner.current){setRows([]);setItems([]);setError(e instanceof Error?e.message:'读取失败');}}finally{if(generation===owner.current)setBusy(false);}};
  useEffect(()=>{if(can)void refresh();else{owner.current++;setRows([]);setItems([]);setDraft(blank());setPreview('');setBusy(false);}return()=>{owner.current++;};},[can]);
- const action=async(kind:'save'|'preview'|'publish',row?:HeatDraftRow)=>{const generation=++owner.current;setBusy(true);setError('');setPreview('');try{
-  if(kind==='save'){const value=await saveHeatRule({...draft,category:{...draft.category,dictionaryVersion:dictVersion}});if(generation!==owner.current)return;setDraft({...value.input,expectedVersion:value.editVersion});setSavedInput(JSON.stringify({...value.input,expectedVersion:0}));setRows(rs=>[value,...rs.filter(r=>r.ruleId!==value.ruleId)]);}
-  if(kind==='preview'){const value=await previewHeatRule(draft.ruleId,Number(count),Number(days));if(generation!==owner.current)return;setPreview('候选预览（未经 Q7 正式批准）：'+(value.level??value.reason??'不可用')+' · '+value.ruleVersion);}
-  if(kind==='publish'&&row){await publishHeatRule(row.ruleId,row.editVersion);if(generation!==owner.current)return;await refresh();}
- }catch(e){if(generation===owner.current)setError(e instanceof Error?e.message:'操作失败');}finally{if(generation===owner.current)setBusy(false);}};
+ const action=async(kind:'save'|'preview'|'publish',row?:HeatDraftRow)=>{
+  const generation=++owner.current;
+  setBusy(true);setError('');setPreview('');
+  try{
+   if(kind==='save'){
+    const value=await saveHeatRule({...draft,category:{...draft.category,dictionaryVersion:dictVersion}});
+    if(generation!==owner.current)return;
+    setDraft({...value.input,expectedVersion:value.editVersion});
+    setSavedInput(JSON.stringify({...value.input,expectedVersion:0}));
+    setRows(rs=>[value,...rs.filter(r=>r.ruleId!==value.ruleId)]);
+   }
+   if(kind==='preview'){
+    const value=await previewHeatRule(draft.ruleId,Number(count),Number(days),draft.expectedVersion);
+    if(generation!==owner.current)return;
+    setPreview('候选预览（未经 Q7 正式批准）：'+(value.level??value.reason??'不可用')+' · '+value.ruleVersion);
+   }
+   if(kind==='publish'&&row){
+    await publishHeatRule(row.ruleId,row.editVersion);
+    if(generation!==owner.current)return;
+    await refresh();
+   }
+  }catch(e){
+   if(generation===owner.current)setError(e instanceof Error?e.message:'操作失败');
+  }finally{
+   if(generation===owner.current)setBusy(false);
+  }
+ };
  if(!can)return <Alert type="warning" message="当前账号未获热力规则管理权限"/>;
  return <div><h2>五档热力规则</h2><Alert type="info" message="候选政策与草稿，Q7 尚未正式批准" description="所有政策行为须显式选择；upper 必须选择首界以下 green，lower 必须选择最高界以上 red，冲突组合不可预览或发布。这是候选约束，不是 Q7 业务确认。上海含首尾日候选同日计1日；query_end 使用窗口结束业务日的同一规则，跨规则期间不逐事件加权。政策版本内容不可改写；没有服务端精确确认记录不能正式发布。"/>{error&&<Alert type="error" message={error}/>}<Button disabled={busy} onClick={()=>{setDraft(blank());setPreview('');}}>新建草稿</Button><Card title={'草稿版本 '+draft.expectedVersion}><fieldset disabled={busy}><Space wrap>
  {([['ruleId','规则编码'],['policyId','政策编码'],['effectiveFrom','生效开始日']] as const).map(([key,label])=><label key={key}>{label}<input aria-label={label} type={key==='effectiveFrom'?'date':'text'} disabled={key==='ruleId'&&draft.expectedVersion>0} value={draft[key]} onChange={e=>{setDraft({...draft,[key]:e.target.value});setPreview('');}}/></label>)}

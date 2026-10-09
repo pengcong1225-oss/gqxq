@@ -12,5 +12,5 @@ export const getHeatData=(q:StatisticsQuery)=>request.get<never,HeatData>('/heat
 export const listHeatRules=()=>request.get<never,HeatDraftRow[]>('/heat-rules');
 export const heatCategoryOptions=()=>request.get<never,{dictionaryVersion:string;items:DictionaryItem[]}>('/heat-rules/categories');
 export const saveHeatRule=(input:HeatDraft)=>request.post<never,HeatDraftRow>('/heat-rules',input);
-export const previewHeatRule=(id:string,count:number,days:number,version?:string)=>request.post<never,{level:HeatLevel|null;reason:string|null;candidate:true;ruleVersion:string|null;policyVersion:number}>('/heat-rules/'+encodeURIComponent(id)+'/preview',{count,days,...(version?{version}:{})});
+export const previewHeatRule=(id:string,count:number,days:number,expectedVersion:number)=>request.post<never,{level:HeatLevel|null;reason:string|null;candidate:true;ruleVersion:string|null;policyVersion:number}>('/heat-rules/'+encodeURIComponent(id)+'/preview',{count,days,expectedVersion});
 export const publishHeatRule=(id:string,expectedVersion:number)=>request.post('/heat-rules/'+encodeURIComponent(id)+'/publish',{expectedVersion});

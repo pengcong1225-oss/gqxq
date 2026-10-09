@@ -47,9 +47,27 @@ export async function publishHeatDraft(id:string,expectedVersion:number,ctx:Mast
 export async function freezeHeatRuleIn(db:SqlExecutor,version:string):Promise<FrozenHeatRule>{const row=(await rowsIn(db,'select content from heat_rule_published where version_id=?',[version]))[0];if(!row)throw AppError.notFound('发布版本不存在');return heatJson<FrozenHeatRule>(row.content);}
 export async function freezeHeatRule(version:string,ctx:MasterDataContext){manage(ctx);return freezeHeatRuleIn(pool,version);}
 export async function listHeatDrafts(ctx:MasterDataContext){manage(ctx);const rows=await rowsIn(pool,'select rule_id,edit_version,content from heat_rule_draft order by rule_id');return Promise.all(rows.map(async r=>{const input=heatJson<HeatDraftInput>(r.content);const c=await readHeatConfirmation(pool,input.policyId,input.policyVersion);return {ruleId:String(r.rule_id),editVersion:Number(r.edit_version),input,approvalStatus:validateConfirmation(c,input.policyVersion,input.policy)?'confirmed':'unconfirmed'};}));}
-export async function previewHeatDraft(id:string,raw:unknown,ctx:MasterDataContext){manage(ctx);const {z}=await import('zod');const parsed=z.object({count:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),days:z.number().int().positive().max(3660),version:z.string().optional()}).strict().safeParse(raw);if(!parsed.success)throw AppError.validation('预览需要明确数量和计日');
- if(parsed.data.version){const frozen=await freezeHeatRuleIn(pool,parsed.data.version);if(frozen.rule.ruleId!==id)throw AppError.validation('发布版本不属于该规则');return {...evaluateHeat({...parsed.data,rule:frozen.rule,policy:frozen.policy}),candidate:true,policyId:frozen.rule.policyId,policyVersion:frozen.rule.policyVersion};}
- const draft=await readHeatDraft(pool,id);if(!draft)throw AppError.notFound('草稿不存在');return {...evaluateHeat({...parsed.data,rule:{version:'draft:'+draft.editVersion,coefficients:draft.input.coefficients},policy:draft.input.policy}),candidate:true,approvalStatus:'unconfirmed',policyId:draft.input.policyId,policyVersion:draft.input.policyVersion};
+export async function previewHeatDraft(id:string,raw:unknown,ctx:MasterDataContext){
+ manage(ctx);
+ const {z}=await import('zod');
+ const sample={count:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),days:z.number().int().positive().max(3660)};
+ const parsed=z.union([
+  z.object({...sample,expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER)}).strict(),
+  z.object({...sample,version:z.string().min(1)}).strict()
+ ]).safeParse(raw);
+ if(!parsed.success)throw AppError.validation('预览需要明确数量、计日及草稿版本或发布版本');
+ if('version' in parsed.data){
+  const frozen=await freezeHeatRuleIn(pool,parsed.data.version);
+  if(frozen.rule.ruleId!==id)throw AppError.validation('发布版本不属于该规则');
+  return {...evaluateHeat({...parsed.data,rule:frozen.rule,policy:frozen.policy}),candidate:true,policyId:frozen.rule.policyId,policyVersion:frozen.rule.policyVersion};
+ }
+ const draft=await readHeatDraft(pool,id);
+ if(!draft)throw AppError.notFound('草稿不存在');
+ if(draft.editVersion!==parsed.data.expectedVersion)throw AppError.conflict('草稿版本已变化，请重新读取后预览');
+ return {
+  ...evaluateHeat({...parsed.data,rule:{version:'draft:'+draft.editVersion,coefficients:draft.input.coefficients},policy:draft.input.policy}),
+  candidate:true,approvalStatus:'unconfirmed',policyId:draft.input.policyId,policyVersion:draft.input.policyVersion
+ };
 }
 function selectedCategory(q:StatisticsQuery,rows:StatisticsCapture['rows']):{majorCode:string;minorCode:string|null}|null {
  const bucket=q.bucket?.dimension==='category'?q.bucket:null;const minor=q.minorCode??(bucket?.level==='minor'?bucket.code??undefined:undefined);const major=q.majorCode??(bucket?.level==='major'?bucket.code??undefined:undefined);
@@ -59,14 +77,56 @@ function selectedCategory(q:StatisticsQuery,rows:StatisticsCapture['rows']):{maj
 export function buildHeatData(capture:StatisticsCapture,rules:FrozenHeatRule[],detail:boolean){
  const q=capture.summary.query,category=selectedCategory(q,capture.rows),days=dayCount(q.from,q.to);
  let frozen=category?rules.find(r=>r.rule.category.majorCode===category.majorCode&&r.rule.category.minorCode===category.minorCode):undefined;
- if(!frozen&&category?.minorCode)frozen=rules.find(r=>r.rule.category.majorCode===category.majorCode&&r.rule.category.minorCode===null&&r.policy.classFallback==='minor_then_major');
- const seen=new Set<string>();const rows=capture.rows.filter(r=>{if(seen.has(r.complaintId))return false;seen.add(r.complaintId);return true;});
+ if(!frozen&&category?.minorCode){
+  frozen=rules.find(r=>r.rule.category.majorCode===category.majorCode&&r.rule.category.minorCode===null&&r.policy.classFallback==='minor_then_major');
+ }
+ const seen=new Set<string>();
+ const rows=capture.rows.filter(r=>{
+  if(seen.has(r.complaintId))return false;
+  seen.add(r.complaintId);
+  return true;
+ });
  const memberships=new Map<string,Set<string>>();
- const grids=new Map<string,{code:string;count:number;coverages:{version:string;selectedBusinessDays:string[];geometrySources:string[];validFrom:string|null;validTo:string|null;geometry:StatisticsCapture['coverageEvidence'][number]['coverage']['geometry'];coordinateSystem:string|null}[]}>();
- for(const e of capture.coverageEvidence){const selectedBusinessDays=e.selectedBusinessDays.filter(d=>d>=q.from&&d<=q.to);if(!selectedBusinessDays.length)continue;const mask=memberships.get(e.coverage.code)??new Set<string>();for(const d of selectedBusinessDays)mask.add(d);memberships.set(e.coverage.code,mask);const g=grids.get(e.coverage.code)??{code:e.coverage.code,count:0,coverages:[]};g.coverages.push({version:e.coverage.version,selectedBusinessDays,geometry:e.coverage.geometry,coordinateSystem:e.coverage.coordinateSystem,geometrySources:e.coverage.geometrySources,validFrom:e.coverage.validFrom,validTo:e.coverage.validTo});grids.set(g.code,g);}
- for(const r of rows)for(const code of new Set(r.grids)){const g=grids.get(code);if(g&&r.businessDay&&memberships.get(code)?.has(r.businessDay))g.count++;}
+ const grids=new Map<string,{
+  code:string;count:number;
+  coverages:{version:string;selectedBusinessDays:string[];geometrySources:string[];validFrom:string|null;validTo:string|null;geometry:StatisticsCapture['coverageEvidence'][number]['coverage']['geometry'];coordinateSystem:string|null}[]
+ }>();
+ for(const e of capture.coverageEvidence){
+  const selectedBusinessDays=e.selectedBusinessDays.filter(d=>d>=q.from&&d<=q.to);
+  if(!selectedBusinessDays.length)continue;
+  const mask=memberships.get(e.coverage.code)??new Set<string>();
+  for(const d of selectedBusinessDays)mask.add(d);
+  memberships.set(e.coverage.code,mask);
+  const g=grids.get(e.coverage.code)??{code:e.coverage.code,count:0,coverages:[]};
+  g.coverages.push({version:e.coverage.version,selectedBusinessDays,geometry:e.coverage.geometry,coordinateSystem:e.coverage.coordinateSystem,geometrySources:e.coverage.geometrySources,validFrom:e.coverage.validFrom,validTo:e.coverage.validTo});
+  grids.set(g.code,g);
+ }
+ for(const r of rows){
+  for(const code of new Set(r.grids)){
+   const g=grids.get(code);
+   if(g&&r.businessDay&&memberships.get(code)?.has(r.businessDay))g.count++;
+  }
+ }
  const available=frozen&&validateConfirmation(frozen.confirmation,frozen.rule.policyVersion,frozen.policy)?frozen:undefined;
- return {query:q,total:capture.summary.total,unlocatedCount:capture.summary.unlocatedCount,dataCutoffAt:capture.summary.dataCutoffAt,statisticsPolicy:capture.summary.policy,partial:capture.summary.partial,excludedByReason:capture.summary.excludedByReason,selectionDate:q.to,ruleSelection:'query_end' as const,days,category,nonAdditive:true as const,grids:[...grids.values()].map(g=>({...g,...(category?evaluateHeat({count:g.count,days,rule:available?.rule??null,policy:available?.policy}):{level:null,reason:'CATEGORY_SELECTION_REQUIRED',ruleVersion:null}),policyId:available?.rule.policyId??null,policyVersion:available?.rule.policyVersion??null})),points:detail?rows.filter(r=>r.longitude!==null&&r.latitude!==null&&Number.isFinite(r.longitude)&&Number.isFinite(r.latitude)&&Math.abs(r.longitude)<=180&&Math.abs(r.latitude)<=90&&r.coordinateSystem==='WGS84').map(r=>({complaintId:r.complaintId,longitude:r.longitude!,latitude:r.latitude!,grids:r.grids.filter(code=>r.businessDay&&memberships.get(code)?.has(r.businessDay))})):[]};
+ // Match D1's CRS/source eligibility. A sourced point can still have no historic grid match.
+ const points=detail?rows.filter(r=>
+  r.longitude!==null&&r.latitude!==null&&Number.isFinite(r.longitude)&&Number.isFinite(r.latitude)&&
+  Math.abs(r.longitude)<=180&&Math.abs(r.latitude)<=90&&r.coordinateSystem==='WGS84'&&Boolean(r.coordinateSource)
+ ).map(r=>({
+  complaintId:r.complaintId,longitude:r.longitude!,latitude:r.latitude!,
+  grids:r.grids.filter(code=>r.businessDay&&memberships.get(code)?.has(r.businessDay))
+ })):[];
+ return {
+  query:q,total:capture.summary.total,unlocatedCount:capture.summary.unlocatedCount,dataCutoffAt:capture.summary.dataCutoffAt,
+  statisticsPolicy:capture.summary.policy,partial:capture.summary.partial,excludedByReason:capture.summary.excludedByReason,
+  selectionDate:q.to,ruleSelection:'query_end' as const,days,category,nonAdditive:true as const,
+  grids:[...grids.values()].map(g=>({
+   ...g,
+   ...(category?evaluateHeat({count:g.count,days,rule:available?.rule??null,policy:available?.policy}):{level:null,reason:'CATEGORY_SELECTION_REQUIRED',ruleVersion:null}),
+   policyId:available?.rule.policyId??null,policyVersion:available?.rule.policyVersion??null
+  })),
+  points
+ };
 }
 export async function captureHeatIn(db:SqlExecutor,q:StatisticsQuery,ctx:MasterDataContext,clock:()=>Date=()=>new Date()){
  if(!ctx.permissionCodes.includes('heatmap.read'))throw AppError.forbidden();const capture=await captureStatisticsIn(db,q,ctx.access,ctx.permissionCodes,clock);const category=selectedCategory(q,capture.rows);const rules:FrozenHeatRule[]=[];
