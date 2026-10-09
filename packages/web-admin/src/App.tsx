@@ -14,6 +14,7 @@ import DispatchArchive from './views/DispatchArchive';
 import CompanyList from './views/CompanyList';
 import GridManager from './views/GridManager';
 import HeatmapView from './views/HeatmapView';
+import HeatRuleManager from './views/HeatRuleManager';
 import ShutdownList from './views/ShutdownList';
 import PipelineList from './views/PipelineList';
 import ReportView from './views/ReportView';
@@ -81,6 +82,7 @@ const App: React.FC = () => {
         <Route path="companies" element={<CompanyList />} />
         <Route path="grids" element={<GridManager />} />
         <Route path="heatmap" element={<HeatmapView />} />
+        <Route path="heat-rules" element={<RequireRole permission="heatmap.manage"><HeatRuleManager/></RequireRole>} />
         <Route path="shutdowns" element={<ShutdownList />} />
         <Route path="pipelines" element={<PipelineList />} />
         <Route path="reports" element={<ReportView />} />

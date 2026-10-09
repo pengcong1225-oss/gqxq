@@ -10,6 +10,7 @@ import { authRouter } from './auth';
 import { externalRouter } from './externalYijiejieban';
 import { publicUtilityCallbackRouter } from './publicUtilityCallback';
 import { legacyRouter } from './legacy';
+import {heatRulesRouter} from './heatRules';
 import { dispatchRouter } from './dispatch';
 import { dispatchPushRouter } from './dispatchPush';
 import { approvalTraceRouter } from './approvalTrace';
@@ -75,6 +76,7 @@ export function buildRouter(): Router {
   root.use(usersRouter);
   root.use(rolesRouter);
   root.use(auditLogsRouter);
+  root.use(heatRulesRouter);
   root.use(legacyRouter);
 
   return root;

@@ -1,0 +1,15 @@
+import {Router,type Request} from 'express';
+import {currentAccessContext} from '../auth/accessScope';
+import {ok} from '../http/respond';
+import {categoryOptions} from '../services/categoryService';
+import {AppError} from '../http/errors';
+import type {MasterDataContext} from '../types/masterData';
+import {listHeatDrafts,saveHeatDraft,publishHeatDraft,previewHeatDraft,getHeatData} from '../services/heatRuleService';
+export const heatRulesRouter=Router();
+const context=(req:Request):MasterDataContext=>({userId:req.user!.id,userName:req.user!.username,clientIp:req.ip??null,access:req.accessContext??currentAccessContext(),permissionCodes:req.user?.permissionCodes??[]});
+heatRulesRouter.get('/heatmap/data',async(req,res,next)=>{try{ok(res,await getHeatData(req.query as Record<string,unknown>,context(req)));}catch(e){next(e);}});
+heatRulesRouter.get('/heat-rules/categories',async(req,res,next)=>{try{ok(res,await categoryOptions());}catch(e){next(e);}});
+heatRulesRouter.get('/heat-rules',async(req,res,next)=>{try{ok(res,await listHeatDrafts(context(req)));}catch(e){next(e);}});
+heatRulesRouter.post('/heat-rules',async(req,res,next)=>{try{ok(res,await saveHeatDraft(req.body,context(req)));}catch(e){next(e);}});
+heatRulesRouter.post('/heat-rules/:id/preview',async(req,res,next)=>{try{ok(res,await previewHeatDraft(req.params.id,req.body,context(req)));}catch(e){next(e);}});
+heatRulesRouter.post('/heat-rules/:id/publish',async(req,res,next)=>{try{if(!req.body||Object.keys(req.body).join()!=='expectedVersion')throw AppError.validation('发布仅接受草稿版本');ok(res,await publishHeatDraft(req.params.id,req.body.expectedVersion,context(req)));}catch(e){next(e);}});

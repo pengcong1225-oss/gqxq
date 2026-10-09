@@ -13,7 +13,7 @@ export const PERMISSION_CATALOG = [
   ['report.generate', '报告生成'], ['report.download', '报告下载'],
   ['source_document.read', '来源文档查询'], ['source_status.read', '来源状态查询'],
   ['grid.read', '网格查询'], ['grid.manage', '网格维护'],
-  ['shutdown.read', '停供查询'], ['pipeline.read', '施工查询'], ['heatmap.read', '热力图查询'],
+  ['shutdown.read', '停供查询'], ['pipeline.read', '施工查询'], ['heatmap.read', '热力图查询'], ['heatmap.manage', '热力草稿与规则发布'],
   ['system.users.manage', '平台账号管理'], ['system.roles.manage', '角色授权管理'],
   ['system.audit.read', '审计查询'], ['system.dict.manage', '字典维护'],
   ['system.address.backfill', '地址候选补提取'], ['system.integration.manage', '旧集成管理'],

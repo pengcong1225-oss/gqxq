@@ -35,6 +35,7 @@ const menuEntries: MenuEntry[] = [
   { key: '/dispatch/archive', icon: <FolderOpenOutlined />, label: '交办归档', permission: 'dispatch.read' },
   { key: '/companies', icon: <TeamOutlined />, label: '企业管理', permission: 'enterprise.read' },
   { key: '/grids', icon: <AppstoreOutlined />, label: '网格管理', permission: 'grid.read' },
+  {key:'/heat-rules',icon:<FireOutlined/>,label:'五档热力规则',permission:'heatmap.manage'},
   { key: '/heatmap', icon: <FireOutlined />, label: '热力图', permission: 'heatmap.read' },
   { key: '/shutdowns', icon: <PauseCircleOutlined />, label: '停供管理', permission: 'shutdown.read' },
   { key: '/pipelines', icon: <ToolOutlined />, label: '管道施工', permission: 'pipeline.read' },

@@ -47,6 +47,8 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
+  {method:'GET',path:/^\/heat-rules(?:\/categories)?$/,roles:A,permissionCode:'heatmap.manage',desc:'D2 全局热力草稿'},
+  {method:'POST',path:/^\/heat-rules(?:\/[^/]+\/(?:preview|publish))?$/,roles:A,permissionCode:'heatmap.manage',desc:'D2 候选草稿与精确确认发布门槛'},
   {method:'GET',path:/^\/statistics\/(summary|complaints)$/,roles:R,permissionCode:'statistics.read',desc:'D1 候选统计，另需数据集能力；明细另需complaint.read'},
   {method:'GET',path:/^\/complaints\/[^/]+\/followups$/,roles:R,permissionCode:'complaint.read',desc:'C3 人工回访及版本历史'},
   {method:'POST',path:/^\/complaints\/[^/]+\/followups$/,roles:W,permissionCode:'followup.create',desc:'C3 人工回访登记'},
@@ -115,7 +117,7 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   { method: 'GET', path: new RegExp('^/shutdowns$'), roles: R, permissionCode: 'shutdown.read', desc: 'R19 停供（501 桩）' },
   { method: 'GET', path: new RegExp('^/pipeline-projects$'), roles: R, permissionCode: 'pipeline.read', desc: 'R20 管道施工（501 桩）' },
   { method: 'GET', path: new RegExp('^/reports$'), roles: R, permissionCode: 'report.read', desc: 'R21 分析报告（501 桩）' },
-  { method: 'GET', path: new RegExp('^/heatmap/data$'), roles: R, permissionCode: 'heatmap.read', desc: 'R22 热力图（501 桩）' },
+  { method: 'GET', path: new RegExp('^/heatmap/data$'), roles: R, permissionCode: 'heatmap.read', desc: 'D2 热力图（另需统计与数据集权限）' },
 
   // ---------- W：业务写端点（13 条，readonly 一律 403） ----------
   { method: 'POST', path: new RegExp('^/complaints/' + param + '/assignment$'), roles: W, permissionCode: 'complaint.assign', desc: 'W1 匹配/调整责任单位' },

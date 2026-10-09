@@ -28,4 +28,3 @@ legacyRouter.post('/external/tianbao/status-callback', stub('G4', '填报系统�
 legacyRouter.get('/shutdowns', stub('另立批次', '停供管理'));
 legacyRouter.get('/pipeline-projects', stub('另立批次', '管道施工'));
 legacyRouter.get('/reports', stub('G5 之后', '正式分析报告（本批次只做了待查报告待办 /report-todos）'));
-legacyRouter.get('/heatmap/data', stub('G6 之后', '热力图'));

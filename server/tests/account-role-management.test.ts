@@ -29,7 +29,7 @@ test('password validation measures UTF-8 bytes and service exists',async()=>{
  assert.doesNotThrow(()=>validate('密'.repeat(24)));
 });
 test('complete registered endpoint matrix preserves builtins and verifies each capability on a custom role',()=>{
- const groupedPaths=['/master-data/imports','/master-data/imports/sample','/master-data/imports/sample/errors',
+ const groupedPaths=['/heat-rules','/heat-rules/categories','/heat-rules/sample/preview','/heat-rules/sample/publish','/statistics/summary','/statistics/complaints','/master-data/imports','/master-data/imports/sample','/master-data/imports/sample/errors',
   '/enterprises/sample/households','/enterprises/sample/department-mappings',
   '/grids/sample','/grids/sample/history','/grids/sample/boundary','/grids','/admin-grids','/communities'];
  for(const rule of ROLE_POLICY) {
