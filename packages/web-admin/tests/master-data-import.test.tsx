@@ -34,3 +34,13 @@ test('B4 refreshed batch page offers confirmation and retains actual succeeded c
  const ui=testing.render(<View/>);try{await testing.waitFor(()=>assert.ok(testing.within(ui.container).getByRole('button',{name:'批次详情'})));testing.fireEvent.click(testing.within(ui.container).getByRole('button',{name:'批次详情'}));await testing.waitFor(()=>assert.ok(testing.within(document.body).getByRole('button',{name:'确认整批导入'})));testing.fireEvent.click(testing.within(document.body).getByRole('button',{name:'确认整批导入'}));await testing.waitFor(()=>assert.ok(calls.some(c=>c.url.endsWith('/commit'))));await testing.waitFor(()=>assert.ok(testing.within(document.body).getByText(/"created":2/)));
  }finally{ui.unmount();testing.cleanup();client.defaults.adapter=original;}
 });
+test('B4 batch UI follows server continuation through empty and partial authorized pages to older results',async()=>{
+ const {default:View}=await vite.ssrLoadModule('/src/views/ImportBatchList.tsx');const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');const testing=await import('@testing-library/react');const original=client.defaults.adapter;
+ useAppStore.setState({userInfo:{roles:['custom'],permissions:['masterdata.import','enterprise.manage'],mustChangePassword:false}});
+ const row=(id:string)=>({kind:'enterprise',preview:{batchId:id,templateVersion:'b4-v1',previewVersion:1,expiresAt:'2030-01-01T00:00:00Z',counts:{total:1,create:1,update:0,unchanged:0,error:0},canCommit:true},result:null});
+ for(const first of [[],[row('PARTIAL')]]){
+  client.defaults.adapter=async(config:any)=>{const page=config.params.continuation==='opaque-next'?2:1;const data={content:page===1?first:[row('OLDER-VISIBLE')],page,size:20,hasMore:page===1,continuation:page===1?'opaque-next':null};return {data:{code:200,data},status:200,statusText:'OK',headers:{},config};};
+  const ui=testing.render(<View/>);try{const body=testing.within(ui.container);await testing.waitFor(()=>assert.equal((body.getByRole('button',{name:'下一页'}) as HTMLButtonElement).disabled,false));testing.fireEvent.click(body.getByRole('button',{name:'下一页'}));await testing.waitFor(()=>assert.ok(body.getByText('OLDER-VISIBLE')));assert.equal((body.getByRole('button',{name:'下一页'}) as HTMLButtonElement).disabled,true);testing.fireEvent.click(body.getByRole('button',{name:'上一页'}));await testing.waitFor(()=>assert.equal((body.getByRole('button',{name:'下一页'}) as HTMLButtonElement).disabled,false));}finally{ui.unmount();testing.cleanup();}
+ }
+ client.defaults.adapter=original;
+});
