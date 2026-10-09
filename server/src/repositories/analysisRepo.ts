@@ -1,5 +1,8 @@
 import { projectDisposalValue } from '../services/complaintProjection';
 import { relatedScopeSql } from '../auth/accessScope';
+import {currentAccessContext} from '../auth/accessScope';
+import {buildLegacyAnalysisWhere} from './statisticsRepo';
+import type {StatisticsFacts} from '../types/statistics';
 // analysis_record（分析库）。
 //
 // 硬门规（落地计划 G5）：**未纠偏不得进入分析库**。
@@ -76,6 +79,7 @@ export interface InsertAnalysisInput {
   /** 纠偏全部确认的时间，即分析记录的成立时点 */
   confirmedAt: Date;
   createdAt: Date;
+  statisticsSnapshot?: StatisticsFacts;
 }
 
 export interface InsertAnalysisOutcome {
@@ -97,8 +101,8 @@ export async function insertAnalysisIfAbsent(
       'insert into analysis_record ' +
         '(analysis_id, complaint_id, assignment_id, business_type, complaint_type,' +
         ' district_code, district_name, enterprise_code, enterprise_name, summary, disposal_result,' +
-        ' confirmed_at, payload, created_at) ' +
-        'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        ' confirmed_at, payload, created_at,statistics_snapshot_version,statistics_snapshot) ' +
+        'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         analysisId,
         cut(input.complaintId, 64),
@@ -114,6 +118,8 @@ export async function insertAnalysisIfAbsent(
         input.confirmedAt,
         input.payload === null ? null : JSON.stringify(input.payload),
         input.createdAt,
+        input.statisticsSnapshot?1:null,
+        input.statisticsSnapshot?JSON.stringify(input.statisticsSnapshot):null,
       ]
     );
     return { analysisId, created: true };
@@ -167,22 +173,8 @@ export async function findAnalysisPage(
   page: number,
   size: number
 ): Promise<{ content: AnalysisRecordItem[]; total: number }> {
-  const scope = relatedScopeSql('analysis_record.complaint_id');
-  const parts: string[] = [scope.sql];
-  const params: unknown[] = [...scope.params];
-  if (filter.districtCode !== undefined) {
-    parts.push('district_code = ?');
-    params.push(filter.districtCode);
-  }
-  if (filter.businessType !== undefined) {
-    parts.push('business_type = ?');
-    params.push(filter.businessType);
-  }
-  if (filter.enterpriseCode !== undefined) {
-    parts.push('enterprise_code = ?');
-    params.push(filter.enterpriseCode);
-  }
-  const where = parts.length > 0 ? ' where ' + parts.join(' and ') : '';
+  const scoped=buildLegacyAnalysisWhere(filter,currentAccessContext(),'legacy-membership/no-date');
+  const params=scoped.params;const where=' where '+scoped.text;
 
   const [countRows] = await db.query('select count(*) as total from analysis_record' + where, params);
   const total = Number((countRows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);

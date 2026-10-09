@@ -1,4 +1,5 @@
 import { writeCategoryInTx, parseCategoryRef, validateCategoryInTx } from './categoryService';
+import {snapshotFactsFromComplaint} from '../domain/statisticsFacts';
 import { readDictionaryType, readDictionaryItems } from './dictService';
 import { DICT } from '../domain/enums';
 import type { MasterDataContext } from '../types/masterData';
@@ -121,7 +122,7 @@ interface ComplaintFullRow {
 const COMPLAINT_FULL_COLUMNS =
   'deleted, complaint_id, complaint_no, title, enterprise_code, enterprise_name, district_code, district_name,' +
   ' address, business_type, complaint_type, location_lng, location_lat, reporting_status, supervision_status,' +
-  ' analysis_included, major_category_code, minor_category_code, category_dictionary_version, edit_version, effective_field_state, content, urgency_level, is_sensitive, sensitive_keywords, rule_confidence, rule_version';
+  ' analysis_included, major_category_code, minor_category_code, category_dictionary_version, edit_version, effective_field_state, content, urgency_level, is_sensitive, sensitive_keywords, rule_confidence, rule_version,source_reported_at,received_at';
 
 const LOCATION_EXTRA_COLUMNS=',admin_grid_code,community_code,location_coordinate_system,location_coordinate_source';
 
@@ -143,7 +144,7 @@ async function hasDispatchForComplaint(db: Tx | typeof pool, complaintId: string
 /** 锁住诉求行。**先锁 complaint 再锁 correction**，保证并发确认同一诉求时不会交错。 */
 async function lockComplaintFull(tx: Tx, complaintId: string): Promise<ComplaintFullRow> {
   const [rows] = await tx.query(
-    'select ' + COMPLAINT_FULL_COLUMNS + ' from complaint where complaint_id = ? for update',
+    'select ' + COMPLAINT_FULL_COLUMNS + LOCATION_EXTRA_COLUMNS + ' from complaint where complaint_id = ? for update',
     [complaintId]
   );
   const row = (rows as unknown as ComplaintFullRow[])[0];
@@ -523,6 +524,7 @@ export async function maybeEnterAnalysis(
     },
     confirmedAt: input.now,
     createdAt: input.now,
+    statisticsSnapshot:snapshotFactsFromComplaint(complaint as unknown as Record<string,unknown>,input.now),
   });
 
   if (!outcome.created) {

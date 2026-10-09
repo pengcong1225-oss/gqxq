@@ -82,6 +82,13 @@ test('C4 real SQL delivery component, declared fixture only',{skip:process.env.G
    await seed('DRIFT',false);globalThis.fetch=async()=>{await db('complaint').where('complaint_id','CDRIFT').update({title:'changed after preflight',edit_version:2});return new Response('{"ready":true,"issues":[]}',{status:200});};
    await assert.rejects(()=>runWithAccessContext(access,()=>pushDispatch('DRIFT',ctx)),{status:409});assert.equal((await db('dispatch_outbox').where('request_id','RDRIFT')).length,0);assert.equal((await db('dispatch_push_snapshot').where('assignment_id','DRIFT')).length,0);
   });
+  await t.test('complaint moves outside current scope during fresh preflight: final enqueue denies without new writes',async()=>{
+   await seed('SCOPEDRIFT',false);const before=await db('dispatch_order').where('assignment_id','SCOPEDRIFT').first();const auditCount=(await db('operation_audit_log')).length;let preflights=0;
+   globalThis.fetch=async url=>{assert.ok(String(url).endsWith('/preflight'));preflights++;await db('complaint').where('complaint_id','CSCOPEDRIFT').update({enterprise_code:'E2',district_code:'D2',edit_version:2});return new Response('{"ready":true,"issues":[]}',{status:200});};
+   await assert.rejects(()=>runWithAccessContext(access,()=>pushDispatch('SCOPEDRIFT',ctx)),{status:404});assert.equal(preflights,1);
+   assert.equal((await db('dispatch_push_snapshot').where('assignment_id','SCOPEDRIFT')).length,0);assert.equal((await db('dispatch_outbox').where('request_id','RSCOPEDRIFT')).length,0);assert.equal((await db('dispatch_request_log').where('assignment_id','SCOPEDRIFT')).length,0);assert.equal((await db('operation_audit_log')).length,auditCount);assert.deepEqual(await db('dispatch_order').where('assignment_id','SCOPEDRIFT').first(),before);
+   const preserved=await db('complaint').where('complaint_id','CSCOPEDRIFT').first();assert.equal(preserved.enterprise_code,'E2');assert.equal(preserved.district_code,'D2');assert.equal(preserved.edit_version,2);
+  });
   await t.test('known legacy task without original bytes cannot invent a fresh request snapshot',async()=>{
    await seed('NOEVIDENCE',false);await db('dispatch_order').where('assignment_id','NOEVIDENCE').update({reporting_task_id:'T-OLD',status:'pushed'});let calls=0;globalThis.fetch=async()=>{calls++;return new Response('{"ready":true,"issues":[]}',{status:200});};
    await assert.rejects(()=>runWithAccessContext(access,()=>pushDispatch('NOEVIDENCE',ctx)),{status:409});assert.equal(calls,0);assert.equal((await db('dispatch_push_snapshot').where('assignment_id','NOEVIDENCE')).length,0);

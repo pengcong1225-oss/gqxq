@@ -47,6 +47,7 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
+  {method:'GET',path:/^\/statistics\/(summary|complaints)$/,roles:R,permissionCode:'statistics.read',desc:'D1 候选统计，另需数据集能力；明细另需complaint.read'},
   {method:'GET',path:/^\/complaints\/[^/]+\/followups$/,roles:R,permissionCode:'complaint.read',desc:'C3 人工回访及版本历史'},
   {method:'POST',path:/^\/complaints\/[^/]+\/followups$/,roles:W,permissionCode:'followup.create',desc:'C3 人工回访登记'},
   {method:'PATCH',path:/^\/followups\/[^/]+$/,roles:W,permissionCode:'followup.create',desc:'C3 本人回访更正'},

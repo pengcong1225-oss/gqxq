@@ -4,6 +4,7 @@ import { complaintsRouter } from './complaints';
 import { followupsRouter } from './followups';
 import { sourceProcessesRouter } from './sourceProcesses';
 import { dashboardRouter } from './dashboard';
+import {statisticsRouter} from './statistics';
 import { dictsRouter } from './dicts';
 import { authRouter } from './auth';
 import { externalRouter } from './externalYijiejieban';
@@ -62,6 +63,7 @@ export function buildRouter(): Router {
   root.use(gridsRouter);
   root.use(masterDataImportsRouter);
   root.use(dashboardRouter);
+  root.use(statisticsRouter);
   root.use(dictsRouter);
   root.use(dispatchRouter);
   root.use(dispatchPushRouter);

@@ -5,7 +5,7 @@ export const PERMISSION_CATALOG = [
   ['complaint.disposition', '诉求归库'], ['complaint.correct', '诉求纠偏'],
   ['complaint.close', '本系统办结'], ['complaint.source_sync', '来源状态回填'],
   ['enterprise.read', '企业查询'], ['enterprise.manage', '企业维护'],
-  ['dashboard.read', '大屏查询'], ['dict.read', '字典查询'],
+  ['dashboard.read', '大屏查询'], ['statistics.read', '候选统计查询（另需数据集与明细权限）'], ['dict.read', '字典查询'],
   ['dispatch.read', '交办查询及填报材料'], ['dispatch.create', '创建交办'],
   ['dispatch.cancel', '撤销交办'], ['dispatch.push', '推送交办'],
   ['dispatch.reconcile', '交办核对'], ['dispatch.archive', '交办归档'],

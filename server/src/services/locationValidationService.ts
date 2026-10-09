@@ -45,6 +45,10 @@ function usableGeometry(coverage:GridCoverage):boolean {
  if(coverage.coordinateSystem!=='WGS84'||!coverage.geometrySources?.length||!coverage.geometry?.features?.length)return false;
  try{return coverage.adminGridCodes.every(code=>coverage.geometry!.features.some(f=>f.properties.adminGridCode===code&&validateGeometry(f.geometry)!==null));}catch{return false;}
 }
+/** Shared geometry evaluation; callers choose/authorize their actual effective date. */
+export function coverageContainsWgs84Point(coverage:GridCoverage,point:number[]):boolean {
+ return point.length===2&&point.every(Number.isFinite)&&usableGeometry(coverage)&&coverage.geometry!.features.some(f=>contains(point,f.geometry));
+}
 /** Current-date evidence only. Unknown/incomplete evidence never becomes a negative spatial finding. */
 export function evaluateLocationEvidence(input:LocationCorrectionInput,facts:LocationFacts,validationDate:string):LocationValidationResult {
  const admin=input.adminGridCode?facts.admins.find(a=>a.code===input.adminGridCode):null;

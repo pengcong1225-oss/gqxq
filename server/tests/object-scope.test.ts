@@ -13,25 +13,8 @@ test('Q1 preserves paired enterprise/district intersection and rule union',()=>{
  assert.equal(api.canAccessComplaint({...ctx,rules:[{kind:'all'}]},{deleted:1}),false);
 });
 
-test('scope change after fake transport prevents local request-log and status writes',async()=>{
- const {pool}=await import('../src/db/pool');const {env}=await import('../src/config/env');
- const {serializeOnce}=await import('../src/clients/publicUtilityClient');const {pushDispatch}=await import('../src/services/dispatchPushService');
- const original={query:pool.query,execute:pool.execute,getConnection:pool.getConnection,fetch:globalThis.fetch,pu:{...env.pu}};
- Object.assign(env.pu,{baseUrl:'https://example.invalid',appCode:'gqxq',keyId:'synthetic',keyVersion:'v1',secret:'synthetic'});
- const body=serializeOnce({sourceAppCode:'gqxq',sourceBusinessId:'C1',requestId:'R1',metadata:{contractVersion:2,assignmentId:'D1'}});
- let district='G1',sent=0,writes=0;
- const query=async(sql:string)=>{
-  if(sql.includes('dispatch_push_snapshot'))return [[{body:body.bodyText,sha256:body.bodySha256}],[]];
-  if(sql.includes('dispatch_request_log'))return [[],[]];
-  if(sql.includes('from complaint'))return [[{enterprise_code:'A',district_code:district,deleted:0}],[]];
-  return [[{assignment_id:'D1',complaint_id:'C1',request_id:'R1',status:'pending'}],[]];
- };
- const execute=async()=>{writes++;return [{affectedRows:1},[]];};
- Object.assign(pool,{query,execute,getConnection:async()=>({query,execute,beginTransaction:async()=>{},commit:async()=>{},rollback:async()=>{},release:()=>{}})});
- globalThis.fetch=async()=>{sent++;district='G2';return new Response(JSON.stringify({code:'CONFLICT',message:'synthetic'}),{status:409});};
- try{await assert.rejects(api.runWithAccessContext(ctx,()=>pushDispatch('D1',{userId:'u',userName:null,clientIp:null})),{status:404});assert.equal(sent,1);assert.equal(writes,0);}
- finally{Object.assign(pool,{query:original.query,execute:original.execute,getConnection:original.getConnection});globalThis.fetch=original.fetch;Object.assign(env.pu,original.pu);}
-});
+// C4 now commits a server-owned delivery intent. Scope drift before enqueue is
+// covered by the real SQL preflight case in push-job-mysql-component.test.ts.
 test('scope SQL binds values, validates alias and denies missing context',()=>{
  assert.equal(typeof api.buildComplaintScopeSql,'function');
  const s=api.buildComplaintScopeSql(ctx,'c');assert.deepEqual(s.params,['A','G1','B','G2']);assert.match(s.sql,/enterprise_code in \(\?\).*district_code in \(\?\)/);
