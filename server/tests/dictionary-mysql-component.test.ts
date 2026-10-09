@@ -6,6 +6,7 @@ import knexFactory from 'knex';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import {prepareGridAuditFixture} from './helpers/gridAuditFixture';
 const require=createRequire(import.meta.url);
 const enabled=process.env.GQXQ_B1_COMPONENT_DB==='gqxq_b1_contract_test';
 test('B1 isolated MySQL dictionary/category component, not canonical baseline or restart acceptance',{skip:!enabled},async t=>{
@@ -48,6 +49,7 @@ test('B1 isolated MySQL dictionary/category component, not canonical baseline or
   const stamp=new Date('2026-10-09T00:00:00Z');
   const {createApp}=await import('../src/app');const poolModule=await import('../src/db/pool');closePool=poolModule.closePool;
   await require('../migrations/20261009070000__dictionary_governance_categories.js').up(db);
+  await prepareGridAuditFixture(db);
   await db('platform_role_permission').insert(['system.dict.manage','dict.read','complaint.correct','complaint.read'].map(permission_code=>({role_code:'auditor',permission_code})));
   const app=createApp();const token=(id:string)=>jwt.sign({sub:id,username:id,sessionVersion:1},process.env.GQXQ_JWT_SECRET!);
   const api=(method:string,path:string,user='scoped',body?:unknown)=>{const q=(request(app) as any)[method]('/api/v1'+path).set('Authorization','Bearer '+token(user));return body===undefined?q:q.send(body);};

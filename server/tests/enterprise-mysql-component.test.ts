@@ -5,6 +5,7 @@ import {existsSync} from 'node:fs';
 import knexFactory from 'knex';
 import express from 'express';
 import request from 'supertest';
+import {prepareGridAuditFixture} from './helpers/gridAuditFixture';
 const require=createRequire(import.meta.url);
 const enabled=process.env.GQXQ_B2_COMPONENT_DB==='gqxq_b2_contract_test';
 test('B2 guarded real MySQL enterprise component (declared base, not canonical)',{skip:!enabled},async t=>{
@@ -28,6 +29,7 @@ test('B2 guarded real MySQL enterprise component (declared base, not canonical)'
  await db('dict_item').insert([{item_id:'water',dict_type:'business_type',item_value:'water',item_label:'供水',status:'enabled'},{item_id:'gas',dict_type:'business_type',item_value:'gas',item_label:'燃气',status:'disabled'},{item_id:'district1',dict_type:'district',item_value:'420502',item_label:'虚构区甲',status:'enabled'},{item_id:'district2',dict_type:'district',item_value:'420503',item_label:'虚构区乙',status:'enabled'}]);
  await require('../migrations/20261009070000__dictionary_governance_categories.js').up(db);
  await require('../migrations/20261009080000__enterprise_management.js').up(db);
+ await prepareGridAuditFixture(db);
  const {enterpriseService:service,getHouseholdsAt}=await import('../src/services/enterpriseService');
  const {pool}=await import('../src/db/pool');close=()=>pool.end();
  const {withTransaction}=await import('../src/db/tx');const {runWithAccessContext}=await import('../src/auth/accessScope');

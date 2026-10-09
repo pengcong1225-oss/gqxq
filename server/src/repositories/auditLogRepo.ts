@@ -1,4 +1,5 @@
 import {buildEnterpriseScopeSql} from '../auth/enterpriseScope';
+import {buildGridScopeSql,buildSpatialScopeSql} from '../auth/gridScope';
 // operation_audit_log（追加写）：操作审计。
 // 复用既有表（迁移设计 §3.3）：不新建 audit_log。
 // 列：audit_id / user_id / app_code / resource_code / action / biz_type / biz_id / result / client_ip / detail / created_at
@@ -67,9 +68,14 @@ const complaintLinkSql="((a.biz_type = 'complaint' and a.action in ('INTAKE_CREA
  "(a.biz_type = 'business_event' and a.action = 'CALLBACK_REJECTED' and exists (select 1 from business_event be where be.event_id = a.biz_id and be.source_business_id = c.complaint_id)))";
 const enterpriseAuditSql="(a.biz_type='enterprise' and a.action in ('ENTERPRISE_SAVE','ENTERPRISE_HOUSEHOLDS_SAVE','ENTERPRISE_MAPPING_SAVE'))";
 function auditWhere(filter:AuditLogFilter,access:AccessContext):{sql:string;params:unknown[]} {
+ const gridScope=buildGridScopeSql(access,'audit_g');const adminScope=buildSpatialScopeSql(access,'audit_ag.district_code');const communityScope=buildSpatialScopeSql(access,'audit_cag.district_code');
+ const gridLinked="(a.biz_type='service_grid' and a.action='SERVICE_GRID_SAVE' and exists (select 1 from service_grid audit_g where audit_g.grid_code=a.biz_id and "+gridScope.sql+'))';
+ const adminLinked="(a.biz_type='admin_grid' and a.action='ADMIN_GRID_SAVE' and exists (select 1 from admin_grid audit_ag where audit_ag.code=a.biz_id and "+adminScope.sql+'))';
+ const communityLinked="(a.biz_type='community' and a.action='COMMUNITY_SAVE' and exists (select 1 from community audit_co join admin_grid audit_cag on audit_cag.code=audit_co.admin_grid_code where audit_co.code=a.biz_id and "+communityScope.sql+'))';
+ const spatialLinked='('+gridLinked+' or '+adminLinked+' or '+communityLinked+')';const spatialParams=[...gridScope.params,...adminScope.params,...communityScope.params];
  const scope=buildComplaintScopeSql(access,'c');const enterpriseScope=buildEnterpriseScopeSql(access,'audit_e');const enterpriseLinked=enterpriseAuditSql+' and exists (select 1 from enterprise audit_e where audit_e.enterprise_code=a.biz_id and '+enterpriseScope.sql+')';
- const clauses=[ '('+systemSql+' or ('+enterpriseLinked+') or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+'))' ];
- const params:unknown[]=[...enterpriseScope.params,...scope.params];
+ const clauses=[ '('+systemSql+' or ('+enterpriseLinked+') or '+spatialLinked+' or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+'))' ];
+ const params:unknown[]=[...enterpriseScope.params,...spatialParams,...scope.params];
  for(const [value,sql] of [[filter.category,categorySql+' = ?'],[filter.module,moduleSql+' = ?'],[filter.action,'a.action = ?'],[filter.result,resultSql+' = ?']] as const){
   if(value){clauses.push(sql);params.push(value);}
  }
@@ -77,8 +83,8 @@ function auditWhere(filter:AuditLogFilter,access:AccessContext):{sql:string;para
  if(filter.from){clauses.push('a.created_at >= ?');params.push(new Date(filter.from));}
  if(filter.to){clauses.push('a.created_at <= ?');params.push(new Date(filter.to));}
  if(filter.businessNo){
-  clauses.push("a.biz_type <> 'http' and a.action <> 'SENSITIVE_WORD_RESCAN' and (("+systemSql+' and a.biz_id = ?) or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+' and (c.complaint_id = ? or c.complaint_no = ?)) or ('+enterpriseLinked+' and a.biz_id=?))');
-  params.push(filter.businessNo,...scope.params,filter.businessNo,filter.businessNo,...enterpriseScope.params,filter.businessNo);
+  clauses.push("a.biz_type <> 'http' and a.action <> 'SENSITIVE_WORD_RESCAN' and (("+systemSql+' and a.biz_id = ?) or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+' and (c.complaint_id = ? or c.complaint_no = ?)) or ('+enterpriseLinked+' and a.biz_id=?) or ('+spatialLinked+' and a.biz_id=?))');
+  params.push(filter.businessNo,...scope.params,filter.businessNo,filter.businessNo,...enterpriseScope.params,filter.businessNo,...spatialParams,filter.businessNo);
  }
  return {sql:clauses.join(' and '),params};
 }

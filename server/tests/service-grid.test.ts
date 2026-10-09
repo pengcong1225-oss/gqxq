@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {existsSync} from 'node:fs';
+process.env.DOTENV_CONFIG_PATH='missing-synthetic-b3.env';process.env.GQXQ_DB_USER='synthetic';process.env.GQXQ_DB_PASSWORD='synthetic';process.env.GQXQ_DB_HOST='127.0.0.1';process.env.GQXQ_DB_PORT='1';process.env.GQXQ_DB_NAME='gqxq_synthetic_unreachable';process.env.GQXQ_JWT_SECRET='synthetic-b3-test-secret';
+test('B3 validates all coverage pairs, real dates, geometry and effective permission routes',async()=>{
+ assert.equal(existsSync(new URL('../src/services/serviceGridService.ts',import.meta.url)),true,'versioned service grid service missing');
+ const {canAccessGridCoverage,parseGridInput,serviceGridSchema,validateGeometry}=await import('../src/services/serviceGridService');
+ const access={userId:'u',roles:[],scopeVersion:1,rules:[{kind:'restricted' as const,enterpriseCodes:['E1'],districtCodes:['D1']}],canReadSource:false};
+ assert.equal(canAccessGridCoverage(access,'E1',['D1','D2']),false);assert.equal(canAccessGridCoverage(access,'E1',['D1']),true);assert.equal(canAccessGridCoverage(access,'E2',['D1']),false);assert.equal(canAccessGridCoverage(access,'E1',[]),false);
+ assert.equal(canAccessGridCoverage({...access,rules:[{kind:'restricted',enterpriseCodes:['E1'],districtCodes:[]}]},'E1',[]),true);
+ const input={code:'G1',enterpriseCode:'E1',businessType:'water',adminGridCodes:['A','A'],communityCodes:['X'],validFrom:'2026-01-01',validTo:null,expectedVersion:0};
+ assert.deepEqual(parseGridInput(serviceGridSchema,input).adminGridCodes,['A']);
+ assert.throws(()=>parseGridInput(serviceGridSchema,{...input,validFrom:'2026-02-30'}));assert.throws(()=>parseGridInput(serviceGridSchema,{...input,validTo:'2025-01-01'}));
+ assert.throws(()=>validateGeometry({type:'Polygon',coordinates:[[[0,0],[1,0],[1,1],[0,1]]]}));
+ assert.throws(()=>validateGeometry({type:'Polygon',coordinates:[[[0,0],[1,1],[0,1],[1,0],[0,0]]]}));
+ assert.throws(()=>validateGeometry({type:'Polygon',coordinates:[[[0,0],[1,0],[2,0],[0,0]]]}));
+ assert.deepEqual(validateGeometry({type:'Polygon',coordinates:[[[0,0],[1,0],[1,1],[0,0]]]}),{type:'Polygon',coordinates:[[[0,0],[1,0],[1,1],[0,0]]]});
+ const {isAllowed}=await import('../src/auth/rolePolicy');
+ for(const path of ['/grids','/grids/G1','/grids/G1/history','/grids/G1/boundary','/grid-reference-options'])assert.equal(isAllowed({id:'u',username:'u',roles:['custom'],permissionCodes:['grid.read']},'GET',path).allowed,true,path);
+ assert.equal(isAllowed({id:'u',username:'u',roles:['custom'],permissionCodes:['grid.read']},'POST','/grids').allowed,false);
+ for(const path of ['/grids','/admin-grids','/communities'])assert.equal(isAllowed({id:'u',username:'u',roles:['custom'],permissionCodes:['grid.manage']},'POST',path).allowed,true,path);
+});

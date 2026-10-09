@@ -63,6 +63,9 @@ function safeDetail(row:AuditRow):Record<string,unknown> {
   if(!['SENSITIVE_WORD_CREATE','SENSITIVE_WORD_UPDATE'].includes(action))return {};
   const out=pick(data,['operator']);for(const key of ['before','after'])if(data[key]!==undefined)out[key]=pick(data[key],['word','status']);return out;
  }
+ if(row.biz_type==='service_grid'&&action==='SERVICE_GRID_SAVE')return pick(data,['code','enterpriseCode','businessType','version','validFrom','validTo','adminGridCount','communityCount']);
+ if(row.biz_type==='admin_grid'&&action==='ADMIN_GRID_SAVE')return pick(data,['code','name','districtCode','version','hasGeometry']);
+ if(row.biz_type==='community'&&action==='COMMUNITY_SAVE')return pick(data,['code','name','adminGridCode','version']);
  if(row.biz_type==='enterprise'&&['ENTERPRISE_SAVE','ENTERPRISE_HOUSEHOLDS_SAVE','ENTERPRISE_MAPPING_SAVE'].includes(action))return pick(data,['enterpriseCode','enterpriseName','businessType','status','districtCode','version','households','validFrom','validTo','closedVersion','sourceSystem','sourceDepartmentCode','verified']);
  if(row.biz_type==='dictionary'&&['DICTIONARY_TYPE_SAVE','DICTIONARY_ITEM_SAVE','DICTIONARY_TYPE_DELETE','DICTIONARY_ITEM_DELETE'].includes(action))return pick(data,['typeCode','itemCode','label','parentCode','status','version','dictionaryVersion','published']);
  if(row.biz_type==='complaint'&&action==='CATEGORY_REVISE')return pick(data,['oldMajorCode','oldMinorCode','oldDictionaryVersion','majorCode','minorCode','dictionaryVersion','editVersion']);

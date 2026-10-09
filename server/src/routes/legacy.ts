@@ -25,7 +25,6 @@ legacyRouter.post('/external/tianbao/status-callback', stub('G4', '填报系统�
 // 宜接就办状态同步：现为 POST /complaints/:idOrNo/source-sync（G6，适配器默认关闭）
 
 // 以下页面的真实数据在 gqxq_service 里已有表，但不在已交付批次范围内，显式 501 而不是给假数据
-legacyRouter.get('/grids', stub('G2 之后', '网格管理'));
 legacyRouter.get('/shutdowns', stub('另立批次', '停供管理'));
 legacyRouter.get('/pipeline-projects', stub('另立批次', '管道施工'));
 legacyRouter.get('/reports', stub('G5 之后', '正式分析报告（本批次只做了待查报告待办 /report-todos）'));

@@ -6,6 +6,7 @@ import knexFactory from 'knex';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import {prepareGridAuditFixture} from './helpers/gridAuditFixture';
 const require=createRequire(import.meta.url);
 const enabled=process.env.GQXQ_A6_COMPONENT_DB==='gqxq_a6_contract_test';
 test('A6 isolated MySQL audit query component, not canonical baseline or restart acceptance',{skip:!enabled},async t=>{
@@ -31,6 +32,7 @@ test('A6 isolated MySQL audit query component, not canonical baseline or restart
   await db.raw('create table business_event (id bigint auto_increment primary key,event_id varchar(128) unique,source_business_id varchar(128)) engine=InnoDB');
   await db.raw('create table correction_item (id bigint primary key auto_increment,correction_id varchar(64) unique,complaint_id varchar(64),assignment_id varchar(64),field_name varchar(64),field_label varchar(64),old_value text,new_value text,basis text,status varchar(32),confirmer_id varchar(64),confirmer_name varchar(64),confirmed_at datetime,created_at datetime) engine=InnoDB');
   await db.raw('create table complaint_field_version (id bigint primary key auto_increment,version_id varchar(64),complaint_id varchar(64),field_name varchar(64),old_value text,new_value text,change_source varchar(64),reason text,operator_id varchar(64),operator_name varchar(64),changed_at datetime) engine=InnoDB');
+  await prepareGridAuditFixture(db);
   for(const [id,role,rules] of [['admin','admin',[]],['scoped','auditor',[{kind:'restricted',enterpriseCodes:['E1'],districtCodes:['G1']}]],['scoped2','auditor',[{kind:'restricted',enterpriseCodes:['E2'],districtCodes:['G2']}]],['all','auditor',[{kind:'all'}]],['denied','handler',[{kind:'all'}]]] as const)
    await db('app_user').insert({user_id:id,username:id,password_hash:await bcrypt.hash('Synthetic-Pass-1',4),real_name:'虚构',roles:JSON.stringify([role]),permissions:'[]',scope_rules:JSON.stringify(rules),session_version:1,must_change_password:0});
   await db('platform_role').insert({role_code:'auditor',name:'虚构审计员',enabled:1,built_in:0,version:1});
