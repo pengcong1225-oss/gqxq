@@ -78,3 +78,21 @@ test('actual complaint detail mounts the scoped manual followup entry and loads 
  try{await waitFor(()=>assert.ok(within(ui.container).getByText('合成正文')));assert.ok(within(ui.container).queryByText('人工回访'),'detail must expose the actual manual followup entry');await waitFor(()=>assert.ok(calls.includes('/complaints/C1/followups')));await waitFor(()=>assert.ok(within(ui.container).getByText('备注：原备注')));
  }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
 });
+
+for(const scenario of ['success-draft-retry','success-new-pending','conflict-new-pending'] as const)test('write lifecycle round trip preserves current editor/retry/submitting: '+scenario,async()=>{
+ const {Panel,store,client}=await modules();const original=client.defaults.adapter;const posts:Array<{config:any;resolve:(v:any)=>void;reject:(e:any)=>void}>=[];let reads=0;
+ const response=(config:any,data:any)=>({data:{code:200,data},status:200,statusText:'OK',headers:{},config});
+ client.defaults.adapter=async(config:any)=>{if(config.method==='post')return new Promise((resolve,reject)=>{posts.push({config,resolve,reject});if(scenario==='success-draft-retry'&&posts.length===2)reject(new Error('当前操作可重试'));});reads++;return response(config,payload(config.url.includes('C2')?'C2':'C1'));};
+ store.setState({userInfo:identity(['complaint.read','followup.create'])});const {render,within,fireEvent,waitFor,cleanup,act}=await import('@testing-library/react');const ui=render(<Panel complaintId="C1"/>);
+ const open=async()=>{await waitFor(()=>assert.ok(within(ui.container).getByRole('button',{name:'登记回访'})));fireEvent.click(within(ui.container).getByRole('button',{name:'登记回访'}));};
+ const save=()=>fireEvent.click(within(ui.container).getByRole('button',{name:'保存回访'}));
+ try{await open();save();await waitFor(()=>assert.equal(posts.length,1));
+  ui.rerender(<Panel complaintId="C2"/>);await waitFor(()=>assert.ok(ui.container.textContent?.includes('诉求：C2')));ui.rerender(<Panel complaintId="C1"/>);await open();fireEvent.change(within(ui.container).getByLabelText('回访备注'),{target:{value:'当前新草稿'}});save();await waitFor(()=>assert.equal(posts.length,2));
+  if(scenario==='success-draft-retry')await waitFor(()=>assert.ok(ui.container.textContent?.includes('当前操作可重试')));
+  const readsBefore=reads;await act(async()=>{if(scenario==='conflict-new-pending')posts[0].reject(Object.assign(new Error('旧操作版本冲突'),{response:{status:409,data:{code:'CONFLICT',message:'旧操作版本冲突'}}}));else posts[0].resolve(response(posts[0].config,fact));});
+  assert.equal((within(ui.container).getByLabelText('回访备注') as HTMLTextAreaElement).value,'当前新草稿','old result must not close current editor');assert.equal(reads,readsBefore,'old completion must not start a current refresh');assert.equal(ui.container.textContent?.includes('回访记录已保存'),false);assert.equal(ui.container.textContent?.includes('版本或请求内容冲突'),false);
+  if(scenario==='success-draft-retry'){assert.ok(ui.container.textContent?.includes('当前操作可重试'));save();await waitFor(()=>assert.equal(posts.length,3));assert.equal(JSON.parse(posts[2].config.data).requestId,JSON.parse(posts[1].config.data).requestId,'old success must not clear current retry key');}
+  else {assert.equal(within(ui.container).queryByRole('status'),null,'old result must not replace current notice');assert.equal((within(ui.container).getByLabelText('回访备注') as HTMLTextAreaElement).disabled,true,'old finally must not release current submitting');}
+  const current=posts[posts.length-1];assert.notEqual(JSON.parse(current.config.data).requestId,JSON.parse(posts[0].config.data).requestId);await act(async()=>current.resolve(response(current.config,fact)));await waitFor(()=>assert.equal(within(ui.container).queryByLabelText('回访备注'),null));await waitFor(()=>assert.equal(reads,readsBefore+1));assert.ok(ui.container.textContent?.includes('回访记录已保存'),'current success must still refresh normally');
+ }finally{await act(async()=>{for(const pending of posts)pending.resolve(response(pending.config,fact));});ui.unmount();cleanup();client.defaults.adapter=original;}
+});

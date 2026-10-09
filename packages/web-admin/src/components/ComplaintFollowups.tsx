@@ -7,23 +7,23 @@ import type {ComplaintFollowupsView,FollowupView,FollowupFacts} from '../types/a
 const date=(value:string)=>new Date(value).toLocaleString('zh-CN',{hour12:false});
 const localDate=(value:string)=>{const d=new Date(value);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);};
 const label=(r:FollowupView)=>!r.contacted?'未接通':r.evaluationCode==='satisfied'?'满意':r.evaluationCode==='dissatisfied'?'不满意':'接通，未取得评价';
-type Editor={key:string;mode:'create'|'revise'|'conclude';target:FollowupView|null};
+type Editor={key:string;epoch:number;mode:'create'|'revise'|'conclude';target:FollowupView|null};
 const inputStyle:React.CSSProperties={display:'block',width:'100%',padding:8,border:'1px solid #d9d9d9',borderRadius:6,marginTop:4};
 /** Each complaint/auth generation fences both reads and writes, including same-scope revocation. */
 const ComplaintFollowups:React.FC<{complaintId:string}>=({complaintId})=>{
  const user=useAppStore(s=>s.userInfo);const read=usePermissionAccess('complaint.read');const create=useWriteAccess('followup.create');const conclude=useWriteAccess('followup.conclude');
  const contextKey=JSON.stringify([complaintId,user?.userId,user?.authorizationVersion,user?.accountType,user?.roles,user?.permissions]);
- const keyRef=useRef(contextKey);const serial=useRef(0);if(keyRef.current!==contextKey){keyRef.current=contextKey;serial.current++;}
- const [loaded,setLoaded]=useState<{key:string;value:ComplaintFollowupsView}|null>(null);const [loading,setLoading]=useState(false);const [error,setError]=useState<string|null>(null);const [notice,setNotice]=useState<string|null>(null);
+ const keyRef=useRef(contextKey);const serial=useRef(0);const epoch=useRef(0);if(keyRef.current!==contextKey){keyRef.current=contextKey;serial.current++;epoch.current++;}
+ const [loaded,setLoaded]=useState<{key:string;epoch:number;value:ComplaintFollowupsView}|null>(null);const [loading,setLoading]=useState(false);const [error,setError]=useState<string|null>(null);const [notice,setNotice]=useState<string|null>(null);
  const [editor,setEditor]=useState<Editor|null>(null);const [submitting,setSubmitting]=useState(false);const [contacted,setContacted]=useState(false);const [occurredAt,setOccurredAt]=useState('');const [evaluation,setEvaluation]=useState<FollowupFacts['evaluationCode']>(null);const [dissatisfactionReason,setDissatisfactionReason]=useState('');const [notes,setNotes]=useState('');const [reason,setReason]=useState('');const [conclusion,setConclusion]=useState('');
  const retry=useRef<{fingerprint:string;requestId:string}|null>(null);
- const load=useCallback(async()=>{const request=++serial.current;setError(null);if(!read.can){setLoaded(null);setLoading(false);return;}setLoading(true);try{const value=await getFollowups(complaintId);if(request===serial.current&&contextKey===keyRef.current)setLoaded({key:contextKey,value});}catch(e){if(request===serial.current&&contextKey===keyRef.current){setLoaded(null);setError(e instanceof Error?e.message:'回访读取失败');}}finally{if(request===serial.current&&contextKey===keyRef.current)setLoading(false);}},[complaintId,contextKey,read.can]);
- useEffect(()=>{setLoaded(null);setEditor(null);setNotice(null);setSubmitting(false);retry.current=null;void load();return()=>{serial.current++;};},[load]);
- const data=loaded?.key===contextKey?loaded.value:null;const active=editor?.key===contextKey?editor:null;
+ const load=useCallback(async(expectedEpoch=epoch.current)=>{if(expectedEpoch!==epoch.current||contextKey!==keyRef.current)return;const request=++serial.current;const ownsRead=()=>request===serial.current&&expectedEpoch===epoch.current&&contextKey===keyRef.current;setError(null);if(!read.can){setLoaded(null);setLoading(false);return;}setLoading(true);try{const value=await getFollowups(complaintId);if(ownsRead())setLoaded({key:contextKey,epoch:expectedEpoch,value});}catch(e){if(ownsRead()){setLoaded(null);setError(e instanceof Error?e.message:'回访读取失败');}}finally{if(ownsRead())setLoading(false);}},[complaintId,contextKey,read.can]);
+ useEffect(()=>{setLoaded(null);setEditor(null);setNotice(null);setSubmitting(false);retry.current=null;void load();return()=>{serial.current++;epoch.current++;};},[load]);
+ const data=loaded?.key===contextKey&&loaded.epoch===epoch.current?loaded.value:null;const active=editor?.key===contextKey&&editor.epoch===epoch.current?editor:null;
  const supervisor=conclude.can&&user?.accountType==='internal';
- const open=(mode:Editor['mode'],target:FollowupView|null)=>{setEditor({key:contextKey,mode,target});setContacted(target?.contacted??false);setOccurredAt(localDate(target?.occurredAt??new Date().toISOString()));setEvaluation(target?.evaluationCode??null);setDissatisfactionReason(target?.dissatisfactionReason??'');setNotes(target?.notes??'');setReason('');setConclusion(target?.conclusion??'');retry.current=null;setNotice(null);};
+ const open=(mode:Editor['mode'],target:FollowupView|null)=>{setEditor({key:contextKey,epoch:epoch.current,mode,target});setContacted(target?.contacted??false);setOccurredAt(localDate(target?.occurredAt??new Date().toISOString()));setEvaluation(target?.evaluationCode??null);setDissatisfactionReason(target?.dissatisfactionReason??'');setNotes(target?.notes??'');setReason('');setConclusion(target?.conclusion??'');retry.current=null;setNotice(null);};
  const submit=async(event:React.FormEvent)=>{
-  event.preventDefault();if(!active||submitting)return;const capturedKey=contextKey;setNotice(null);
+  event.preventDefault();if(!active||submitting)return;const capturedKey=contextKey;const capturedEpoch=epoch.current;const ownsWrite=()=>capturedKey===keyRef.current&&capturedEpoch===epoch.current;setNotice(null);
   if(active.mode==='conclude'?!supervisor:!create.can)return;
   if(active.mode!=='conclude'&&(!occurredAt||!Number.isFinite(new Date(occurredAt).getTime()))){setNotice('回访时间必填且须有效');return;}
   if(active.mode!=='conclude'&&evaluation==='dissatisfied'&&!dissatisfactionReason.trim()){setNotice('不满意理由必填');return;}
@@ -31,10 +31,10 @@ const ComplaintFollowups:React.FC<{complaintId:string}>=({complaintId})=>{
   if(active.mode==='conclude'&&!conclusion.trim()){setNotice('主管结论必填');return;}
   const facts:FollowupFacts={contacted,occurredAt:active.mode==='conclude'?active.target!.occurredAt:new Date(occurredAt).toISOString(),evaluationCode:contacted?evaluation:null,dissatisfactionReason:contacted&&evaluation==='dissatisfied'?dissatisfactionReason.trim():null,notes:notes.trim()||null};
   const body=active.mode==='conclude'?{expectedVersion:active.target!.version,conclusion:conclusion.trim(),reason:reason.trim()}:active.mode==='revise'?{...facts,expectedVersion:active.target!.version,reason:reason.trim()}:facts;
-  const fingerprint=JSON.stringify([contextKey,active.mode,active.target?.followupId,body]);if(retry.current?.fingerprint!==fingerprint)retry.current={fingerprint,requestId:crypto.randomUUID()};const requestId=retry.current.requestId;setSubmitting(true);
-  try{if(active.mode==='create')await createFollowup(complaintId,{...facts,requestId});else if(active.mode==='revise')await reviseFollowup(active.target!.followupId,{...facts,expectedVersion:active.target!.version,reason:reason.trim(),requestId});else await concludeFollowup(active.target!.followupId,{expectedVersion:active.target!.version,conclusion:conclusion.trim(),reason:reason.trim(),requestId});if(capturedKey!==keyRef.current)return;setEditor(null);retry.current=null;setNotice('回访记录已保存');await load();}
-  catch(e){if(capturedKey!==keyRef.current)return;setNotice(e instanceof Error?e.message:'回访保存失败');if((e as {status?:number}).status===409){setNotice('版本或请求内容冲突，请核对刷新后的记录，重新打开操作。');await load();}}
-  finally{if(capturedKey===keyRef.current)setSubmitting(false);}
+  const fingerprint=JSON.stringify([contextKey,capturedEpoch,active.mode,active.target?.followupId,body]);if(retry.current?.fingerprint!==fingerprint)retry.current={fingerprint,requestId:crypto.randomUUID()};const requestId=retry.current.requestId;setSubmitting(true);
+  try{if(active.mode==='create')await createFollowup(complaintId,{...facts,requestId});else if(active.mode==='revise')await reviseFollowup(active.target!.followupId,{...facts,expectedVersion:active.target!.version,reason:reason.trim(),requestId});else await concludeFollowup(active.target!.followupId,{expectedVersion:active.target!.version,conclusion:conclusion.trim(),reason:reason.trim(),requestId});if(!ownsWrite())return;setEditor(null);retry.current=null;setNotice('回访记录已保存');await load(capturedEpoch);}
+  catch(e){if(!ownsWrite())return;setNotice(e instanceof Error?e.message:'回访保存失败');if((e as {status?:number}).status===409){setNotice('版本或请求内容冲突，请核对刷新后的记录，重新打开操作。');await load(capturedEpoch);}}
+  finally{if(ownsWrite())setSubmitting(false);}
  };
  if(!read.can)return null;
  return <Card title="人工回访" style={{marginTop:16}} extra={<Button disabled={submitting} loading={loading} onClick={()=>void load()}>刷新回访</Button>}>

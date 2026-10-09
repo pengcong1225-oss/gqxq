@@ -130,5 +130,15 @@ test('C3 actual SQL followup component on isolated declared fixture, not canonic
     assert.equal(await db.schema.hasTable('manual_followup'),false);assert.equal((await db('manual_followup_revision').count('* as n').first()).n,originalCount);
    }finally{await db.raw('alter table manual_followup_revision modify notes varchar(2000) null');await db.raw('rename table c3_saved_followup to manual_followup');}
   });
+  await t.test('prefix unique request identity is rejected by helper and production up before any owned DDL or seed',async()=>{
+   const migrate=require('../migrations/20261009130001__manual_complaint_followups.js');
+   const governance=async()=>JSON.stringify({permissions:await db('platform_permission').orderBy('permission_code'),grants:await db('platform_role_permission').orderBy(['role_code','permission_code']),roles:await db('platform_role').orderBy('role_code'),state:await db('platform_authorization_state').orderBy('id')});const before=await governance();
+   const requests=JSON.stringify(await db('manual_followup_request').orderBy(['owner_id','complaint_id','operation','request_id']));
+   await db.raw('alter table manual_followup_request drop primary key, add unique key uk_c3_prefix(owner_id,complaint_id,operation,request_id(8))');
+   await db.raw('rename table manual_followup to c3_saved_followup');
+   try{const [indexes]=await db.raw('show index from manual_followup_request');assert.ok(indexes.some(row=>row.Column_name==='request_id'&&Number(row.Sub_part)===8));
+    for(const check of [migrate.ensureFollowupTables,migrate.up]){await assert.rejects(()=>check(db),/C3 incompatible key manual_followup_request/);assert.equal(await db.schema.hasTable('manual_followup'),false,'reject before creating missing first owned table');assert.equal(await governance(),before,'reject before capability/grant/version seed');assert.equal(JSON.stringify(await db('manual_followup_request').orderBy(['owner_id','complaint_id','operation','request_id'])),requests);}
+   }finally{await db.schema.dropTableIfExists('manual_followup');await db.raw('rename table c3_saved_followup to manual_followup');await db.raw('alter table manual_followup_request drop index uk_c3_prefix, add primary key(owner_id,complaint_id,operation,request_id)');}
+  });
  }finally{if(close)await close();await db.destroy();}
 });
