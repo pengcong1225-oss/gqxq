@@ -1,3 +1,4 @@
+import { changePassword } from '../services/passwordService';
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/requireAuth';
@@ -12,7 +13,7 @@ export const authRouter = Router();
 
 const loginSchema = z.object({
   username: z.string().trim().min(1).max(64),
-  password: z.string().min(1).max(200),
+  password: z.string().min(1).refine(v=>Buffer.byteLength(v,'utf8')<=72,'口令 UTF-8 编码不能超过 72 字节'),
 });
 
 authRouter.post('/auth/login', async (req, res, next) => {
@@ -47,4 +48,13 @@ authRouter.get('/auth/user-info', requireAuth, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+authRouter.post('/auth/change-password',requireAuth,async(req,res,next)=>{
+ try {
+  const input=z.object({currentPassword:z.string(),newPassword:z.string()}).strict().safeParse(req.body);
+  if(!input.success) throw AppError.validation('改密请求参数不合法');
+  await changePassword(req.user!.id,input.data.currentPassword,input.data.newPassword,{userId:req.user!.id,userName:req.user!.username,clientIp:req.remoteIp});
+  ok(res,{changed:true},'口令已修改，请重新登录');
+ } catch(err) {next(err);}
 });

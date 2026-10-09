@@ -278,7 +278,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
     requirement?: string;
     reason?: string;
   }>();
-  const writeAccess = useWriteAccess();
+  const writeAccess = useWriteAccess('dispatch.create');
 
   const params = useMemo(
     () => buildSensitiveComplaintParams(page, size, keyword),
@@ -588,6 +588,8 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
 };
 
 const DispatchOrders: React.FC = () => {
+  const pushAccess=useWriteAccess('dispatch.push');
+  const cancelAccess=useWriteAccess('dispatch.cancel');
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeView, setActiveView] = useState<'matches' | 'orders'>(
@@ -929,7 +931,7 @@ const DispatchOrders: React.FC = () => {
                   type="link"
                   size="small"
                   icon={<SendOutlined />}
-                  loading={pushBusyId === r.assignmentId}
+                  disabled={!pushAccess.can} loading={pushBusyId === r.assignmentId}
                   onClick={() => void handlePush(r, false)}
                 >
                   推送
@@ -950,7 +952,7 @@ const DispatchOrders: React.FC = () => {
                   type="link"
                   size="small"
                   icon={<RedoOutlined />}
-                  loading={pushBusyId === r.assignmentId}
+                  disabled={!pushAccess.can} loading={pushBusyId === r.assignmentId}
                   onClick={() => void handlePush(r, true)}
                 >
                   重推
@@ -991,6 +993,7 @@ const DispatchOrders: React.FC = () => {
                   type="link"
                   size="small"
                   danger
+                  disabled={!cancelAccess.can}
                   icon={<StopOutlined />}
                   onClick={() => {
                     cancelForm.resetFields();
@@ -1005,7 +1008,7 @@ const DispatchOrders: React.FC = () => {
         },
       },
     ],
-    [navigate, openDetail, cancelForm, handlePush, pushBusyId]
+    [navigate, openDetail, cancelForm, handlePush, pushBusyId,pushAccess.can,cancelAccess.can]
   );
 
   /** G3 推送记录列（一次尝试一行） */
@@ -1414,7 +1417,7 @@ const DispatchOrders: React.FC = () => {
             {pushOutcome?.kind === 'error' && (
               <Button
                 type="primary"
-                loading={pushBusyId === pushOutcome.order.assignmentId}
+                disabled={!pushAccess.can} loading={pushBusyId === pushOutcome.order.assignmentId}
                 onClick={() => void handlePush(pushOutcome.order, true)}
               >
                 重试（同一请求号、同一报文、新 nonce）
@@ -1423,7 +1426,7 @@ const DispatchOrders: React.FC = () => {
             {pushOutcome?.kind === 'result' && pushOutcome.result.retryable && (
               <Button
                 type="primary"
-                loading={pushBusyId === pushOutcome.order.assignmentId}
+                disabled={!pushAccess.can} loading={pushBusyId === pushOutcome.order.assignmentId}
                 onClick={() => void handlePush(pushOutcome.order, true)}
               >
                 重推（同一请求号、同一报文、新 nonce）

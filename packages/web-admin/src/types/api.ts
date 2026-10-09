@@ -407,6 +407,8 @@ export interface UserInfo {
   realName: string;
   roles: string[];
   permissions: string[];
+  mustChangePassword: boolean;
+  authorizationVersion: number;
 }
 
 export interface LoginResult {
@@ -417,7 +419,7 @@ export interface LoginResult {
 /* ==================== 用户与权限（Task #35 三档 RBAC，镜像 server/src/types/api.ts） ==================== */
 
 /** 三档角色。真源是 server/src/auth/rolePolicy.ts 的 ROLES 与映射表 §1 */
-export type AppRole = 'admin' | 'handler' | 'readonly';
+export type AppRole = string;
 
 /** 用户管理列表项：**接口永不返回口令**（仓储层不 select password_hash） */
 export interface UserAdminItem {
@@ -432,6 +434,7 @@ export interface UserAdminItem {
   status: 0 | 1;
   lastLoginAt: string | null;
   createdAt: string | null;
+  mustChangePassword: boolean;
 }
 
 export interface UserAdminFilter {

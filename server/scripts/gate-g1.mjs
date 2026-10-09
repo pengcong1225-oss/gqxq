@@ -95,6 +95,9 @@ const VIEW_WHITELIST = new Set([
   // Task #35：系统管理页从 Mock 换成真接口（GET/POST/PATCH /users），
   // 且旧「操作日志」页签是**撤下**而非留假数据（读审计的接口本批不做，见映射表 §5）。
   'UserManager',
+  // A5: both pages call real account/role APIs; no local business examples.
+  'RoleManager',
+  'ChangePassword',
 ]);
 const DEMO_MARKER = 'DemoDataNotice';
 

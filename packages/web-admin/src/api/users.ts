@@ -38,3 +38,5 @@ export async function updateUser(
 ): Promise<UpdateUserResult> {
   return request.patch<never, UpdateUserResult>('/users/' + encodeURIComponent(userId), body);
 }
+
+export function resetPassword(userId:string,password:string){return request.post<never,{changed:boolean}>('/users/'+encodeURIComponent(userId)+'/reset-password',{password});}

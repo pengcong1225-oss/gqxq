@@ -3,8 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Button, Avatar, Dropdown, Tag, theme } from 'antd';
 import { useAppStore } from '../stores/appStore';
 import { getUserInfo } from '../api/auth';
-import { ROLE_ADMIN, ROLE_HANDLER, ROLE_READONLY, useRoleLabel, useRoles } from '../stores/roleAccess';
-import type { AppRole } from '../types/api';
+import { useRoleLabel } from '../stores/roleAccess';
 import {
   DashboardOutlined, FileTextOutlined, BarChartOutlined, WarningOutlined,
   TeamOutlined, AppstoreOutlined, FireOutlined, PauseCircleOutlined,
@@ -13,46 +12,37 @@ import {
   AuditOutlined, FolderOpenOutlined
 } from '@ant-design/icons';
 
+const NavigatePassword=()=>{const navigate=useNavigate();useEffect(()=>{navigate('/change-password',{replace:true});},[navigate]);return null;};
 const { Header, Sider, Content } = Layout;
 
 interface MenuEntry {
   key: string;
   icon: React.ReactNode;
   label: string;
-  /** 可见档位；不给就是三档皆可见（读页面人人能看） */
-  roles?: AppRole[];
+  /** 页面对应的服务端功能权限 */
+  permission: string;
 }
 
-const R_ALL: AppRole[] = [ROLE_ADMIN, ROLE_HANDLER, ROLE_READONLY];
-const R_WRITE: AppRole[] = [ROLE_ADMIN, ROLE_HANDLER];
-const R_ADMIN: AppRole[] = [ROLE_ADMIN];
-
-/**
- * 菜单档位口径（docs/2026-09-21-角色权限映射.md §1、§3.4、§3.5）：
- *   * 纯操作入口（整体纠偏 / 敏感交办 / 交办归档）只读档看不到；
- *   * 字典管理与系统管理 admin 独占；
- *   * 其余是读页面，三档都留。
- *
- * 这道过滤**只是体验层**：真正的判定在后端 enforceRolePolicy()。
- * 只读用户手敲 URL 也进得来页面，但拿不到写权限（403 统一提示），
- * admin 独占的两条路由另有 App.tsx 的 RequireRole 挡住。
- */
+/** Menus reflect backend permissions. Buttons use their endpoint capability;
+ * the server always independently validates access. */
 const menuEntries: MenuEntry[] = [
-  { key: '/dashboard', icon: <DashboardOutlined />, label: '数据大屏', roles: R_ALL },
-  { key: '/complaints', icon: <FileTextOutlined />, label: '诉求管理', roles: R_ALL },
-  { key: '/address-correction', icon: <AuditOutlined />, label: '整体纠偏', roles: R_WRITE },
-  { key: '/analysis', icon: <BarChartOutlined />, label: '数据分析', roles: R_ALL },
-  { key: '/dispatch', icon: <WarningOutlined />, label: '敏感交办', roles: R_WRITE },
-  { key: '/dispatch/archive', icon: <FolderOpenOutlined />, label: '交办归档', roles: R_WRITE },
-  { key: '/companies', icon: <TeamOutlined />, label: '企业管理', roles: R_ALL },
-  { key: '/grids', icon: <AppstoreOutlined />, label: '网格管理', roles: R_ALL },
-  { key: '/heatmap', icon: <FireOutlined />, label: '热力图', roles: R_ALL },
-  { key: '/shutdowns', icon: <PauseCircleOutlined />, label: '停供管理', roles: R_ALL },
-  { key: '/pipelines', icon: <ToolOutlined />, label: '管道施工', roles: R_ALL },
-  { key: '/reports', icon: <FilePdfOutlined />, label: '分析报告', roles: R_ALL },
-  { key: '/dicts', icon: <DatabaseOutlined />, label: '字典管理', roles: R_ADMIN },
-  { key: '/system/users', icon: <SettingOutlined />, label: '系统管理', roles: R_ADMIN },
+  { key: '/dashboard', icon: <DashboardOutlined />, label: '数据大屏', permission: 'dashboard.read' },
+  { key: '/complaints', icon: <FileTextOutlined />, label: '诉求管理', permission: 'complaint.read' },
+  { key: '/address-correction', icon: <AuditOutlined />, label: '整体纠偏', permission: 'complaint.correct' },
+  { key: '/analysis', icon: <BarChartOutlined />, label: '数据分析', permission: 'analysis.read' },
+  { key: '/dispatch', icon: <WarningOutlined />, label: '敏感交办', permission: 'dispatch.read' },
+  { key: '/dispatch/archive', icon: <FolderOpenOutlined />, label: '交办归档', permission: 'dispatch.read' },
+  { key: '/companies', icon: <TeamOutlined />, label: '企业管理', permission: 'enterprise.read' },
+  { key: '/grids', icon: <AppstoreOutlined />, label: '网格管理', permission: 'grid.read' },
+  { key: '/heatmap', icon: <FireOutlined />, label: '热力图', permission: 'heatmap.read' },
+  { key: '/shutdowns', icon: <PauseCircleOutlined />, label: '停供管理', permission: 'shutdown.read' },
+  { key: '/pipelines', icon: <ToolOutlined />, label: '管道施工', permission: 'pipeline.read' },
+  { key: '/reports', icon: <FilePdfOutlined />, label: '分析报告', permission: 'report.read' },
+  { key: '/dicts', icon: <DatabaseOutlined />, label: '字典管理', permission: 'system.dict.manage' },
+  { key: '/system/users', icon: <SettingOutlined />, label: '账号管理', permission: 'system.users.manage' },
 ];
+
+menuEntries.push({key:'/system/roles',icon:<SettingOutlined/>,label:'角色权限',permission:'system.roles.manage'});
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
@@ -63,7 +53,7 @@ const MainLayout: React.FC = () => {
   const userInfo = useAppStore((s) => s.userInfo);
   const setUserInfo = useAppStore((s) => s.setUserInfo);
   const tokenValue = useAppStore((s) => s.token);
-  const roles = useRoles();
+  const permissions=userInfo?.permissions??[];
   const roleLabel = useRoleLabel();
 
   /**
@@ -72,32 +62,26 @@ const MainLayout: React.FC = () => {
    * 失败不用管：401 由响应拦截器清令牌并跳登录页。
    */
   useEffect(() => {
-    if (tokenValue === null || tokenValue === '' || userInfo !== null) return;
-    let cancelled = false;
-    void getUserInfo()
-      .then((info) => {
-        if (!cancelled) setUserInfo(info);
-      })
-      .catch(() => {
-        /* 令牌本身有问题，交给拦截器处理 */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [tokenValue, userInfo, setUserInfo]);
+    if (!tokenValue) return;
+    let cancelled=false;
+    const refreshIdentity=()=>{void getUserInfo().then(info=>{if(!cancelled)setUserInfo(info);}).catch(()=>{/* 401 interceptor handles expired identity. */});};
+    refreshIdentity();
+    window.addEventListener('focus',refreshIdentity);
+    return ()=>{cancelled=true;window.removeEventListener('focus',refreshIdentity);};
+  }, [tokenValue,setUserInfo,location.pathname]);
 
   const selectedKey = '/' + location.pathname.split('/').filter(Boolean).slice(0, 2).join('/');
 
   const menuItems = useMemo(
     () =>
       menuEntries
-        .filter((e) => e.roles === undefined || e.roles.some((r) => roles.includes(r)))
+        .filter(e=>permissions.includes(e.permission)&&!userInfo?.mustChangePassword)
         .map(({ key, icon, label }) => ({ key, icon, label })),
-    [roles]
+    [permissions,userInfo]
   );
 
   const userMenuItems = [
-    { key: 'profile', icon: <UserOutlined />, label: '个人中心' },
+    { key: 'password', icon: <UserOutlined />, label: '修改口令' },
     { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true },
   ];
 
@@ -122,6 +106,7 @@ const MainLayout: React.FC = () => {
             menu={{
               items: userMenuItems,
               onClick: ({ key }) => {
+                if(key==='password') navigate('/change-password');
                 if (key === 'logout') {
                   logout();
                   navigate('/login', { replace: true });
@@ -138,7 +123,7 @@ const MainLayout: React.FC = () => {
           </Dropdown>
         </Header>
         <Content style={{ margin: 16, padding: 24, background: '#fff', borderRadius: 8, overflow: 'auto' }}>
-          <Outlet />
+          {userInfo?.mustChangePassword ? <NavigatePassword/> : <Outlet />}
         </Content>
       </Layout>
     </Layout>

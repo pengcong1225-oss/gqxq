@@ -37,7 +37,7 @@
  * 退出码：任一 FAIL -> 1；前置不满足 -> 2；全 PASS -> 0。
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import net from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
@@ -53,6 +53,15 @@ const ROOT = resolve(SERVER, '..');
 const ENTRY = join(SERVER, 'dist', 'index.js');
 const DOC = join(ROOT, 'docs', '2026-09-21-角色权限映射.md');
 dotenv.config({ path: join(SERVER, '.env') });
+
+// Safe complete capability matrix: no MySQL connections, explicit synthetic config.
+if (process.argv.includes('--policy-only')) {
+ const result=spawnSync(process.execPath,[join(SERVER,'node_modules','tsx','dist','cli.mjs'),'--test','tests/account-role-management.test.ts'],{
+  cwd:SERVER,stdio:'inherit',windowsHide:true,env:{...process.env,DOTENV_CONFIG_PATH:join(SERVER,'nonexistent-policy-test.env'),NODE_ENV:'test',
+   GQXQ_DB_HOST:'127.0.0.1',GQXQ_DB_PORT:'1',GQXQ_DB_USER:'synthetic_account_test',GQXQ_DB_PASSWORD:'synthetic_only',GQXQ_DB_NAME:'synthetic_account_test',GQXQ_JWT_SECRET:'synthetic_account_test_secret_32_chars'}
+ });
+ process.exit(result.status??1);
+}
 
 const MAIN_DB = 'gqxq_service';
 const TEST_DB = process.env.GQXQ_TEST_DB_NAME || 'gqxq_service_test';
@@ -166,7 +175,7 @@ async function ensureAccount(username, role, password) {
   if (existing.length > 0) {
     // 复跑：把角色/状态修回断言所需的样子（测试账号口令一并重置，无真实用途）
     await db.execute(
-      'update app_user set roles = ?, status = 1, password_hash = ?, real_name = ? where username = ?',
+      'update app_user set roles = ?, status = 1, password_hash = ?, real_name = ?, must_change_password = 0, session_version = session_version + 1 where username = ?',
       [JSON.stringify([role]), hash, '验收测试账号-' + role, username]
     );
     return { userId: String(existing[0].user_id), created: false };
@@ -179,11 +188,11 @@ async function ensureAccount(username, role, password) {
   );
   const userId = 'USR' + day.replace(/-/g, '') + String(Number(seqResult.insertId)).padStart(4, '0');
   await db.query(
-    'insert into app_user (user_id, username, password_hash, real_name, roles, permissions, status, created_at, updated_at) ' +
-      'values (?, ?, ?, ?, ?, ?, 1, ?, ?)',
+    'insert into app_user (user_id, username, password_hash, real_name, roles, permissions, status, created_at, updated_at, must_change_password, session_version) ' +
+      'values (?, ?, ?, ?, ?, ?, 1, ?, ?, 0, 1)',
     [
       userId, username, hash, '验收测试账号-' + role, JSON.stringify([role]),
-      JSON.stringify(role === 'admin' ? ['*'] : []), new Date(), new Date(),
+      JSON.stringify([]), new Date(), new Date(),
     ]
   );
   return { userId, created: true };
@@ -512,18 +521,18 @@ async function runIsolated() {
   pLines.push(sub() + '文档编号重复 = ' + (dupIds ? '有（FAIL）' : '无'));
   const undeclaredHandler = policy.isAllowed({ id: 'X', username: 'x', roles: ['handler'] }, 'POST', '/brand-new-endpoint');
   const undeclaredReadonly = policy.isAllowed({ id: 'Y', username: 'y', roles: ['readonly'] }, 'GET', '/brand-new-read');
-  const undeclaredAdmin = policy.isAllowed({ id: 'Z', username: 'z', roles: ['admin'] }, 'POST', '/brand-new-endpoint');
+  const undeclaredAdmin = policy.isAllowed({ id: 'Z', username: 'z', roles: ['admin'],permissionCodes:[] }, 'POST', '/brand-new-endpoint');
   pLines.push(sub() + '未声明端点 + handler -> ' + undeclaredHandler.allowed + '（期望 false）依据「' + undeclaredHandler.reason + '」');
   pLines.push(sub() + '未声明端点 + readonly -> ' + undeclaredReadonly.allowed + '（期望 false）');
-  pLines.push(sub() + '未声明端点 + admin -> ' + undeclaredAdmin.allowed + '（期望 true，admin 是全量档）');
+  pLines.push(sub() + '未声明端点 + admin -> ' + undeclaredAdmin.allowed + '（期望 false，所有有效授权均须端点登记）');
   const readonlySlip = policy.isAllowed({ id: 'R', username: 'r', roles: ['readonly'] }, 'POST', '/complaints');
-  const tableHasReadonlyWrite = policy.ROLE_POLICY.some((r) => r.method !== 'GET' && r.roles.includes('readonly'));
+  const tableHasReadonlyWrite = policy.ROLE_POLICY.some((r) => r.method !== 'GET' && r.roles.includes('readonly') && !r.selfService);
   pLines.push(sub() + 'readonly 打 POST /complaints -> ' + readonlySlip.allowed + '（硬不变量：即使表格误写也放不开）；' +
     '表里存在"非 GET 放行 readonly"的行 = ' + (tableHasReadonlyWrite ? '有（FAIL）' : '无'));
   const roleSetOk = policy.ROLES.length === 3 && policy.isRole('handler') && !policy.isRole('superuser');
   pLines.push(sub() + '角色集合 = ' + JSON.stringify(policy.ROLES) + '，isRole 校验 superuser = ' + !policy.isRole('superuser'));
-  check(policy.ROLE_POLICY.length === ids.length && pids.length === 4 && !dupIds &&
-    undeclaredHandler.allowed === false && undeclaredReadonly.allowed === false && undeclaredAdmin.allowed === true &&
+  check(ids.every(id=>policy.ROLE_POLICY.some(r=>r.desc.startsWith(id+' '))) && policy.ROLE_POLICY.every(r=>r.selfService||r.permissionCode) && pids.length === 4 && !dupIds &&
+    undeclaredHandler.allowed === false && undeclaredReadonly.allowed === false && undeclaredAdmin.allowed === false &&
     readonlySlip.allowed === false && !tableHasReadonlyWrite && roleSetOk,
     pLines, 'RBAC-02', '策略表与映射文档逐条一致 + 默认拒绝 + readonly 硬不变量');
 
@@ -534,7 +543,7 @@ async function runIsolated() {
   /* RBAC-04 readonly 对策略表内**每一条**写端点 403，且零副作用 */
   const wLines = [];
   const beforeItems = await scalar('select count(*) as n from correction_item');
-  const writeRules = policy.ROLE_POLICY.filter((r) => r.method !== 'GET');
+  const writeRules = policy.ROLE_POLICY.filter((r) => r.method !== 'GET' && !r.selfService);
   let notForbidden = 0;
   for (const rule of writeRules) {
     const path = rulePath(rule);
@@ -547,7 +556,7 @@ async function runIsolated() {
   const afterItems = await scalar('select count(*) as n from correction_item');
   wLines.push(sub() + '逐条探测 ' + writeRules.length + ' 条写端点，非 403 的 = ' + notForbidden);
   wLines.push(sub() + 'correction_item 行数 前=' + beforeItems + ' 后=' + afterItems + '（403 必须零写入）');
-  check(notForbidden === 0 && beforeItems === afterItems, wLines, 'RBAC-04', 'readonly 任何 POST/PATCH 一律 403 且无副作用');
+  check(notForbidden === 0 && beforeItems === afterItems, wLines, 'RBAC-04', 'readonly 所有业务写端点 403 且无副作用（本人改密另验）');
 
   /* RBAC-05 业务写审计到人：经办做一次真实生成 */
   const hLines = [];

@@ -41,8 +41,8 @@ if (username === '') {
   console.error('[seed-admin] GQXQ_BOOTSTRAP_ADMIN_USERNAME 为空，拒绝创建。');
   process.exit(1);
 }
-if (password === '') {
-  console.error('[seed-admin] GQXQ_BOOTSTRAP_ADMIN_PASSWORD 为空，拒绝创建初始管理员。');
+if (password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
+  console.error('[seed-admin] 初始口令至少 8 个字符，UTF-8 编码不得超过 72 字节。');
   console.error('[seed-admin] 请在 server/.env 中设置强口令后重试；本脚本不会写入任何默认口令。');
   process.exit(1);
 }
@@ -60,11 +60,13 @@ async function main() {
     password: process.env.GQXQ_DB_PASSWORD === undefined ? '' : process.env.GQXQ_DB_PASSWORD,
     database: required('GQXQ_DB_NAME'),
     charset: 'utf8mb4',
-    // 时间列按 UTC 读写，与运行期连接池一致
-    timezone: 'Z',
+    // 与运行期连接池相同的 Asia/Shanghai 墙钟口径
+    timezone: '+08:00',
   });
 
   try {
+    await conn.beginTransaction();
+    await conn.query('select version from platform_authorization_state where id = 1 for update');
     const existing = await conn.query(
       'select id, user_id, username from app_user where username = ? limit 1',
       [username]
@@ -73,17 +75,22 @@ async function main() {
     if (Array.isArray(rows) && rows.length > 0) {
       console.log('[seed-admin] 用户已存在，跳过（幂等）：username=' + username
         + ' userId=' + String(rows[0].user_id));
+      await conn.commit();
       return;
     }
 
+    const [admins] = await conn.query("select user_id from app_user where status = 1 and json_type(roles) = 'ARRAY' and json_length(roles) = 1 and json_contains(roles, json_quote('admin')) limit 1");
+    if (admins.length > 0) {
+      await conn.rollback();
+      throw new Error('已有管理员，初始化不会新增或提权；请使用账号管理');
+    }
     const passwordHash = await bcrypt.hash(password, 10);
     const roles = JSON.stringify(['admin']);
-    const permissions = JSON.stringify(['*']);
+    const permissions = JSON.stringify([]);
 
     // 业务主键沿用仓库约定：前缀 + yyyyMMdd + 4 位序号（与 complaint_id / assignment_id 同构）
     const bizDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 
-    await conn.beginTransaction();
     let userId;
     try {
       const seqResult = await conn.query(
@@ -101,10 +108,11 @@ async function main() {
       const now = new Date();
       await conn.query(
         'insert into app_user ' +
-          '(user_id, username, password_hash, real_name, roles, permissions, status, created_at, updated_at) ' +
-          'values (?, ?, ?, ?, ?, ?, 1, ?, ?)',
+          '(user_id, username, password_hash, real_name, roles, permissions, status, created_at, updated_at, must_change_password, session_version) ' +
+          'values (?, ?, ?, ?, ?, ?, 1, ?, ?, 1, 1)',
         [userId, username, passwordHash, realName, roles, permissions, now, now]
       );
+      await conn.query('update platform_authorization_state set version = version + 1 where id = 1');
       await conn.commit();
     } catch (err) {
       await conn.rollback();
@@ -113,13 +121,13 @@ async function main() {
 
     console.log('[seed-admin] 已创建初始管理员：username=' + username
       + ' userId=' + userId + ' roles=[admin]');
-    console.log('[seed-admin] 口令未回显。如需重置，请先删除该行再重跑本脚本。');
+    console.log('[seed-admin] 口令未回显。首次登录须改密；重置请使用管理员重置入口，禁止删除账号。');
   } finally {
     await conn.end();
   }
 }
 
 main().catch((err) => {
-  console.error('[seed-admin] 失败：' + (err instanceof Error ? err.message : String(err)));
+  console.error('[seed-admin] 初始化失败，请核对迁移与配置；错误详情不输出，以免数据库异常泄露凭证。');
   process.exit(1);
 });

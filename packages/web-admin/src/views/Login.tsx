@@ -28,7 +28,7 @@ const Login: React.FC = () => {
       setToken(result.token);
       setUserInfo(result.userInfo);
       const from = (location.state as { from?: string } | null)?.from;
-      navigate(from !== undefined && from !== '' ? from : '/dashboard', { replace: true });
+      navigate(result.userInfo.mustChangePassword ? '/change-password' : from !== undefined && from !== '' ? from : '/dashboard', { replace: true });
     } catch (err) {
       // 后端对"用户不存在"与"口令错误"返回同一句话，不泄露账号是否存在
       setError(err instanceof Error ? err.message : '登录失败，请重试');

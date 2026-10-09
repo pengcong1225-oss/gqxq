@@ -16,41 +16,23 @@ import {
   Tabs,
   Tag,
   Tooltip,
-  Typography,
   message,
 } from 'antd';
 import {
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
-  SettingOutlined,
   TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { createUser, listUsers, updateUser } from '../api/users';
+import { listRoles,type PlatformRole } from '../api/roles';
+import { createUser, listUsers, updateUser, resetPassword } from '../api/users';
 import { useAppStore } from '../stores/appStore';
-import { ROLE_ADMIN, ROLE_HANDLER, ROLE_READONLY, WriteGate, useAdminAccess } from '../stores/roleAccess';
+import { ROLE_ADMIN, ROLE_HANDLER, WriteGate, useAdminAccess } from '../stores/roleAccess';
 import type { AppRole, UserAdminFilter, UserAdminItem } from '../types/api';
 
-/**
- * 系统管理 —— 用户管理（Task #35：原 501 桩 / Mock 页换成真接口）。
- *
- * 口径（docs/2026-09-21-角色权限映射.md §3.4、§5）：
- *  - 整页 admin 独占：菜单过滤 + App.tsx 的 RequireRole + 后端策略表 U1–U3 与 requireRole('admin')；
- *  - **没有"删除"**：后端不提供 DELETE，下线账号用「禁用」，
- *    否则历史审计里的 user_id 会变成查无此人的孤号；
- *  - 建号只给初始口令，之后不回显也改不了（改口令本批未做，已记遗留）；
- *  - 防呆（最后一个 admin 不可自禁/自降、不能禁用自己）由后端返回 409，
- *    页面原样显示那句话，不粉饰成"保存失败"；
- *  - 旧 Mock 的「操作日志」页签已撤下：读 operation_audit_log 的接口本批不做，
- *    留假数据比没有更糟（零 mock 是红线）。
- */
-
-const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
-  { value: ROLE_ADMIN, label: '系统管理员（全部权限，用户/字典管理独占）' },
-  { value: ROLE_HANDLER, label: '业务经办（可写业务，不可管用户与字典）' },
-  { value: ROLE_READONLY, label: '只读（仅 GET）' },
-];
+/** Existing account CRUD with backend role choices and protected reset capability.
+ * Local creation requires one explicit role; disabled accounts preserve audit identity. */
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -81,6 +63,11 @@ const UserManager: React.FC = () => {
   const { can: isAdmin, tip: adminTip } = useAdminAccess();
   const myUserId = useAppStore((s) => s.userInfo?.userId ?? null);
 
+  const [roleRows,setRoleRows]=useState<PlatformRole[]>([]);
+  const ROLE_OPTIONS=roleRows.filter(r=>r.enabled).map(r=>({value:r.roleCode,label:r.name}));
+  const [resetting,setResetting]=useState<UserAdminItem|null>(null);
+  const [resetForm]=Form.useForm();
+  useEffect(()=>{if(isAdmin)void listRoles().then(setRoleRows).catch(e=>message.error(errText(e)));},[isAdmin]);
   const [rows, setRows] = useState<UserAdminItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -147,7 +134,7 @@ const UserManager: React.FC = () => {
 
   const openCreate = () => {
     createForm.resetFields();
-    createForm.setFieldsValue({ role: ROLE_HANDLER });
+
     setCreateOpen(true);
   };
 
@@ -163,6 +150,7 @@ const UserManager: React.FC = () => {
       const created = await createUser(values);
       message.success('已创建 ' + created.username + '（' + created.roleNames.join('/') + '）');
       setCreateOpen(false);
+      createForm.resetFields();
       refresh();
     } catch (e) {
       // 409「用户名已存在」/ 400 契约错误都照实显示后端那句话
@@ -257,6 +245,7 @@ const UserManager: React.FC = () => {
           <Tooltip title="不提供删除：禁用即下线，历史审计要查得到人">
             <span style={{ marginLeft: 8, color: '#bfbfbf' }}>无删除</span>
           </Tooltip>
+          <Button type="link" disabled={!isAdmin} onClick={()=>{resetForm.resetFields();setResetting(r);}}>重置口令</Button>
           {r.userId === myUserId ? <Tag style={{ marginLeft: 8 }}>当前登录</Tag> : null}
         </Space>
       ),
@@ -361,56 +350,18 @@ const UserManager: React.FC = () => {
     </div>
   );
 
-  /**
-   * 角色说明：三档能力对照，抄自映射表 §1 与 §3。
-   * 这里是**策略文本**不是业务数据：没有假账号、没有假用户数。
-   */
-  const roleTab = (
-    <div>
-      <Table
-        rowKey="role"
-        size="middle"
-        pagination={false}
-        dataSource={[
-          {
-            role: ROLE_ADMIN,
-            name: '系统管理员',
-            write: '全部业务写 + 用户管理 + 字典管理',
-            note: '策略表所有端点放行；新增路由漏声明时默认也只有它能用（默认拒绝）',
-          },
-          {
-            role: ROLE_HANDLER,
-            name: '业务经办',
-            write: '交办 / 纠偏确认 / 归库 / 推送 / 归档 / 回填类写接口',
-            note: '不可管用户、不可改字典；受控撤销按业务动作放开',
-          },
-          {
-            role: ROLE_READONLY,
-            name: '只读',
-            write: '无（任何非 GET 一律 403）',
-            note: '后端在判定前先剔除 readonly，误配策略也放不开',
-          },
-        ]}
-        columns={[
-          { title: '档位', dataIndex: 'name', width: 120, render: (v: string) => <Tag color="blue">{v}</Tag> },
-          { title: '可写范围', dataIndex: 'write' },
-          { title: '口径', dataIndex: 'note' },
-        ]}
-      />
-      <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
-        一人一档：roles 数组本批按单档使用。全部判定见 <code>docs/2026-09-21-角色权限映射.md</code>，
-        代码真源 <code>server/src/auth/rolePolicy.ts</code>，可用 <code>npm run verify:rbac</code> 复算。
-      </Typography.Paragraph>
-    </div>
-  );
-
   return (
     <div>
+      <Modal title={'重置口令：'+(resetting?.username??'')} open={Boolean(resetting)} onCancel={()=>{setResetting(null);resetForm.resetFields();}} onOk={async()=>{
+       let values;try{values=await resetForm.validateFields();}catch{return;}
+       try{await resetPassword(resetting!.userId,values.password);setResetting(null);resetForm.resetFields();message.success('已重置；旧会话失效，下次登录须改密');refresh();}catch(e){message.error(errText(e));}
+      }} destroyOnClose>
+      <Alert type="warning" message="旧会话立即失效；新口令请通过既定安全渠道交给本人，下次登录必须修改。"/>
+      <Form form={resetForm} layout="vertical"><Form.Item name="password" label="新临时口令" rules={[{required:true},{min:8},{validator:(_,v)=>!v||new TextEncoder().encode(v).length<=72?Promise.resolve():Promise.reject(new Error('口令超过 72 字节'))}]}><Input.Password autoComplete="new-password"/></Form.Item></Form></Modal>
       <h2 style={{ marginBottom: 16 }}>系统管理</h2>
       <Tabs
         items={[
           { key: 'users', label: <span><UserOutlined /> 用户管理</span>, children: userTab },
-          { key: 'roles', label: <span><SettingOutlined /> 角色说明</span>, children: roleTab },
         ]}
       />
 
@@ -418,7 +369,7 @@ const UserManager: React.FC = () => {
         title="新增用户"
         open={createOpen}
         onOk={() => void submitCreate()}
-        onCancel={() => setCreateOpen(false)}
+        onCancel={() => {setCreateOpen(false);createForm.resetFields();}}
         confirmLoading={submitting}
         okText="创建"
         width={520}
@@ -445,8 +396,8 @@ const UserManager: React.FC = () => {
           <Form.Item
             name="password"
             label="初始口令"
-            extra="8–72 个字符；只在创建时提交一次，任何接口都不会回显它"
-            rules={[{ required: true, message: '请输入初始口令' }, { min: 8, max: 72, message: '8–72 个字符' }]}
+            extra="至少 8 个字符、UTF-8 不超过 72 字节；首次登录须改密"
+            rules={[{ required: true, message: '请输入初始口令' }, { min: 8, message: '至少 8 个字符' },{validator:(_,v)=>!v||new TextEncoder().encode(v).length<=72?Promise.resolve():Promise.reject(new Error('口令超过 72 字节'))}]}
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>

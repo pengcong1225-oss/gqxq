@@ -1,3 +1,4 @@
+import {useWriteAccess} from '../stores/roleAccess';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -51,6 +52,7 @@ interface BlockedInfo {
 }
 
 const DispatchArchive: React.FC = () => {
+  const archiveAccess=useWriteAccess('dispatch.archive');
   const navigate = useNavigate();
   const [tab, setTab] = useState<'completed' | 'archived'>('completed');
 
@@ -181,6 +183,7 @@ const DispatchArchive: React.FC = () => {
             <Button
               type="link"
               size="small"
+              disabled={!archiveAccess.can}
               icon={<InboxOutlined />}
               loading={archiving === r.assignmentId}
               onClick={() => void doArchive(r)}

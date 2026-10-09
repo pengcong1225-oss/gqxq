@@ -1,3 +1,4 @@
+import {useWriteAccess} from '../stores/roleAccess';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -113,6 +114,8 @@ export function sensitiveRuleScoreLabel(confidence: number | null, version: stri
 }
 
 const ComplaintDetail: React.FC = () => {
+  const sourceAccess=useWriteAccess('complaint.source_sync');
+  const createAccess=useWriteAccess('dispatch.create');
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -432,7 +435,7 @@ const ComplaintDetail: React.FC = () => {
         返回列表
       </Button>
       <Tooltip title="从宜接就办同步该诉求的来源处置状态（只读）。适配器未启用时会如实返回未实现，不会展示模拟进度。">
-        <Button loading={sourceSyncing} onClick={() => void handleSyncSource()}>
+        <Button disabled={!sourceAccess.can} loading={sourceSyncing} onClick={() => void handleSyncSource()}>
           同步来源状态
         </Button>
       </Tooltip>
@@ -826,6 +829,7 @@ const ComplaintDetail: React.FC = () => {
               ) : (
                 <Button
                   size="small"
+                  disabled={!createAccess.can}
                   onClick={() => {
                     dispatchForm.resetFields();
                     dispatchForm.setFieldsValue({
@@ -921,7 +925,7 @@ const ComplaintDetail: React.FC = () => {
           setDispatchOpen(false);
           dispatchForm.resetFields();
         }}
-        onOk={() => void handleCreateDispatch()}
+        okButtonProps={{disabled:!createAccess.can}} onOk={() => void handleCreateDispatch()}
         confirmLoading={submitting}
         okText="创建交办"
         width={560}

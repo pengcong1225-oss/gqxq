@@ -24,10 +24,12 @@ export interface AppUserRow {
   permissions: string[];
   status: number;
   lastLoginAt: Date | null;
+  sessionVersion: number;
+  mustChangePassword: boolean;
 }
 
 const APP_USER_COLUMNS =
-  'id, user_id, username, password_hash, real_name, roles, permissions, status, last_login_at';
+  'id, user_id, username, password_hash, real_name, roles, permissions, status, last_login_at, session_version, must_change_password';
 
 function toStr(v: unknown): string {
   return v === null || v === undefined ? '' : String(v);
@@ -74,6 +76,8 @@ function mapRow(r: Row): AppUserRow {
     permissions: toStringArray(r.permissions),
     status: toNum(r.status),
     lastLoginAt: toDateOrNull(r.last_login_at),
+    sessionVersion: toNum(r.session_version),
+    mustChangePassword: toNum(r.must_change_password) === 1,
   };
 }
 
@@ -111,23 +115,15 @@ export async function findByUserId(
   );
 }
 
-/**
- * 鉴权用的**最小身份视图**（Task #35 收尾补）。
- *
- * 为什么需要它：JWT 载荷里带着 `roles` 声明，TTL 8 小时。RBAC 上线后角色就是
- * 授权依据，如果 requireAuth 只验签名、直接拿令牌里的 roles，那么
- * PATCH /users 的「禁用」「降级」要等到对方令牌自然过期才生效 ——
- * 被降级的 admin 在这 8 小时里照样能进 /users。令牌只证明**身份**，
- * 档位与启停状态必须以这一条查询的结果为准（默认拒绝的延伸：查不到即拒绝）。
- *
- * 与 findByUsername/findByUserId 的区别：这里**绝不 select password_hash**
- * （每个鉴权请求都会走它，不该顺带把哈希读进内存），也不带 permissions（不参与鉴权）。
- */
+/** Minimal current identity/status/session view. Does not select password_hash.
+ * Effective role capabilities are read independently by resolveAuthorization. */
 export interface AuthIdentity {
   userId: string;
   username: string;
   roles: string[];
   status: number;
+  sessionVersion: number;
+  mustChangePassword: boolean;
 }
 
 export async function findAuthIdentity(
@@ -136,7 +132,7 @@ export async function findAuthIdentity(
 ): Promise<AuthIdentity | null> {
   const rows = await queryRows(
     exec,
-    'select user_id, username, roles, status from app_user where user_id = ? limit 1',
+    'select user_id, username, roles, status, session_version, must_change_password from app_user where user_id = ? limit 1',
     [userId]
   );
   const row = rows[0];
@@ -146,6 +142,8 @@ export async function findAuthIdentity(
     username: toStr(row.username),
     roles: toStringArray(row.roles),
     status: toNum(row.status),
+    sessionVersion: toNum(row.session_version),
+    mustChangePassword: toNum(row.must_change_password) === 1,
   };
 }
 
@@ -167,6 +165,8 @@ export function toUserInfo(row: AppUserRow): UserInfo {
     realName: row.realName,
     roles: row.roles,
     permissions: row.permissions,
+    mustChangePassword: row.mustChangePassword,
+    authorizationVersion: 0,
   };
 }
 
@@ -183,7 +183,7 @@ async function queryRows(exec: SqlExecutor, sql: string, values?: unknown[]): Pr
 }
 
 const ADMIN_USER_COLUMNS =
-  'id, user_id, username, real_name, roles, status, last_login_at, created_at';
+  'id, user_id, username, real_name, roles, status, last_login_at, created_at, session_version, must_change_password';
 
 /** 管理视图的行：与 AppUserRow 的差别只在没有 password_hash / permissions */
 export interface AdminUserRow {
@@ -193,6 +193,8 @@ export interface AdminUserRow {
   roles: string[];
   status: number;
   lastLoginAt: Date | null;
+  sessionVersion: number;
+  mustChangePassword: boolean;
   createdAt: Date | null;
 }
 
@@ -208,6 +210,8 @@ function mapAdminRow(r: Row): AdminUserRow {
     roles: toStringArray(r.roles),
     status: toNum(r.status),
     lastLoginAt: toDateOrNull(r.last_login_at),
+    sessionVersion: toNum(r.session_version),
+    mustChangePassword: toNum(r.must_change_password) === 1,
     createdAt: toDateOrNull(r.created_at),
   };
 }
@@ -288,8 +292,8 @@ export async function insertUser(
 ): Promise<void> {
   await exec.query(
     'insert into app_user ' +
-      '(user_id, username, password_hash, real_name, roles, permissions, status, created_at, updated_at) ' +
-      'values (?, ?, ?, ?, ?, ?, 1, ?, ?)',
+      '(user_id, username, password_hash, real_name, roles, permissions, status, created_at, updated_at, must_change_password, session_version) ' +
+      'values (?, ?, ?, ?, ?, ?, 1, ?, ?, 1, 1)',
     [
       input.userId,
       input.username,
@@ -329,7 +333,7 @@ export async function findAdminUserByUserId(
 export async function countEnabledAdmins(exec: SqlExecutor): Promise<number> {
   const rows = await queryRows(
     exec,
-    "select count(*) as total from app_user where status = 1 and json_contains(roles, json_quote('admin'))"
+    "select count(*) as total from app_user where status = 1 and json_type(roles) = 'ARRAY' and json_length(roles) = 1 and json_contains(roles, json_quote('admin'))"
   );
   return Number(rows[0]?.total ?? 0);
 }
@@ -373,5 +377,6 @@ export function toAdminUserItem(row: AdminUserRow): Omit<UserAdminItem, 'roleNam
     status: toBoolStatus(row.status),
     lastLoginAt: row.lastLoginAt === null ? null : row.lastLoginAt.toISOString(),
     createdAt: row.createdAt === null ? null : row.createdAt.toISOString(),
+    mustChangePassword: row.mustChangePassword,
   };
 }

@@ -1,12 +1,9 @@
-// 用户与权限服务（Task #35）：三档 RBAC 的账号 CRUD 与"审计到人"。
-//
-// 口径（docs/2026-09-21-角色权限映射.md §3.4）：
-//   * 只有 admin 能到这里（策略表 U1–U3 + routes/users.ts 的 requireRole 双重设防）；
-//   * **没有删除**：禁用（status=0）代替删除。删了行，operation_audit_log 里的 user_id
-//     就成了查无此人的孤号，"落到人"这条链断掉；
-//   * 口令只进不出：入参经 bcrypt 落 password_hash，任何响应与审计明细都不带它；
-//   * 角色是单档（roles 数组里一个值），一人多档本批不支持（映射表 §5 待裁定）。
+// Existing local account CRUD. One explicitly selected enabled role per local
+// user; future pending identities keep roles=[] until explicitly authorized.
+// Passwords/hashes stay out of responses/audits and credential error objects.
 import bcrypt from 'bcryptjs';
+import { validatePassword, safeCredentialError } from './passwordService';
+import { lockAuthorization, bumpAuthorization, findRole, listRoles } from '../repositories/roleRepo';
 import { AppError } from '../http/errors';
 import { pool } from '../db/pool';
 import { withTransaction, type Tx } from '../db/tx';
@@ -22,7 +19,7 @@ import {
   updateUser,
   type AdminUserRow,
 } from '../repositories/userRepo';
-import { isRole, ROLE_ADMIN, ROLE_LABELS, type Role } from '../auth/rolePolicy';
+import { isRole, ROLE_ADMIN, ROLE_LABELS } from '../auth/rolePolicy';
 import { GQXQ_APP_CODE } from './intakeService';
 import type { OperatorContext } from './dispatchService';
 import type {
@@ -50,13 +47,14 @@ function toItem(row: AdminUserRow): UserAdminItem {
 }
 
 export async function listUsers(
-  filter: { keyword?: string; role?: Role; status?: 0 | 1 },
+  filter: { keyword?: string; role?: string; status?: 0 | 1 },
   page: number,
   size: number
 ): Promise<UserAdminListResult> {
   const result = await listAdminUsers(pool, filter, page, size);
+  const roles = await listRoles(pool);
   return {
-    content: result.content.map(toItem),
+    content: result.content.map(row => ({...toItem(row),roleNames:row.roles.map(code => roles.find(role=>role.roleCode===code)?.name ?? code)})),
     total: result.total,
     page: result.page,
     size: result.size,
@@ -67,7 +65,7 @@ export async function listUsers(
 export interface CreateUserInput {
   username: string;
   realName: string;
-  role: Role;
+  role: string;
   password: string;
 }
 
@@ -77,14 +75,17 @@ export interface CreateUserInput {
  * 兜住并发竞态 —— 捕获 ER_DUP_ENTRY 后同样回 409，绝不退化成 500。
  */
 export async function createUser(input: CreateUserInput, ctx: OperatorContext): Promise<UserAdminItem> {
+  validatePassword(input.password);
   const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
-  const roles: Role[] = [input.role];
-  // permissions 列本批不参与鉴权（鉴权只看 roles，见映射表 §4-6）；
-  // 沿用 seed-admin 的写法给 admin 存 ['*']，其余存空数组，为未来的权限树留位。
-  const permissions = input.role === ROLE_ADMIN ? ['*'] : [];
+  const roles: string[] = [input.role];
+  // Legacy per-user permissions are not an authorization source; role grants are.
+  const permissions: string[] = [];
 
   const now = new Date();
   const createdUserId = await withTransaction(async (tx: Tx) => {
+    await lockAuthorization(tx);
+    const role = await findRole(tx, input.role);
+    if (!role?.enabled) throw AppError.validation('角色不存在或已停用');
     if (await existsUsername(tx, input.username)) {
       throw AppError.conflict('用户名已存在：' + input.username);
     }
@@ -107,25 +108,27 @@ export async function createUser(input: CreateUserInput, ctx: OperatorContext): 
       // 口令不进审计：只记"设过初始口令"这个事实
       passwordSet: true,
     });
+    await bumpAuthorization(tx);
     return userId;
   }).catch((err: unknown) => {
     // 唯一约束 app_user.username 兜并发竞态：撞库照样给 409，绝不退化成 500
     if ((err as { code?: string }).code === 'ER_DUP_ENTRY') {
       throw AppError.conflict('用户名已存在：' + input.username);
     }
-    throw err;
+    throw safeCredentialError(err);
   });
 
   const row = await findAdminUserByUserId(pool, createdUserId);
   if (row === null) {
     throw AppError.internal('建号提交后回查失败：' + createdUserId);
   }
-  return toItem(row);
+  const role = await findRole(pool,input.role);
+  return {...toItem(row),roleNames:[role?.name ?? input.role]};
 }
 
 export interface UpdateUserInput {
   realName?: string;
-  role?: Role;
+  role?: string;
   status?: 0 | 1;
 }
 
@@ -150,6 +153,8 @@ export async function updateUserByAdmin(
 ): Promise<UpdateUserResult> {
   const isSelf = ctx.userId === targetUserId;
   return withTransaction(async (tx: Tx): Promise<UpdateUserResult> => {
+    await lockAuthorization(tx);
+    if (input.role !== undefined && !(await findRole(tx, input.role))?.enabled) throw AppError.validation('角色不存在或已停用');
     const target = await findAdminUserByUserId(tx, targetUserId);
     if (target === null) {
       throw AppError.notFound('用户不存在：' + targetUserId);
@@ -189,6 +194,7 @@ export async function updateUserByAdmin(
         status: input.status,
         now: new Date(),
       });
+      await bumpAuthorization(tx);
       await writeUserAudit(tx, ctx, ACTION_USER_UPDATE, targetUserId, {
         username: target.username,
         before: { realName: target.realName, roles: target.roles, status: target.status },
@@ -202,7 +208,9 @@ export async function updateUserByAdmin(
     }
 
     const fresh = await findAdminUserByUserId(tx, targetUserId);
-    return { user: toItem(fresh ?? target), changed };
+    const row = fresh ?? target;
+    const role = row.roles[0] ? await findRole(tx,row.roles[0]) : null;
+    return {user:{...toItem(row),roleNames:row.roles.map(code=>role?.roleCode===code?role.name:code)},changed};
   });
 }
 

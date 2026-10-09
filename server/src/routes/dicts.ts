@@ -5,7 +5,7 @@ import { AppError } from '../http/errors';
 import { ok } from '../http/respond';
 import { SUPPORTED_DICT_CODES, findDictItems, isSupportedDictCode } from '../repositories/dictRepo';
 import { ROLE_ADMIN } from '../auth/rolePolicy';
-import { requireRole } from '../middleware/requireRole';
+import { requirePermission } from '../middleware/requireRole';
 import {
   createSensitiveWord,
   executeSensitiveRescan,
@@ -56,7 +56,7 @@ const rescanSchema = z.object({
 });
 
 /** 敏感词管理：真实 dict_item 数据，admin 独占；无 DELETE，停用代替物理删除。 */
-dictsRouter.get('/dicts/sensitive-words', requireRole(ROLE_ADMIN), async (_req, res, next) => {
+dictsRouter.get('/dicts/sensitive-words', requirePermission('system.dict.manage'), async (_req, res, next) => {
   try {
     ok(res, await listManagedSensitiveWords());
   } catch (err) {
@@ -64,7 +64,7 @@ dictsRouter.get('/dicts/sensitive-words', requireRole(ROLE_ADMIN), async (_req, 
   }
 });
 
-dictsRouter.post('/dicts/sensitive-words', requireRole(ROLE_ADMIN), async (req, res, next) => {
+dictsRouter.post('/dicts/sensitive-words', requirePermission('system.dict.manage'), async (req, res, next) => {
   try {
     const body = parseOrThrow(
       createSensitiveWordSchema,
@@ -77,7 +77,7 @@ dictsRouter.post('/dicts/sensitive-words', requireRole(ROLE_ADMIN), async (req, 
   }
 });
 
-dictsRouter.patch('/dicts/sensitive-words/:itemId', requireRole(ROLE_ADMIN), async (req, res, next) => {
+dictsRouter.patch('/dicts/sensitive-words/:itemId', requirePermission('system.dict.manage'), async (req, res, next) => {
   try {
     const itemId = parseOrThrow(itemIdSchema, req.params.itemId, 'itemId 不合法');
     const body = parseOrThrow(
@@ -91,7 +91,7 @@ dictsRouter.patch('/dicts/sensitive-words/:itemId', requireRole(ROLE_ADMIN), asy
   }
 });
 
-dictsRouter.post('/dicts/sensitive-words/rescan-preview', requireRole(ROLE_ADMIN), async (req, res, next) => {
+dictsRouter.post('/dicts/sensitive-words/rescan-preview', requirePermission('system.dict.manage'), async (req, res, next) => {
   try {
     ok(res, await previewSensitiveRescan(undefined, ctxOf(req)));
   } catch (err) {
@@ -99,7 +99,7 @@ dictsRouter.post('/dicts/sensitive-words/rescan-preview', requireRole(ROLE_ADMIN
   }
 });
 
-dictsRouter.post('/dicts/sensitive-words/rescan', requireRole(ROLE_ADMIN), async (req, res, next) => {
+dictsRouter.post('/dicts/sensitive-words/rescan', requirePermission('system.dict.manage'), async (req, res, next) => {
   try {
     const body = parseOrThrow(rescanSchema, req.body ?? {}, '历史重扫参数不合法');
     ok(res, await executeSensitiveRescan(body.previewToken, ctxOf(req)), '历史诉求重扫完成');

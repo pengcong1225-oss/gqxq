@@ -1,11 +1,5 @@
-// 前端角色口径（Task #35 三档 RBAC）—— 与 server/src/auth/rolePolicy.ts 同一套常量。
-//
-// **前端过滤只是体验层**：真正的判定在后端 enforceRolePolicy()，
-// 前端漏藏一个按钮不会造成越权（点了也是 403 + ACCESS_DENIED 审计）；
-// 但反过来，"看得见却点不动"最容易被当成系统坏了，所以：
-//   * 菜单按角色过滤（MainLayout）；
-//   * 写操作按钮禁用并给出原因（WriteGate / ADMIN_ONLY_TIP）；
-//   * 403 统一文案（request.ts 拦截器 + 本文件的 FORBIDDEN_MESSAGE，两处同一句）。
+// UI visibility uses current backend effective permissions. Server repeats
+// enforcement for every endpoint; role labels do not imply business privileges.
 import React, { useMemo } from 'react';
 import { Tooltip } from 'antd';
 import { useAppStore } from './appStore';
@@ -25,7 +19,7 @@ export const ROLE_LABELS: Record<string, string> = {
 export const FORBIDDEN_MESSAGE = '无权限，请联系管理员';
 
 export const READONLY_TIP = '只读档无写权限：需要操作请由业务经办或系统管理员执行';
-export const ADMIN_ONLY_TIP = '该操作仅系统管理员可用（用户管理与字典管理属 admin 独占）';
+export const ADMIN_ONLY_TIP = '当前账号未获管理功能授权';
 
 function labelOf(role: string): string {
   return ROLE_LABELS[role] ?? '未知角色:' + role;
@@ -45,34 +39,32 @@ export function useIsAdmin(): boolean {
 /** 只读档：与后端硬不变量同口径（非 GET 一律不放行） */
 export function useIsReadonly(): boolean {
   const roles = useRoles();
-  return useMemo(() => roles.length > 0 && !roles.includes(ROLE_ADMIN) && !roles.includes(ROLE_HANDLER), [roles]);
+  return useMemo(() => roles.includes(ROLE_READONLY), [roles]);
 }
 
 /** 当前档位的中文名，如 "业务经办"；未登录给 '未登录' */
 export function useRoleLabel(): string {
   const roles = useRoles();
-  return useMemo(() => (roles.length === 0 ? '未登录' : roles.map(labelOf).join(' / ')), [roles]);
+  return useMemo(() => (roles.length === 0 ? '待授权' : roles.map(labelOf).join(' / ')), [roles]);
 }
 
 /**
  * 业务写权限判定（交办 / 纠偏确认 / 归库 / 推送 / 归档 / 回填等）。
  * can=false 时 tip 直接可用于 Tooltip 文案，避免各页面各写一句。
  */
-export function useWriteAccess(): { can: boolean; tip: string } {
-  const roles = useRoles();
-  return useMemo(() => {
-    const can = roles.includes(ROLE_ADMIN) || roles.includes(ROLE_HANDLER);
-    return { can, tip: can ? '' : READONLY_TIP };
-  }, [roles]);
+export function usePermissionAccess(code: string): {can:boolean;tip:string} {
+ const user=useAppStore(s=>s.userInfo);
+ const protectedCode=code==='system.users.manage'||code==='system.roles.manage';
+ const can=Boolean(user&&!user.mustChangePassword&&user.permissions.includes(code)&&(!protectedCode||user.roles.includes('admin')));
+ return {can,tip:can?'':'当前账号未获此功能授权'};
 }
-
-/** admin 独占判定（用户管理、字典管理） */
-export function useAdminAccess(): { can: boolean; tip: string } {
-  const roles = useRoles();
-  return useMemo(() => {
-    const can = roles.includes(ROLE_ADMIN);
-    return { can, tip: can ? '' : ADMIN_ONLY_TIP };
-  }, [roles]);
+export function useWriteAccess(code='complaint.correct'): {can:boolean;tip:string} {
+ const access=usePermissionAccess(code);
+ const roles=useRoles();
+ return roles.includes('readonly')?{can:false,tip:READONLY_TIP}:access;
+}
+export function useAdminAccess(code='system.users.manage'): {can:boolean;tip:string} {
+ return usePermissionAccess(code);
 }
 
 /**

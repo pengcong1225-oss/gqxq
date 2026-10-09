@@ -1,21 +1,12 @@
-// GET/POST/PATCH /users —— 用户管理（映射表 U1–U3，**admin 独占**）。
-//
-// 这里原来在 routes/legacy.ts 里是 501 桩（"G1.6 之后"），本批摘掉。
-// 两道闸（同时生效，取更严的一方）：
-//   1) 全局 enforceRolePolicy() 按 ROLE_POLICY 的 U1–U3 判定；
-//   2) 本 router 自己再挂 requireRole('admin') —— 用户管理是最高危端点，
-//      不能只靠"策略表里那一行没被误改"。
-//
-// 没有 DELETE：禁用（PATCH status=0）代替删除，否则 operation_audit_log 里的
-// user_id 会变成查无此人的孤号，"审计到人"这条链就断了。
-// 没有改口令端点：本批只做建号时的初始口令（映射表 §5 已记为遗留）。
+// Existing account CRUD plus administrator reset. No deletion: preserve user_id
+// and historical audit attribution. Account management is a protected capability.
 import { Router } from 'express';
 import type { Request } from 'express';
 import { z } from 'zod';
 import { AppError } from '../http/errors';
 import { ok } from '../http/respond';
-import { requireRole } from '../middleware/requireRole';
-import { ROLE_ADMIN, ROLE_HANDLER, ROLE_READONLY } from '../auth/rolePolicy';
+import { requirePermission } from '../middleware/requireRole';
+import { validatePassword, resetPassword } from '../services/passwordService';
 import { createUser, listUsers, updateUserByAdmin } from '../services/userService';
 import type { OperatorContext } from '../services/dispatchService';
 
@@ -30,7 +21,7 @@ function ctxOf(req: Request): OperatorContext {
   };
 }
 
-const roleSchema = z.enum([ROLE_ADMIN, ROLE_HANDLER, ROLE_READONLY]);
+const roleSchema = z.string().regex(/^[a-z][a-z0-9_.-]{1,63}$/);
 
 /** 列宽上限对齐 app_user（M1 迁移）：username/real_name 都是 varchar(64) */
 const usernameSchema = z
@@ -49,7 +40,7 @@ const realNameSchema = z.string().trim().min(1, '姓名必填').max(64, '姓名�
 const passwordSchema = z
   .string()
   .min(8, '初始口令至少 8 个字符')
-  .max(72, '初始口令最长 72 字符（bcrypt 的输入上限，超出会被截断）');
+  .refine(v => Buffer.byteLength(v, 'utf8') <= 72, '口令 UTF-8 编码不能超过 72 字节');
 
 function parseOrThrow<S extends z.ZodTypeAny>(schema: S, body: unknown, message: string): z.infer<S> {
   const parsed = schema.safeParse(body);
@@ -71,7 +62,7 @@ const querySchema = z.object({
   status: z.coerce.number().int().refine((v) => v === 0 || v === 1).optional(),
 });
 
-usersRouter.get('/users', requireRole(ROLE_ADMIN), async (req, res, next) => {
+usersRouter.get('/users', requirePermission('system.users.manage'), async (req, res, next) => {
   try {
     const q = parseOrThrow(querySchema, req.query, '用户列表查询参数不合法');
     ok(
@@ -98,7 +89,7 @@ const createSchema = z.object({
   password: passwordSchema,
 });
 
-usersRouter.post('/users', requireRole(ROLE_ADMIN), async (req, res, next) => {
+usersRouter.post('/users', requirePermission('system.users.manage'), async (req, res, next) => {
   try {
     const body = req.body === undefined || req.body === null ? {} : req.body;
     const input = parseOrThrow(createSchema, body, '建号请求参数不合法');
@@ -120,7 +111,7 @@ const updateSchema = z
 
 const userIdSchema = z.string().trim().min(1).max(64);
 
-usersRouter.patch('/users/:userId', requireRole(ROLE_ADMIN), async (req, res, next) => {
+usersRouter.patch('/users/:userId', requirePermission('system.users.manage'), async (req, res, next) => {
   try {
     const targetUserId = parseOrThrow(userIdSchema, req.params.userId, 'userId 不合法');
     const body = req.body === undefined || req.body === null ? {} : req.body;
@@ -130,4 +121,13 @@ usersRouter.patch('/users/:userId', requireRole(ROLE_ADMIN), async (req, res, ne
   } catch (err) {
     next(err);
   }
+});
+
+usersRouter.post('/users/:userId/reset-password', requirePermission('system.users.manage'), async (req,res,next)=>{
+ try {
+  const input = parseOrThrow(z.object({password:passwordSchema}).strict(),req.body,'重置请求参数不合法');
+  validatePassword(input.password);
+  await resetPassword(req.params.userId,input.password,ctxOf(req));
+  ok(res,{changed:true},'口令已重置，旧会话已失效，下次登录须改密');
+ } catch(err) {next(err);}
 });

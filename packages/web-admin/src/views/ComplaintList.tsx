@@ -1,3 +1,4 @@
+import {useWriteAccess} from '../stores/roleAccess';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -143,6 +144,8 @@ function fmtDateTime(iso: string | null): string {
 }
 
 const ComplaintList: React.FC = () => {
+  const createAccess=useWriteAccess('dispatch.create');
+  const dispositionAccess=useWriteAccess('complaint.disposition');
   const navigate = useNavigate();
 
   const [page, setPage] = useState(1);
@@ -673,6 +676,7 @@ const ComplaintList: React.FC = () => {
                 type="link"
                 size="small"
                 icon={<SendOutlined />}
+                disabled={!createAccess.can}
                 onClick={() => {
                   dispatchForm.resetFields();
                   dispatchForm.setFieldsValue({
@@ -709,7 +713,7 @@ const ComplaintList: React.FC = () => {
                   },
                 }}
               >
-                <Button type="link" size="small" icon={<InboxOutlined />}>
+                <Button type="link" size="small" icon={<InboxOutlined />} disabled={!dispositionAccess.can}>
                   归库
                 </Button>
               </Dropdown>
@@ -718,7 +722,7 @@ const ComplaintList: React.FC = () => {
         ),
       },
     ],
-    [navigate, dispatchForm, dispositionForm, clearEnterpriseError, fetchEnterprises]
+    [navigate, dispatchForm, dispositionForm, clearEnterpriseError, fetchEnterprises,createAccess.can,dispositionAccess.can]
   );
 
   return (
@@ -940,7 +944,7 @@ const ComplaintList: React.FC = () => {
           setDispatchTarget(null);
           dispatchForm.resetFields();
         }}
-        onOk={() => void handleCreateDispatch()}
+        okButtonProps={{disabled:!createAccess.can}} onOk={() => void handleCreateDispatch()}
         confirmLoading={submitting}
         okText="创建交办"
         width={560}
@@ -1018,7 +1022,7 @@ const ComplaintList: React.FC = () => {
           setDispositionTarget(null);
           dispositionForm.resetFields();
         }}
-        onOk={() => void handleDisposition()}
+        okButtonProps={{disabled:!dispositionAccess.can}} onOk={() => void handleDisposition()}
         confirmLoading={submitting}
         okText="确认归库"
         width={520}

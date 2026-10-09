@@ -147,7 +147,7 @@ export function positionItemsMatchSelection(itemsLoading: boolean, itemsComplain
 export const AddressCandidateBackfillControls: React.FC<AddressCandidateBackfillControlsProps> = ({
   adminAccess: accessOverride, previewApi = previewAddressBackfill, executeApi = executeAddressBackfill,
 }) => {
-  const hookAccess = useAdminAccess();
+  const hookAccess = useAdminAccess('system.address.backfill');
   const adminAccess = accessOverride ?? hookAccess;
   const [preview, setPreview] = useState<AddressBackfillPreview | null>(null);
   const [execution, setExecution] = useState<AddressBackfillSummary | null>(null);
@@ -269,8 +269,8 @@ const AddressCorrection: React.FC = () => {
   const [verifyForm] = Form.useForm<{ basis: string }>();
   const [positionForm] = Form.useForm();
   const addressDraft = Form.useWatch('address', positionForm) as string | undefined;
-  const writeAccess = useWriteAccess();
-  const adminAccess = useAdminAccess();
+  const writeAccess = useWriteAccess('complaint.correct');
+  const adminAccess = useAdminAccess('system.address.backfill');
   const [positionModalOpen, setPositionModalOpen] = useState(false);
   const [positionResult, setPositionResult] = useState<Array<{ label: string; ok: boolean; detail: string }>>([]);
 
@@ -654,11 +654,11 @@ const AddressCorrection: React.FC = () => {
                   style={{ width: 300 }}
                   allowClear
                 />
-                <Button type="primary" icon={<ThunderboltOutlined />} loading={generating} onClick={() => void doGenerate()}>
+                <Button type="primary" icon={<ThunderboltOutlined />} disabled={!writeAccess.can} loading={generating} onClick={() => void doGenerate()}>
                   生成纠偏待办
                 </Button>
                 <Tooltip title="只给尚无纠偏清单的诉求补挂，重复执行会跳过已有清单。">
-                  <Button icon={<TeamOutlined />} loading={batching} onClick={() => void doBatchGenerate()}>
+                  <Button icon={<TeamOutlined />} disabled={!writeAccess.can} loading={batching} onClick={() => void doBatchGenerate()}>
                     补齐全部诉求纠偏待办
                   </Button>
                 </Tooltip>
@@ -690,7 +690,7 @@ const AddressCorrection: React.FC = () => {
                 locale={{
                   emptyText: firstLoaded ? (
                     <Empty description="该口径下暂无待纠偏项；若有诉求从未生成清单，请点「补齐全部诉求纠偏待办」">
-                      <Button icon={<TeamOutlined />} loading={batching} onClick={() => void doBatchGenerate()}>
+                      <Button icon={<TeamOutlined />} disabled={!writeAccess.can} loading={batching} onClick={() => void doBatchGenerate()}>
                         补齐全部诉求纠偏待办
                       </Button>
                     </Empty>

@@ -413,7 +413,7 @@ test('真实整体纠偏抽屉和位置窗体不允许带入有冲突的地址�
   };
   const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
   const originalUser = useAppStore.getState().userInfo;
-  useAppStore.setState({ userInfo: { id: 1, userId: 'tester', username: 'tester', realName: '测试经办', roles: ['handler'], permissions: [] } });
+  useAppStore.setState({ userInfo: { id: 1, userId: 'tester', username: 'tester', realName: '测试经办', roles: ['handler'], permissions: ['complaint.read','complaint.correct'], mustChangePassword:false, authorizationVersion:1 } });
   const { default: AddressCorrectionPage } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
   const { render, within, fireEvent, cleanup, waitFor } = await import('@testing-library/react');
   const ui = render(<MemoryRouter initialEntries={['/address-correction?complaintId=CPL-TEST']}>

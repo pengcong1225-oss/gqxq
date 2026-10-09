@@ -21,13 +21,16 @@ export interface FieldError {
   message: string;
 }
 
-// 只承载 JWT 里真实存在的信息（sub / username / roles）。
-// realName、permissions 等明细由 GET /auth/user-info 查库返回，不放进令牌。
+// Current authenticated identity plus effective authorization loaded for this request.
+// Permission fields are not trusted JWT claims; requireAuth always loads them from DB.
 export interface AuthUser {
   /** app_user.user_id */
   id: string;
   username: string;
   roles: string[];
+  permissionCodes?: string[];
+  authorizationVersion?: number;
+  mustChangePassword?: boolean;
 }
 
 export class AppError extends Error {

@@ -20,3 +20,5 @@ export async function login(username: string, password: string): Promise<LoginRe
 export async function getUserInfo(): Promise<UserInfo> {
   return request.get<never, UserInfo>('/auth/user-info');
 }
+
+export function changePassword(currentPassword:string,newPassword:string){return request.post<never,{changed:boolean}>('/auth/change-password',{currentPassword,newPassword});}

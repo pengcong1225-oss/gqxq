@@ -290,6 +290,8 @@ export interface UserInfo {
   realName: string;
   roles: string[];
   permissions: string[];
+  mustChangePassword: boolean;
+  authorizationVersion: number;
 }
 
 export interface LoginResult {
@@ -713,7 +715,7 @@ export interface DispositionResult {
  * 三档角色。真源是 server/src/auth/rolePolicy.ts 的 ROLES，
  * 与 docs/2026-09-21-角色权限映射.md §1 逐条对应；前端 types/api.ts 同步一份。
  */
-export type AppRole = 'admin' | 'handler' | 'readonly';
+export type AppRole = string;
 
 /** 用户管理列表项：**绝不含 password_hash**（仓储层不 select 它，DTO 也不带） */
 export interface UserAdminItem {
@@ -728,6 +730,7 @@ export interface UserAdminItem {
   status: 0 | 1;
   lastLoginAt: string | null;
   createdAt: string | null;
+  mustChangePassword: boolean;
 }
 
 export interface UserAdminFilter {

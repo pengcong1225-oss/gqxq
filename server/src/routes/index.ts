@@ -16,6 +16,7 @@ import { dispatchArchiveRouter } from './dispatchArchive';
 import { sourceRouter } from './source';
 import { complaintActionsRouter } from './complaintActions';
 import { enterprisesRouter } from './enterprises';
+import { rolesRouter } from './roles';
 import { usersRouter } from './users';
 import { addressCandidatesRouter } from './addressCandidates';
 import { requireAuth } from '../middleware/requireAuth';
@@ -27,7 +28,7 @@ import { enforceRolePolicy } from '../middleware/requireRole';
  * 认证与授权（Task #35 起是两段，语义分开）：
  *   * **401 未认证** = requireAuth：缺 Bearer / 令牌无效或过期；
  *   * **403 无权限** = enforceRolePolicy：按 server/src/auth/rolePolicy.ts 的
- *     「角色 × 路由 × 方法」策略表判定，表里没有的端点**默认拒绝**（视同 admin-only）。
+ *     「角色 × 路由 × 方法」策略表判定，表里没有的端点**默认拒绝**（有效授权包括管理员均须登记）。
  *     新增路由必须同步加策略行 + 更新 docs/2026-09-21-角色权限映射.md（交付纪律，逐条可审计）。
  *
  * 不鉴权（也不鉴角色）的四条：/health、/auth/login、/external/yijiejieban/appeal、
@@ -61,6 +62,7 @@ export function buildRouter(): Router {
   root.use(dispatchArchiveRouter);
   root.use(sourceRouter);
   root.use(usersRouter);
+  root.use(rolesRouter);
   root.use(legacyRouter);
 
   return root;
