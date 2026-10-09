@@ -23,6 +23,7 @@ test('A5 isolated MySQL account component (not canonical baseline acceptance)', 
   await db.raw('create table number_sequence (seq_key varchar(64) not null,biz_date date not null,current_value bigint not null default 0,primary key(seq_key,biz_date)) engine=InnoDB');
   await db.raw('create table operation_audit_log (audit_id varchar(64) primary key,user_id varchar(64),app_code varchar(64),resource_code varchar(128),action varchar(64),biz_type varchar(64),biz_id varchar(128),result varchar(32),client_ip varchar(64),detail json,created_at datetime) engine=InnoDB');
   try { await require('../migrations/20261009030000__account_role_permissions.js').up(db); } catch(err) { await db.destroy(); throw new Error('A5 fixture migration failed: '+String((err as {code?:string}).code??'unknown')); }
+  await require('../migrations/20261009040000__user_object_scopes.js').up(db);
   const {createApp}=await import('../src/app');const {closePool,pool}=await import('../src/db/pool');
   const roles=await import('../src/services/roleService');const users=await import('../src/services/userService');
   const passwords=await import('../src/services/passwordService');

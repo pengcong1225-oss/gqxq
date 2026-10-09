@@ -1,3 +1,4 @@
+import { currentScopeSql } from '../auth/accessScope';
 import type { Queryable } from './complaintSourceLogRepo';
 import { parseKeywords, toBool, toStr } from './complaintMapper';
 
@@ -22,12 +23,13 @@ function toManaged(row: Record<string, unknown>): ManagedSensitiveWordRow {
 }
 
 export async function listSensitiveWordRows(db: Queryable): Promise<ManagedSensitiveWordRow[]> {
+  const scope=currentScopeSql('scope_c');
   const [rows] = await db.query(
     'select d.item_id as itemId, d.item_value as word, d.item_label as label, d.status,' +
       ' count(h.id) as hitCount' +
-      ' from dict_item d left join sensitive_hit h on h.dict_item_id = d.item_id' +
+      ' from dict_item d left join sensitive_hit h on h.dict_item_id = d.item_id and exists (select 1 from complaint scope_c where scope_c.complaint_id=h.complaint_id and '+scope.sql+')' +
       " where d.dict_type = 'sensitive_word'" +
-      ' group by d.id, d.item_id, d.item_value, d.item_label, d.status order by d.id asc'
+      ' group by d.id, d.item_id, d.item_value, d.item_label, d.status order by d.id asc', scope.params
   );
   return (rows as Array<Record<string, unknown>>).map(toManaged);
 }
@@ -37,12 +39,13 @@ export async function findSensitiveWordById(
   itemId: string,
   lock = false
 ): Promise<ManagedSensitiveWordRow | null> {
+  const scope=currentScopeSql('scope_c');
   const [rows] = await db.query(
     'select d.item_id as itemId, d.item_value as word, d.item_label as label, d.status,' +
-      ' (select count(*) from sensitive_hit h where h.dict_item_id = d.item_id) as hitCount' +
+      ' (select count(*) from sensitive_hit h where h.dict_item_id = d.item_id and exists (select 1 from complaint scope_c where scope_c.complaint_id=h.complaint_id and '+scope.sql+')) as hitCount' +
       " from dict_item d where d.dict_type = 'sensitive_word' and d.item_id = ? limit 1" +
       (lock ? ' for update' : ''),
-    [itemId]
+    [...scope.params,itemId]
   );
   const list = rows as Array<Record<string, unknown>>;
   return list.length === 0 ? null : toManaged(list[0]);
@@ -53,12 +56,13 @@ export async function findSensitiveWordByValue(
   word: string,
   lock = false
 ): Promise<ManagedSensitiveWordRow | null> {
+  const scope=currentScopeSql('scope_c');
   const [rows] = await db.query(
     'select d.item_id as itemId, d.item_value as word, d.item_label as label, d.status,' +
-      ' (select count(*) from sensitive_hit h where h.dict_item_id = d.item_id) as hitCount' +
+      ' (select count(*) from sensitive_hit h where h.dict_item_id = d.item_id and exists (select 1 from complaint scope_c where scope_c.complaint_id=h.complaint_id and '+scope.sql+')) as hitCount' +
       " from dict_item d where d.dict_type = 'sensitive_word' and d.item_value = ? limit 1" +
       (lock ? ' for update' : ''),
-    [word]
+    [...scope.params,word]
   );
   const list = rows as Array<Record<string, unknown>>;
   return list.length === 0 ? null : toManaged(list[0]);

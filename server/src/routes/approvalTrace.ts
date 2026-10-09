@@ -1,3 +1,5 @@
+import { findOrderByAssignmentId } from '../repositories/dispatchRepo';
+import { AppError } from '../http/errors';
 import { Router } from 'express';
 import { pool } from '../db/pool';
 import { ok } from '../http/respond';
@@ -11,6 +13,7 @@ export const approvalTraceRouter = Router();
 
 approvalTraceRouter.get('/dispatch/orders/:assignmentId/approval-trace', async (req, res, next) => {
   try {
+    if(!await findOrderByAssignmentId(pool,String(req.params.assignmentId)))throw AppError.notFound('交办不存在');
     // 只读查询，直接用连接池（Queryable = Pool | PoolConnection）
     const content = await listTracesByAssignment(pool, String(req.params.assignmentId));
     ok(res, { content, total: content.length });

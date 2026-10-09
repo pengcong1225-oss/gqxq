@@ -1,3 +1,4 @@
+import { currentScopeSql, relatedScopeSql } from '../auth/accessScope';
 // report_todo（待查报告待办）。
 //
 // 本批次只做**待办入口**：报告正文、审批与发布规则待业务确认，不在这里造模板（落地计划 G5）。
@@ -95,8 +96,9 @@ export async function findTodoPage(
   page: number,
   size: number
 ): Promise<{ content: ReportTodoItem[]; total: number }> {
-  const parts: string[] = [];
-  const params: unknown[] = [];
+  const scope = relatedScopeSql('report_todo.complaint_id');
+  const parts: string[] = [scope.sql];
+  const params: unknown[] = [...scope.params];
   if (filter.status !== undefined) {
     parts.push('status = ?');
     params.push(filter.status);
@@ -118,9 +120,10 @@ export async function findTodoByAnalysisId(
   db: Queryable,
   analysisId: string
 ): Promise<ReportTodoItem | null> {
+  const scope = relatedScopeSql('report_todo.complaint_id');
   const [rows] = await db.query(
-    'select ' + SELECT_COLUMNS + ' from report_todo where analysis_id = ? limit 1',
-    [analysisId]
+    'select ' + SELECT_COLUMNS + ' from report_todo where analysis_id = ? and '+scope.sql+' limit 1',
+    [analysisId,...scope.params]
   );
   const row = (rows as unknown as ReportTodoRow[])[0];
   return row ? rowToReportTodoItem(row) : null;

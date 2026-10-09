@@ -292,8 +292,8 @@ export async function insertUser(
 ): Promise<void> {
   await exec.query(
     'insert into app_user ' +
-      '(user_id, username, password_hash, real_name, roles, permissions, status, created_at, updated_at, must_change_password, session_version) ' +
-      'values (?, ?, ?, ?, ?, ?, 1, ?, ?, 1, 1)',
+      '(user_id, username, password_hash, real_name, roles, permissions, status, created_at, updated_at, must_change_password, session_version, scope_rules, scope_provenance) ' +
+      "values (?, ?, ?, ?, ?, ?, 1, ?, ?, 1, 1, '[]', 'new-account-deny')",
     [
       input.userId,
       input.username,

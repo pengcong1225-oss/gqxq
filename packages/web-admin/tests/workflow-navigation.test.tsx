@@ -433,3 +433,23 @@ test('真实整体纠偏抽屉和位置窗体不允许带入有冲突的地址�
     useAppStore.setState({ userInfo: originalUser });
   }
 });
+test('来源原件按钮只对当前有效原件权限显示并按需取件',async()=>{
+ installDom();const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');
+ const {default:request}=await vite.ssrLoadModule('/src/api/request.ts');const original=request.defaults.adapter;let sourceCalls=0;
+ request.defaults.adapter=async(config:any)=>{let data:any;
+  if(config.url==='/complaints/CPL-TEST/source-document'){sourceCalls++;data={complaintId:'CPL-TEST',sourcePayload:{address:'原件地址'},sourceFields:null,sourcePayloadHash:'synthetic'};}
+  else if(config.url==='/complaints/CPL-TEST')data=locationDetailFixture;
+  else if(config.url.endsWith('/timeline'))data={content:[],total:0};
+  else data={enabled:false,message:'未接入'};
+  return {data:{code:200,data},status:200,statusText:'OK',headers:{},config};
+ };
+ const {default:Page}=await vite.ssrLoadModule('/src/views/ComplaintDetail.tsx');const {render,within,waitFor,cleanup,fireEvent}=await import('@testing-library/react');
+ try{for(const allowed of [false,true]){
+  useAppStore.setState({userInfo:{roles:['readonly'],permissions:allowed?['complaint.read','source_document.read']:['complaint.read'],mustChangePassword:false}});
+  const ui=render(<MemoryRouter initialEntries={['/complaints/CPL-TEST']}><Routes><Route path="/complaints/:id" element={<Page/>}/></Routes></MemoryRouter>);
+  await waitFor(()=>assert.ok(within(ui.container).getByText('基本信息')));const button=within(ui.container).queryByRole('button',{name:'查看来源原件'});
+  assert.equal(Boolean(button),allowed);assert.equal(sourceCalls,0);
+  if(button){fireEvent.click(button);await waitFor(()=>assert.equal(sourceCalls,1));await waitFor(()=>assert.match(document.body.textContent??'',/原件地址/));}
+  ui.unmount();cleanup();
+ }}finally{request.defaults.adapter=original;}
+});

@@ -1,3 +1,5 @@
+import { projectDisposalValue } from '../services/complaintProjection';
+import { relatedScopeSql } from '../auth/accessScope';
 // analysis_record（分析库）。
 //
 // 硬门规（落地计划 G5）：**未纠偏不得进入分析库**。
@@ -46,7 +48,7 @@ export function rowToAnalysisItem(r: AnalysisRow): AnalysisRecordItem {
     enterpriseCode: r.enterpriseCode === null || r.enterpriseCode === undefined ? null : String(r.enterpriseCode),
     enterpriseName: r.enterpriseName === null || r.enterpriseName === undefined ? null : String(r.enterpriseName),
     summary: r.summary === null || r.summary === undefined ? null : String(r.summary),
-    disposalResult: r.disposalResult === null || r.disposalResult === undefined ? null : String(r.disposalResult),
+    disposalResult: r.disposalResult === null || r.disposalResult === undefined ? null : projectDisposalValue(String(r.disposalResult)),
     confirmedAt: toIso(r.confirmedAt),
     createdAt: toIso(r.createdAt),
   };
@@ -131,9 +133,10 @@ export async function findAnalysisByAnalysisId(
   db: Queryable,
   analysisId: string
 ): Promise<AnalysisRecordItem | null> {
+  const scope = relatedScopeSql('analysis_record.complaint_id');
   const [rows] = await db.query(
-    'select ' + SELECT_COLUMNS + ' from analysis_record where analysis_id = ? limit 1',
-    [analysisId]
+    'select ' + SELECT_COLUMNS + ' from analysis_record where analysis_id = ? and '+scope.sql+' limit 1',
+    [analysisId,...scope.params]
   );
   const row = (rows as unknown as AnalysisRow[])[0];
   return row ? rowToAnalysisItem(row) : null;
@@ -143,9 +146,10 @@ export async function findAnalysisByComplaint(
   db: Queryable,
   complaintId: string
 ): Promise<AnalysisRecordItem | null> {
+  const scope = relatedScopeSql('analysis_record.complaint_id');
   const [rows] = await db.query(
-    'select ' + SELECT_COLUMNS + ' from analysis_record where complaint_id = ? limit 1',
-    [complaintId]
+    'select ' + SELECT_COLUMNS + ' from analysis_record where complaint_id = ? and '+scope.sql+' limit 1',
+    [complaintId,...scope.params]
   );
   const row = (rows as unknown as AnalysisRow[])[0];
   return row ? rowToAnalysisItem(row) : null;
@@ -163,8 +167,9 @@ export async function findAnalysisPage(
   page: number,
   size: number
 ): Promise<{ content: AnalysisRecordItem[]; total: number }> {
-  const parts: string[] = [];
-  const params: unknown[] = [];
+  const scope = relatedScopeSql('analysis_record.complaint_id');
+  const parts: string[] = [scope.sql];
+  const params: unknown[] = [...scope.params];
   if (filter.districtCode !== undefined) {
     parts.push('district_code = ?');
     params.push(filter.districtCode);

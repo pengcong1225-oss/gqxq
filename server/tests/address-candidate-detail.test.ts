@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { scopedTest as test } from './helpers/scopedTest';
 
 test('complaint detail projects stored clue evidence, derives conflict, and keeps old M12 metadata null', { concurrency: false }, async () => {
   const { pool } = await import('../src/db/pool');

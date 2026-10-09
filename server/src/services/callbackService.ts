@@ -1,3 +1,4 @@
+import { assertLockedComplaintAccess } from '../auth/accessScope';
 import { createHash } from 'node:crypto';
 // G4 入站：接收 public-utility 的结果事件回传。
 //
@@ -471,6 +472,7 @@ async function applyStoredEvent(tx: import('../db/tx').Tx,event:ParsedEvent,pars
         };
       }
 
+      await assertLockedComplaintAccess(tx,ref.complaintId);
       const invalid = relationError(event, ref);
       if (invalid !== null) {
         await updateEventProcessing(tx,eventId,'rejected',invalid);

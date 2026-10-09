@@ -1,3 +1,4 @@
+import { currentScopeSql } from '../auth/accessScope';
 // dashboard 聚合查询：所有指标直接来自 SQL，**不允许任何常量兜底**。
 // 无法计算的指标由 service 显式返回 null 并列入 unavailable[]，而不是伪造 0。
 //
@@ -46,6 +47,7 @@ export interface DashboardAggregates {
 }
 
 export async function findAggregates(): Promise<DashboardAggregates> {
+  const scope = currentScopeSql();
   const sql =
     'select' +
     ' count(*) as total,' +
@@ -61,9 +63,9 @@ export async function findAggregates(): Promise<DashboardAggregates> {
     " sum(case when c.source_event_status in ('completed', 'closed') then 1 else 0 end) as sourceClosed," +
     " sum(case when c.source_event_status <> 'unknown' then 1 else 0 end) as sourceKnown" +
     ' from complaint c where ' +
-    NOT_DELETED;
+    scope.sql;
 
-  const [rows] = await pool.query<Row[]>(sql);
+  const [rows] = await pool.query<Row[]>(sql, scope.params);
   const r = (rows[0] ?? {}) as Record<string, unknown>;
   return {
     total: Number(r.total ?? 0),
@@ -108,14 +110,15 @@ export async function findTrend(days: number): Promise<TrendData> {
   const startUtc = new Date(dates[0] + 'T00:00:00' + SHANGHAI);
   const endUtc = new Date(tomorrow + 'T00:00:00' + SHANGHAI);
 
+  const scope = currentScopeSql();
   const [rows] = await pool.query<Row[]>(
     'select date_format(' + BUSINESS_TIME + ", '%Y-%m-%d') as d," +
       " sum(case when c.business_type = 'water' then 1 else 0 end) as water," +
       " sum(case when c.business_type = 'gas' then 1 else 0 end) as gas" +
       ' from complaint c where ' +
-      NOT_DELETED +
+      scope.sql +
       ' and ' + BUSINESS_TIME + ' >= ? and ' + BUSINESS_TIME + ' < ? group by d',
-    [startUtc, endUtc]
+    [...scope.params, startUtc, endUtc]
   );
 
   const byDate = new Map<string, { water: number; gas: number }>();
@@ -134,10 +137,11 @@ export async function findTrend(days: number): Promise<TrendData> {
 }
 
 async function findDistribution(column: string, dict: 'business_type' | 'complaint_type'): Promise<DistributionItem[]> {
+  const scope = currentScopeSql();
   const [rows] = await pool.query<Row[]>(
     'select c.' + column + ' as code, count(*) as value from complaint c where ' +
-      NOT_DELETED +
-      ' group by c.' + column + ' order by value desc, c.' + column + ' asc'
+      scope.sql +
+      ' group by c.' + column + ' order by value desc, c.' + column + ' asc', scope.params
   );
   return (rows as unknown as Array<Record<string, unknown>>).map((r) => {
     const code = String(r.code);
@@ -155,13 +159,14 @@ export function findComplaintTypeDistribution(): Promise<DistributionItem[]> {
 
 /** 区域排名。库中 district_code 可能为空，如实返回 null，不编造编码 */
 export async function findRegionRank(limit: number): Promise<RegionRankItem[]> {
+  const scope = currentScopeSql();
   const [rows] = await pool.query<Row[]>(
     'select c.district_code as districtCode, c.district_name as districtName, count(*) as value' +
       ' from complaint c where ' +
-      NOT_DELETED +
+      scope.sql +
       ' group by c.district_code, c.district_name' +
       ' order by value desc, c.district_name asc limit ?',
-    [limit]
+    [...scope.params, limit]
   );
   return (rows as unknown as Array<Record<string, unknown>>).map((r) => ({
     districtCode: r.districtCode === null || r.districtCode === undefined ? null : String(r.districtCode),
@@ -172,6 +177,7 @@ export async function findRegionRank(limit: number): Promise<RegionRankItem[]> {
 
 /** 最新诉求（列表项字段）。按**接收时间**倒序：这是"最新到达"的运营口径，不是业务受理口径 */
 export async function findLatest(limit: number): Promise<ComplaintRow[]> {
+  const scope = currentScopeSql();
   const [rows] = await pool.query<Row[]>(
     'select ' +
       COMPLAINT_SELECT_COLUMNS +
@@ -179,9 +185,9 @@ export async function findLatest(limit: number): Promise<ComplaintRow[]> {
       ' from complaint c' +
       ACTIVE_DISPATCH_JOIN +
       ' where ' +
-      NOT_DELETED +
+      scope.sql +
       ' order by c.received_at desc, c.id desc limit ?',
-    [limit]
+    [...scope.params, limit]
   );
   return rows as unknown as ComplaintRow[];
 }

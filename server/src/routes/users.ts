@@ -131,3 +131,17 @@ usersRouter.post('/users/:userId/reset-password', requirePermission('system.user
   ok(res,{changed:true},'口令已重置，旧会话已失效，下次登录须改密');
  } catch(err) {next(err);}
 });
+import { getUserScope, updateUserScope } from '../services/userService';
+
+const scopeRuleSchema=z.discriminatedUnion('kind',[
+ z.object({kind:z.literal('all')}).strict(),
+ z.object({kind:z.literal('restricted'),enterpriseCodes:z.array(z.string().trim().min(1).max(64)).max(100),districtCodes:z.array(z.string().trim().min(1).max(64)).max(100)}).strict(),
+]);
+usersRouter.get('/users/:userId/scopes',requirePermission('system.users.manage'),async(req,res,next)=>{
+ try{ok(res,await getUserScope(req.params.userId));}catch(err){next(err);}
+});
+usersRouter.put('/users/:userId/scopes',requirePermission('system.users.manage'),async(req,res,next)=>{
+ try{const input=parseOrThrow(z.object({rules:z.array(scopeRuleSchema).max(100),expectedVersion:z.number().int().min(1)}).strict(),req.body,'数据范围参数不合法');
+  ok(res,await updateUserScope(req.params.userId,input.rules,input.expectedVersion,ctxOf(req)));
+ }catch(err){next(err);}
+});

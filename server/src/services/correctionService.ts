@@ -1,3 +1,4 @@
+import { assertComplaintAccess } from '../auth/accessScope';
 // G5 纠偏与入库服务：纠偏待办 -> 分析库 -> 待查报告待办。
 //
 // 业务规则（业主 2026-09-17 确认 + 2026-09-20 修正，不得自行发挥）：
@@ -110,7 +111,7 @@ interface ComplaintFullRow {
 }
 
 const COMPLAINT_FULL_COLUMNS =
-  'complaint_id, complaint_no, title, enterprise_code, enterprise_name, district_code, district_name,' +
+  'deleted, complaint_id, complaint_no, title, enterprise_code, enterprise_name, district_code, district_name,' +
   ' address, business_type, complaint_type, location_lng, location_lat, reporting_status, supervision_status,' +
   ' edit_version, effective_field_state, content, urgency_level, is_sensitive, sensitive_keywords, rule_confidence, rule_version';
 
@@ -137,6 +138,7 @@ async function lockComplaintFull(tx: Tx, complaintId: string): Promise<Complaint
   );
   const row = (rows as unknown as ComplaintFullRow[])[0];
   if (!row) throw AppError.notFound('诉求不存在');
+  assertComplaintAccess(row as unknown as Record<string,unknown>);
   return row;
 }
 

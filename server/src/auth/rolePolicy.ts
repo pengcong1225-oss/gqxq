@@ -47,6 +47,9 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
+  {method:'GET',path:/^\/users\/[^/]+\/scopes$/,roles:A,permissionCode:'system.users.manage',desc:'U4 读取用户数据范围'},
+  {method:'PUT',path:/^\/users\/[^/]+\/scopes$/,roles:A,permissionCode:'system.users.manage',desc:'U5 配置用户数据范围'},
+  {method:'GET',path:/^\/complaints\/[^/]+\/source-document$/,roles:A,permissionCode:'source_document.read',desc:'R24 来源原件（显式能力与对象范围）'},
   {method:'POST',path:/^\/auth\/change-password$/,roles:R,selfService:true,desc:'本人改密'},
   {method:'POST',path:/^\/users\/[^/]+\/reset-password$/,roles:A,permissionCode:'system.users.manage',desc:'管理员重置口令'},
   {method:'GET',path:/^\/roles$/,roles:A,permissionCode:'system.roles.manage',desc:'角色列表'},

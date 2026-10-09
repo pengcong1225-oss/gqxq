@@ -209,7 +209,7 @@ export interface LocationClueView {
 }
 
 export interface ComplaintDetail extends ComplaintListItem {
-  sourceFields: Record<string, unknown> | null;
+  sourceAddress: string | null;
   effectiveFieldState: Record<string, unknown> | null;
   editVersion: number;
   content: string | null;
@@ -224,10 +224,6 @@ export interface ComplaintDetail extends ComplaintListItem {
   locationClues: LocationClueView[];
   locationConflict: boolean;
 
-  /** 原始报文快照 */
-  sourcePayload: Record<string, unknown> | null;
-  /** 规范化 JSON 的 sha256；历史行为 null */
-  sourcePayloadHash: string | null;
   sourceUpdatedAt: string | null;
 
   responsibleMatchedAt: string | null;
@@ -867,3 +863,8 @@ export type DictCode =
   | 'source_system'
   /** 行政区划：由 M5 迁移登记（GB/T 2260），complaint 用 district_code 过滤 */
   | 'district';
+
+export type ScopeRule = {kind:'all'} | {kind:'restricted';enterpriseCodes:string[];districtCodes:string[]};
+export interface UserScope {scopeVersion:number;rules:ScopeRule[]}
+
+export interface ComplaintSourceDocument {complaintId:string;sourcePayload:Record<string,unknown>|null;sourceFields:Record<string,unknown>|null;sourcePayloadHash:string|null}

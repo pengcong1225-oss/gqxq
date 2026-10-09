@@ -1,4 +1,4 @@
-import {test} from 'node:test';
+import { scopedTest as test } from './helpers/scopedTest';
 import assert from 'node:assert/strict';
 process.env.DOTENV_CONFIG_PATH='nonexistent-audit-regression.env';
 process.env.GQXQ_DB_USER='test';process.env.GQXQ_DB_NAME='test';process.env.GQXQ_JWT_SECRET='local-test-only';
@@ -31,7 +31,7 @@ test('unknown create recovers original bytes without rerunning current readiness
   if(sql.includes('dispatch_push_snapshot'))return [stored?[{body:snapshot.bodyText,sha256:digest}]:[],[]];
   if(sql.includes('next_attempt'))return [[{next_attempt:2}],[]];
   if(sql.includes('dispatch_request_log'))return [attempted?[{body:serialized.bodyText}]:[],[]];
-  if(sql.includes('from complaint '))return [[],[]];
+  if(sql.includes('from complaint '))return [[{complaint_id:'C',enterprise_code:'E',deleted:0}],[]];
   return [[{assignment_id:'A',complaint_id:'C',request_id:'R',status:'pending',target_enterprise_code:'E',target_enterprise_name:'Enterprise',deadline:stored?null:new Date(),complaint_title:'changed title'}],[]];
  };
  const execute=async()=>[{affectedRows:1},[]];

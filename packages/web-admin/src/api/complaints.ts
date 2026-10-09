@@ -78,3 +78,6 @@ export async function getComplaintTimeline(idOrNo: ComplaintIdOrNo): Promise<Tim
     `/complaints/${encodeURIComponent(String(idOrNo))}/timeline`
   );
 }
+
+/** Dedicated audited source access; never prefetch as part of ordinary detail. */
+export function getComplaintSourceDocument(idOrNo:ComplaintIdOrNo){return request.get<never,import('../types/api').ComplaintSourceDocument>('/complaints/'+encodeURIComponent(String(idOrNo))+'/source-document');}

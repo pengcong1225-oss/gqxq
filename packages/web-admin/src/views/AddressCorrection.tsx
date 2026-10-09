@@ -602,9 +602,7 @@ const AddressCorrection: React.FC = () => {
    * 面板还没加载到任何项时为 null——这时候就是不知道，不能猜成"未交办"。
    */
   const selectedHasDispatch = items.length > 0 ? items[0].hasDispatch : null;
-  const sourceAddress = typeof selectedComplaintDetail?.sourceFields?.address === 'string'
-    ? selectedComplaintDetail.sourceFields.address
-    : typeof selectedComplaintDetail?.sourcePayload?.address === 'string' ? selectedComplaintDetail.sourcePayload.address : null;
+  const sourceAddress = selectedComplaintDetail?.sourceAddress ?? null;
   const refreshConflict = async () => {
     if (!selectedComplaintId) return;
     try {

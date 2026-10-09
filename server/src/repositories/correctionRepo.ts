@@ -1,3 +1,5 @@
+import { projectDisposalValue } from '../services/complaintProjection';
+import { currentScopeSql, relatedScopeSql } from '../auth/accessScope';
 // correction_item（纠偏待办，逐字段一行）。
 //
 // 设计约束（业主 2026-09-20 裁定，推翻 2026-09-17 的旧口径）：
@@ -114,8 +116,8 @@ export function rowToCorrectionItem(r: CorrectionRow, hasDispatch: boolean): Cor
     hasDispatch,
     fieldName: String(r.fieldName),
     fieldLabel: r.fieldLabel === null || r.fieldLabel === undefined ? (def ? def.label : null) : String(r.fieldLabel),
-    oldValue: r.oldValue === null || r.oldValue === undefined ? null : String(r.oldValue),
-    newValue: r.newValue === null || r.newValue === undefined ? null : String(r.newValue),
+    oldValue: r.oldValue === null || r.oldValue === undefined ? null : String(r.fieldName)==='disposal_result'?projectDisposalValue(String(r.oldValue)):String(r.oldValue),
+    newValue: r.newValue === null || r.newValue === undefined ? null : String(r.fieldName)==='disposal_result'?projectDisposalValue(String(r.newValue)):String(r.newValue),
     basis: r.basis === null || r.basis === undefined ? null : String(r.basis),
     status,
     statusName: statusLabel(status),
@@ -171,9 +173,10 @@ export async function insertCorrections(tx: Tx, items: InsertCorrectionInput[]):
 }
 
 export async function listByComplaint(db: Queryable, complaintId: string): Promise<CorrectionItem[]> {
+  const scope = relatedScopeSql('correction_item.complaint_id');
   const [rows] = await db.query(
-    'select ' + SELECT_COLUMNS + ' from correction_item where complaint_id = ? order by id asc',
-    [complaintId]
+    'select ' + SELECT_COLUMNS + ' from correction_item where complaint_id = ? and '+scope.sql+' order by id asc',
+    [complaintId,...scope.params]
   );
   const list = rows as unknown as CorrectionRow[];
   const dispatched = await findDispatchedComplaintIds(db, [complaintId]);
@@ -206,8 +209,9 @@ export async function findPendingPage(
   page: number,
   size: number
 ): Promise<{ content: CorrectionItem[]; total: number }> {
-  const parts: string[] = ["status = 'pending'"];
-  const params: unknown[] = [];
+  const scope = relatedScopeSql('correction_item.complaint_id');
+  const parts: string[] = ["status = 'pending'",scope.sql];
+  const params: unknown[] = [...scope.params];
   if (filter.complaintId !== undefined) {
     parts.push('complaint_id = ?');
     params.push(filter.complaintId);
@@ -250,8 +254,9 @@ export async function findPendingComplaintPage(
   page: number,
   size: number
 ): Promise<{ content: PendingComplaintSummary[]; total: number }> {
-  const parts: string[] = ["ci.status = 'pending'"];
-  const params: unknown[] = [];
+  const scope = currentScopeSql();
+  const parts: string[] = ["ci.status = 'pending'",scope.sql];
+  const params: unknown[] = [...scope.params];
   if (filter.complaintId !== undefined) {
     parts.push('ci.complaint_id = ?');
     params.push(filter.complaintId);
@@ -353,18 +358,20 @@ export async function countByComplaint(db: Queryable, complaintId: string): Prom
 
 /** 存活诉求总数（软删不算）。批量补挂用它做分母。 */
 export async function countLiveComplaints(db: Queryable): Promise<number> {
+  const scope = currentScopeSql();
   const [rows] = await db.query(
-    'select count(*) as total from complaint c where coalesce(c.deleted, 0) = 0'
+    'select count(*) as total from complaint c where '+scope.sql, scope.params
   );
   return Number((rows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);
 }
 
 /** 尚无任何纠偏项的诉求数。补挂完成后必须为 0，非 0 就是没覆盖全。 */
 export async function countComplaintsWithoutCorrections(db: Queryable): Promise<number> {
+  const scope = currentScopeSql();
   const [rows] = await db.query(
     'select count(*) as total from complaint c' +
       " left join correction_item ci on ci.complaint_id = c.complaint_id where ci.id is null" +
-      ' and coalesce(c.deleted, 0) = 0'
+      ' and '+scope.sql, scope.params
   );
   return Number((rows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);
 }
@@ -377,11 +384,12 @@ export async function findComplaintIdsWithoutCorrections(
   db: Queryable,
   limit: number
 ): Promise<string[]> {
+  const scope = currentScopeSql();
   const [rows] = await db.query(
     'select c.complaint_id as complaintId from complaint c' +
       " left join correction_item ci on ci.complaint_id = c.complaint_id where ci.id is null" +
-      ' and coalesce(c.deleted, 0) = 0 order by c.id asc limit ?',
-    [limit]
+      ' and '+scope.sql+' order by c.id asc limit ?',
+    [...scope.params,limit]
   );
   return (rows as unknown as Array<{ complaintId: string }>).map((r) => String(r.complaintId));
 }

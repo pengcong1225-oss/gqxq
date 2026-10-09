@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { ok } from '../http/respond';
 import {
   getComplaintDetail,
+  getComplaintSourceDocument,
   getComplaintTimeline,
   listComplaints,
 } from '../services/complaintService';
@@ -10,6 +11,9 @@ import {
 // 认证由 routes/index.ts 的 requireAuth 统一前置，此处不重复判定。
 // 路由顺序：/complaints/:idOrNo 与 /complaints/:idOrNo/timeline 段数不同，不会互相遮蔽。
 export const complaintsRouter = Router();
+complaintsRouter.get('/complaints/:idOrNo/source-document',async(req,res,next)=>{
+ try{res.setHeader('Cache-Control','no-store');ok(res,await getComplaintSourceDocument(String(req.params.idOrNo),req.remoteIp??null));}catch(err){next(err);}
+});
 
 complaintsRouter.get('/complaints', async (req, res, next) => {
   try {

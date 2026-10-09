@@ -1,3 +1,4 @@
+import { assertAllScope } from '../auth/accessScope';
 import { createHash, randomUUID } from 'node:crypto';
 import { AppError } from '../http/errors';
 import { pool } from '../db/pool';
@@ -331,6 +332,7 @@ export async function previewSensitiveRescan(
   ctx: SensitiveWordOperatorContext = { userId: null, userName: null, clientIp: null },
   now = Date.now()
 ): Promise<SensitiveRescanPreview> {
+  assertAllScope();
   if (ctx.userId === null) throw AppError.unauthenticated();
   const words = await enabledWords(db);
   if (words.length === 0) throw AppError.conflict('当前没有有效敏感词，不能执行历史重扫');
@@ -371,6 +373,7 @@ export async function executeSensitiveRescanInTransaction(
   ctx: SensitiveWordOperatorContext,
   now = Date.now()
 ): Promise<SensitiveRescanExecution> {
+  assertAllScope();
   if (ctx.userId === null) throw AppError.unauthenticated();
   pruneExpiredPreviews(now);
   const preview = rescanPreviews.get(previewToken);

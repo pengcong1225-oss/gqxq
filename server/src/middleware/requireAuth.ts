@@ -1,3 +1,4 @@
+import { resolveAccessContext, runWithAccessContext } from '../auth/accessScope';
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { resolveAuthorization } from '../services/roleService';
@@ -53,7 +54,8 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       authorizationVersion: authorization.authorizationVersion,
       mustChangePassword: identity.mustChangePassword,
     };
-    next();
+    req.accessContext = await resolveAccessContext(identity.userId, authorization);
+    runWithAccessContext(req.accessContext, () => next());
   } catch (err) {
     next(err);
   }

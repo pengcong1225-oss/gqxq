@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { scopedTest as test } from './helpers/scopedTest';
 import assert from 'node:assert/strict';
 process.env.DOTENV_CONFIG_PATH='nonexistent-integration-test.env';
 process.env.GQXQ_DB_USER='test'; process.env.GQXQ_DB_NAME='test'; process.env.GQXQ_JWT_SECRET='local-test-only';
@@ -32,6 +32,7 @@ test('durable callback inbox replays missing association and reversed order, rej
  const entries=new Map<string,any>();let replayCursor=0;let associated=false;let supervisionStatus='pending';
  const ref:any={assignmentId:'A1',complaintId:'C1',status:'pending',requestId:'R1',subjectCode:'E1',taskId:null,lastEventSequence:0,reportingItemId:null};
  const query=async(sql:string,p:any[]=[])=>{
+  if(sql.includes('from complaint '))return [[{complaint_id:'C1',enterprise_code:'E1',deleted:0}],[]];
   if(sql.includes('from dispatch_order'))return [associated&&p[0]==='A1'?[{...ref}]:[],[]];
   if(sql.includes('from integration_replay_cursor'))return [[{lastEventId:replayCursor}],[]];
   if(sql.includes("processed_result='pending'"))return [[...entries.values()].filter(e=>e.processedResult==='pending'&&(sql.includes('and task_id=?')?e.taskId===p[0]:(sql.includes('id>?')?e.id>Number(p[0]):true))).slice(0,500).map(e=>({id:e.id,eventId:e.eventId,payload:e.payload})),[]];

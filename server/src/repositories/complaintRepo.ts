@@ -1,3 +1,4 @@
+import { currentScopeSql } from '../auth/accessScope';
 // complaint 查询层（诉求总账）。
 // 硬约束（见 docs/2026-09-17-gqxq_service现状核对与G1迁移设计.md）：
 //   * 一律手写参数化 SQL，禁止 ORM，禁止 select *（统一用 COMPLAINT_SELECT_COLUMNS = COMPLAINT_COLUMNS）
@@ -80,8 +81,9 @@ function inClause(column: string, values: string[] | undefined, params: unknown[
 
 /** 列表与统计共用同一套筛选条件，保证「卡片数字」与「表格行」口径一致 */
 export function buildWhere(filter: ComplaintFilter): WhereClause {
-  const params: unknown[] = [];
-  const parts: string[] = [NOT_DELETED];
+  const scope = currentScopeSql();
+  const params: unknown[] = [...scope.params];
+  const parts: string[] = [scope.sql];
 
   if (filter.keyword) {
     const like = '%' + escapeLike(filter.keyword) + '%';
@@ -217,6 +219,7 @@ export async function findStats(filter: ComplaintFilter): Promise<ComplaintStats
 
 /** 纯数字按数值主键查；否则按业务键 complaint_id 或编号 complaint_no 查（两种都支持） */
 export async function findByIdOrNo(idOrNo: string): Promise<ComplaintRow | null> {
+  const scope = currentScopeSql();
   const numeric = /^\d+$/.test(idOrNo);
   const where = numeric ? 'c.id = ?' : '(c.complaint_id = ? or c.complaint_no = ?)';
   const params: unknown[] = numeric ? [Number(idOrNo)] : [idOrNo, idOrNo];
@@ -228,9 +231,9 @@ export async function findByIdOrNo(idOrNo: string): Promise<ComplaintRow | null>
       ' from complaint c' +
       ACTIVE_DISPATCH_JOIN +
       ' where ' +
-      where +
+      where + ' and ' + scope.sql +
       ' limit 1',
-    params
+    [...params, ...scope.params]
   );
   return (rows[0] as unknown as ComplaintRow | undefined) ?? null;
 }

@@ -1,3 +1,4 @@
+import { assertLockedComplaintAccess } from '../auth/accessScope';
 // G2 责任单位确认：enterprise_code / enterprise_name 的**唯一人工写实现**。
 //
 // 为什么只有一个实现（业主 2026-09-20 裁定「匹配责任单位收敛进纠偏入口」之后）：
@@ -99,6 +100,7 @@ export async function confirmResponsibleEnterpriseInTx(
   target: EnterpriseWriteTarget,
   input: ConfirmResponsibleEnterpriseInput
 ): Promise<AssignEnterpriseResult> {
+  await assertLockedComplaintAccess(tx,target.complaintId);
   const master = await assertTargetEnterprise(tx, input.enterpriseCode, input.enterpriseName);
   const enterpriseCode = master.code;
   const enterpriseName = master.name;
@@ -134,6 +136,8 @@ export async function confirmResponsibleEnterpriseInTx(
     supervisionStatus: nextSupervision,
     updatedAt: input.now,
   });
+
+  await assertLockedComplaintAccess(tx,target.complaintId);
 
   // Corrections own their increment; standalone assignment and first dispatch autofill own it here.
   if (input.source !== 'correction') {

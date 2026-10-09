@@ -1,3 +1,4 @@
+import { runAsTrustedSystem } from './auth/accessScope';
 import { createApp } from './app';
 import { env } from './config/env';
 import { reconcilePendingEvents } from './services/callbackService';
@@ -23,7 +24,7 @@ async function main(): Promise<void> {
   }
 
   let reconciling=false;
-  const reconcile=async()=>{if(reconciling)return;reconciling=true;try{await reconcilePendingEvents();await reconcileOpenReporting();}catch{console.error('[integration] pending event reconciliation failed; retained for retry');}finally{reconciling=false;}};
+  const reconcile=async()=>{if(reconciling)return;reconciling=true;try{await runAsTrustedSystem(async()=>{await reconcilePendingEvents();await reconcileOpenReporting();});}catch{console.error('[integration] pending event reconciliation failed; retained for retry');}finally{reconciling=false;}};
   const replayTimer=setInterval(()=>void reconcile(),Math.max(30_000,env.pu.reconciliationIntervalMs));replayTimer.unref();void reconcile();
   const app = createApp();
   // M1（防护方案 §4.1）：显式绑定 env.host（默认 127.0.0.1），不再让 Express 走 0.0.0.0/::。

@@ -2,6 +2,7 @@
 // 一条回传事件被**匹配到交办**时写一行；未匹配到交办的事件只在 business_event 留痕，不写轨迹。
 // 设计约束：只 insert，不 update、不 delete（迁移设计 §3.3）。
 import { randomUUID } from 'node:crypto';
+import { relatedScopeSql } from '../auth/accessScope';
 import type { ApprovalTraceItem } from '../types/api';
 import { cut, type Queryable } from './complaintSourceLogRepo';
 import { toIso } from './complaintMapper';
@@ -53,12 +54,15 @@ export async function listTracesByAssignment(
   db: Queryable,
   assignmentId: string
 ): Promise<ApprovalTraceItem[]> {
+  const scope = relatedScopeSql('d.complaint_id');
   const [rows] = await db.query(
     'select id, trace_id as traceId, task_id as taskId, event_id as eventId, event_type as eventType,' +
       ' approval_conclusion as approvalConclusion, submission_version as submissionVersion,' +
       ' actor_name as actorName, occurred_at as occurredAt, summary' +
-      ' from approval_trace where assignment_id = ? order by occurred_at asc, id asc',
-    [assignmentId]
+      ' from approval_trace where assignment_id = ? and exists (' +
+      'select 1 from dispatch_order d where d.assignment_id = approval_trace.assignment_id and ' + scope.sql +
+      ') order by occurred_at asc, id asc',
+    [assignmentId, ...scope.params]
   );
   return (rows as unknown as Array<Record<string, unknown>>).map((r) => ({
     id: Number(r.id),

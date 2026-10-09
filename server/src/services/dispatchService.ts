@@ -1,4 +1,5 @@
 import {env} from '../config/env';
+import { assertLockedComplaintAccess } from '../auth/accessScope';
 // G2 敏感交办服务：列表 / 详情 / 创建（幂等）/ 受控撤销。
 //
 // 唯一性口径（务必保持）：一个诉求同一轮只能有一条**进行中**交办。
@@ -342,22 +343,25 @@ export async function createDispatch(
       // 撞唯一键：该诉求已有进行中交办（唯一键保证最多一条）。回读既有记录，返回 created=false，不报错。
       const existing = await findActiveOrderByComplaint(pool, ref.complaint_id);
       if (existing) {
-        await insertAudit(pool, {
-          userId: ctx.userId,
-          appCode: GQXQ_APP_CODE,
-          resourceCode: String(existing.order_no),
-          action: 'DISPATCH_CREATE',
-          bizType: 'dispatch_order',
-          bizId: ref.complaint_id,
-          result: 'duplicate',
-          clientIp: ctx.clientIp,
-          detail: {
-            assignmentId: String(existing.assignment_id),
-            complaintId: ref.complaint_id,
-            reason: '该诉求已有进行中交办，返回既有记录',
-            existingStatus: String(existing.status),
-          },
-          createdAt: new Date(),
+        await withTransaction(async tx => {
+          await assertLockedComplaintAccess(tx, ref.complaint_id);
+          await insertAudit(tx, {
+            userId: ctx.userId,
+            appCode: GQXQ_APP_CODE,
+            resourceCode: String(existing.order_no),
+            action: 'DISPATCH_CREATE',
+            bizType: 'dispatch_order',
+            bizId: ref.complaint_id,
+            result: 'duplicate',
+            clientIp: ctx.clientIp,
+            detail: {
+              assignmentId: String(existing.assignment_id),
+              complaintId: ref.complaint_id,
+              reason: '该诉求已有进行中交办，返回既有记录',
+              existingStatus: String(existing.status),
+            },
+            createdAt: new Date(),
+          });
         });
         return { created: false, order: rowToDispatchDetail(existing) };
       }
@@ -598,17 +602,22 @@ export async function recordPushFailure(
   ctx: OperatorContext
 ): Promise<void> {
   const at = new Date();
-  await pool.execute("update dispatch_order set sync_status='failed',updated_at=? where assignment_id=?",[at,assignmentId]);
-  await insertAudit(pool, {
-    userId: ctx.userId,
-    appCode: GQXQ_APP_CODE,
-    resourceCode: assignmentId,
-    action: 'DISPATCH_PUSH',
-    bizType: 'dispatch_order',
-    bizId: complaintId,
-    result: 'failed',
-    clientIp: ctx.clientIp,
-    detail: { assignmentId, complaintId, ...detail },
-    createdAt: at,
+  await withTransaction(async tx => {
+    const order = await findOrderByAssignmentId(tx, assignmentId);
+    if (!order || (complaintId !== null && String(order.complaint_id) !== complaintId)) throw AppError.notFound('交办不存在');
+    if (await lockOrderStatus(tx, assignmentId) === null) throw AppError.notFound('交办不存在');
+    await tx.execute("update dispatch_order set sync_status='failed',updated_at=? where assignment_id=?",[at,assignmentId]);
+    await insertAudit(tx, {
+      userId: ctx.userId,
+      appCode: GQXQ_APP_CODE,
+      resourceCode: assignmentId,
+      action: 'DISPATCH_PUSH',
+      bizType: 'dispatch_order',
+      bizId: complaintId,
+      result: 'failed',
+      clientIp: ctx.clientIp,
+      detail: { assignmentId, complaintId, ...detail },
+      createdAt: at,
+    });
   });
 }

@@ -2,6 +2,8 @@
 // user; future pending identities keep roles=[] until explicitly authorized.
 // Passwords/hashes stay out of responses/audits and credential error objects.
 import bcrypt from 'bcryptjs';
+import { readUserScope, saveUserScope } from '../repositories/userScopeRepo';
+import type { ScopeRule } from '../auth/accessScope';
 import { validatePassword, safeCredentialError } from './passwordService';
 import { lockAuthorization, bumpAuthorization, findRole, listRoles } from '../repositories/roleRepo';
 import { AppError } from '../http/errors';
@@ -54,12 +56,30 @@ export async function listUsers(
   const result = await listAdminUsers(pool, filter, page, size);
   const roles = await listRoles(pool);
   return {
-    content: result.content.map(row => ({...toItem(row),roleNames:row.roles.map(code => roles.find(role=>role.roleCode===code)?.name ?? code)})),
+    content: await Promise.all(result.content.map(async row => ({...toItem(row),...await readUserScope(pool,row.userId),roleNames:row.roles.map(code => roles.find(role=>role.roleCode===code)?.name ?? code)}))),
     total: result.total,
     page: result.page,
     size: result.size,
     totalPages: result.totalPages,
   };
+}
+
+export async function getUserScope(userId:string) {
+ if(!await findAdminUserByUserId(pool,userId))throw AppError.notFound('用户不存在');
+ return readUserScope(pool,userId);
+}
+export async function updateUserScope(userId:string,rules:ScopeRule[],expectedVersion:number,ctx:OperatorContext) {
+ return withTransaction(async tx=>{
+  await lockAuthorization(tx);
+  const [users]=await tx.query('select user_id from app_user where user_id = ? for update',[userId]);
+  if(!(users as unknown[]).length)throw AppError.notFound('用户不存在');
+  const before=await readUserScope(tx,userId);
+  if(before.scopeVersion!==expectedVersion)throw AppError.conflict('数据范围已被修改，请刷新核对');
+  await saveUserScope(tx,userId,rules);
+  await bumpAuthorization(tx);
+  await writeUserAudit(tx,ctx,'USER_SCOPE_UPDATE',userId,{before,after:{rules,scopeVersion:before.scopeVersion+1}});
+  return readUserScope(tx,userId);
+ });
 }
 
 export interface CreateUserInput {

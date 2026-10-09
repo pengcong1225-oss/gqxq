@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { after, test } from 'node:test';
+import { after } from 'node:test';
+import { scopedTest as test } from './helpers/scopedTest';
 import { pool } from '../src/db/pool';
 import { intakeAppeal, type IntakeCommand } from '../src/services/intakeService';
 import { confirmCorrection, rejectCorrection } from '../src/services/correctionService';

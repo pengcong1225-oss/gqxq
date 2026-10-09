@@ -1,3 +1,4 @@
+import { assertLockedComplaintAccess } from '../auth/accessScope';
 // G5 本系统办结 + 交办归档。
 //
 // 业主确认的办结口径：**最终审批通过 + 纠偏全部确认之后，再由人工显式办结**。
@@ -48,6 +49,7 @@ export async function closeComplaint(
   const now = new Date();
 
   return withTransaction(async (tx) => {
+    await assertLockedComplaintAccess(tx,complaintId);
     const [rows] = await tx.query(
       'select complaint_no, reporting_status, supervision_status, closed_in_system,' +
         ' closed_at, closed_by, closed_by_name, closed_basis' +
@@ -126,6 +128,7 @@ export async function archiveDispatchOrder(
 
     const status = String(row.status);
     const complaintId = String(row.complaintId);
+    await assertLockedComplaintAccess(tx,complaintId);
 
     // 已归档：幂等返回既有记录，不重复写审计
     if (status === 'archived') {

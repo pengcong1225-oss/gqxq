@@ -1,3 +1,5 @@
+import { currentAccessContext } from '../auth/accessScope';
+import { projectComplaintDetail, projectAuditDetail } from './complaintProjection';
 // 诉求总账查询服务：参数解析/校验 + DTO 组装。
 // 校验口径见 docs/2026-09-17-诉求平台G1详细实施方案.md §5.4：
 //   size 必须在 1..100（超限 400）；sort 只允许白名单字段；startDate/endDate 按 +08:00 解析。
@@ -13,12 +15,14 @@ import type {
   LocationClueView,
 } from '../types/api';
 import { labelOf } from '../domain/enums';
-import { rowToDetail, rowToListItem } from '../repositories/complaintMapper';
+import { rowToListItem } from '../repositories/complaintMapper';
 import { findAddressCandidate } from '../repositories/addressCandidateRepo';
 import { findLocationClues } from '../repositories/locationClueRepo';
 import { hasLocationConflict } from './rules/locationExtract';
 import { getTownshipSnapshot } from './rules/townshipGazetteer';
 import { pool } from '../db/pool';
+import { insertAudit } from '../repositories/auditLogRepo';
+import { parseJsonColumn } from '../repositories/complaintMapper';
 import {
   findByIdOrNo,
   findPage,
@@ -245,7 +249,7 @@ export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetai
     snapshotId: clue.snapshotId,
   }));
   return {
-    ...rowToDetail(row),
+    ...projectComplaintDetail(row,currentAccessContext()),
     addressCandidate: candidate ? {
       value: candidate.value,
       evidence: candidate.evidence,
@@ -258,6 +262,15 @@ export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetai
     locationClues,
     locationConflict: hasLocationConflict(storedClues),
   };
+}
+
+export async function getComplaintSourceDocument(idOrNo:string,clientIp:string|null):Promise<import('../types/api').ComplaintSourceDocument> {
+ const ctx=currentAccessContext();
+ if(!ctx.canReadSource)throw AppError.forbidden('缺少来源原件权限');
+ const row=await findByIdOrNo(idOrNo);
+ if(!row)throw AppError.notFound('诉求不存在');
+ await insertAudit(pool,{userId:ctx.userId,appCode:'gqxq',resourceCode:String(row.complaint_no),action:'SOURCE_DOCUMENT_READ',bizType:'complaint',bizId:String(row.complaint_id),result:'success',clientIp,detail:{scopeVersion:ctx.scopeVersion},createdAt:new Date()});
+ return {complaintId:String(row.complaint_id),sourcePayload:parseJsonColumn(row.source_payload),sourceFields:parseJsonColumn(row.source_fields),sourcePayloadHash:typeof row.source_payload_hash==='string'?row.source_payload_hash:null};
 }
 
 export interface TimelineResult {
@@ -386,7 +399,7 @@ function buildIntakeItems(rows: IntakeLogRow[], startSeq: number): PendingItem[]
 
 function buildFieldChangeItems(rows: FieldVersionRow[], startSeq: number): PendingItem[] {
   let seq = startSeq;
-  return rows.map((r) => {
+  return rows.filter(r=>Object.hasOwn(FIELD_LABELS,r.field_name)).map((r) => {
     const at = toDate(r.changed_at) ?? new Date(0);
     const fieldLabel = FIELD_LABELS[r.field_name] ?? r.field_name;
     return {
@@ -417,7 +430,7 @@ function buildOperationItems(rows: OperationLogRow[], startSeq: number): Pending
     const at = toDate(r.created_at) ?? new Date(0);
     const actionRaw = String(r.action ?? '');
     const label = ACTION_LABELS[actionRaw] ?? (actionRaw === '' ? '操作' : actionRaw);
-    const parsed = parseDetailJson(r.detail);
+    const parsed = projectAuditDetail(r.detail);
 
     let summary = label;
     const note =

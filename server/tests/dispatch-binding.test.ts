@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { scopedTest as test } from './helpers/scopedTest';
 
 // Never load developer credentials or connect to a business database.
 Object.assign(process.env, {

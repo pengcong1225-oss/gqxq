@@ -98,7 +98,7 @@ export interface LocationClueView {
 }
 
 export interface ComplaintDetail extends ComplaintListItem {
-  sourceFields: Record<string, unknown> | null;
+  sourceAddress: string | null;
   effectiveFieldState: Record<string, unknown> | null;
   editVersion: number;
   content: string | null;
@@ -113,8 +113,6 @@ export interface ComplaintDetail extends ComplaintListItem {
   locationClues: LocationClueView[];
   locationConflict: boolean;
 
-  sourcePayload: Record<string, unknown> | null;
-  sourcePayloadHash: string | null;
   sourceUpdatedAt: string | null;
 
   responsibleMatchedAt: string | null;
@@ -756,3 +754,8 @@ export interface UpdateUserRequest {
   role?: AppRole;
   status?: 0 | 1;
 }
+
+export type ScopeRule = {kind:'all'} | {kind:'restricted';enterpriseCodes:string[];districtCodes:string[]};
+export interface UserScope {scopeVersion:number;rules:ScopeRule[]}
+
+export interface ComplaintSourceDocument {complaintId:string;sourcePayload:Record<string,unknown>|null;sourceFields:Record<string,unknown>|null;sourcePayloadHash:string|null}

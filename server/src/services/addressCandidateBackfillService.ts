@@ -1,3 +1,4 @@
+import { assertAllScope } from '../auth/accessScope';
 import { pool } from '../db/pool';
 import { withTransaction } from '../db/tx';
 import { classifyAddressCandidateChange, findAddressCandidate, syncAddressCandidate } from '../repositories/addressCandidateRepo';
@@ -112,6 +113,7 @@ function toBackfillAction(action: LocationSyncResult): BackfillAction {
 }
 
 export async function previewAddressCandidateBackfill(): Promise<AddressBackfillPreview> {
+  assertAllScope();
   const result: AddressBackfillPreview = { ...EMPTY(), samples: [] };
   let after = '';
   for (;;) {
@@ -152,6 +154,7 @@ export async function previewAddressCandidateBackfill(): Promise<AddressBackfill
 }
 
 export async function executeAddressCandidateBackfill(operator: OperatorContext): Promise<AddressBackfillSummary> {
+  assertAllScope();
   const result = EMPTY();
   let after = '';
   for (;;) {

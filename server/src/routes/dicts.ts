@@ -1,3 +1,4 @@
+import { assertAllScope } from '../auth/accessScope';
 import { Router } from 'express';
 import type { Request } from 'express';
 import { z } from 'zod';
@@ -101,6 +102,7 @@ dictsRouter.post('/dicts/sensitive-words/rescan-preview', requirePermission('sys
 
 dictsRouter.post('/dicts/sensitive-words/rescan', requirePermission('system.dict.manage'), async (req, res, next) => {
   try {
+    assertAllScope();
     const body = parseOrThrow(rescanSchema, req.body ?? {}, '历史重扫参数不合法');
     ok(res, await executeSensitiveRescan(body.previewToken, ctxOf(req)), '历史诉求重扫完成');
   } catch (err) {

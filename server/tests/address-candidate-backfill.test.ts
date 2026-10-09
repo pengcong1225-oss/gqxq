@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { scopedTest as test } from './helpers/scopedTest';
 import { ROLE_ADMIN, matchRule } from '../src/auth/rolePolicy';
 import { addressInputHash } from '../src/services/rules/addressExtract';
 

@@ -1,3 +1,5 @@
+import { currentAccessContext } from '../auth/accessScope';
+import { projectComplaintDetail } from './complaintProjection';
 // G5 分析库与待查报告：只读 + 下钻。
 // 入库逻辑在 correctionService.maybeEnterAnalysis（唯一入口），本文件不写任何业务表。
 import type {
@@ -15,7 +17,6 @@ import { findTodoByAnalysisId, findTodoPage, isReportTodoStatus } from '../repos
 import { listByComplaint } from '../repositories/correctionRepo';
 import { listTracesByAssignment } from '../repositories/approvalTraceRepo';
 import { findByIdOrNo } from '../repositories/complaintRepo';
-import { rowToDetail, type ComplaintDetailProjection } from '../repositories/complaintMapper';
 import { findOrderByAssignmentId, rowToDispatchDetail } from '../repositories/dispatchRepo';
 import { parsePageQuery, queryText } from './correctionService';
 
@@ -27,7 +28,7 @@ import { parsePageQuery, queryText } from './correctionService';
  */
 export interface AnalysisDrilldown {
   record: AnalysisRecordItem;
-  complaint: ComplaintDetailProjection | null;
+  complaint: ReturnType<typeof projectComplaintDetail> | null;
   dispatch: DispatchOrderDetail | null;
   approvalTraces: ApprovalTraceItem[];
   corrections: CorrectionItem[];
@@ -56,7 +57,7 @@ export async function getAnalysisDrilldown(analysisId: string): Promise<Analysis
   if (!record) throw AppError.notFound('分析记录不存在');
 
   const complaintRow = await findByIdOrNo(record.complaintId);
-  const complaint: ComplaintDetailProjection | null = complaintRow ? rowToDetail(complaintRow) : null;
+  const complaint = complaintRow ? projectComplaintDetail(complaintRow,currentAccessContext()) : null;
 
   let dispatch: DispatchOrderDetail | null = null;
   if (record.assignmentId !== null) {

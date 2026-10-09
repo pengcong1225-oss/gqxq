@@ -1,10 +1,10 @@
-# A5 账号初始化、角色授权与管理员演示
+# A5/A2 账号初始化、角色授权、对象范围与管理员演示
 
 日期：2026-10-09（Asia/Shanghai）。本次保留既有真实用户列表、建号、姓名/角色/启停修改，新增可配置角色、本人改密、管理员重置及会话失效能力。用户不删除，既有 `user_id` 和历史审计链保留。
 
 ## 实施人员初始化首位管理员
 
-1. 先核对目标环境与真实数据库基线，备份，并按项目既定流程应用增量迁移 `20261009030000__account_role_permissions.js`。本次只在专用账号组件库验证了 A5 迁移，未验证 canonical 19 表全链迁移；不要把下面的实施步骤当作生产已执行记录。
+1. 先核对目标环境与真实数据库基线，备份，并按项目既定流程应用增量迁移 `20261009030000__account_role_permissions.js` 和 `20261009040000__user_object_scopes.js`。本次仅在专用账号/范围组件库验证了 A5/A2 迁移，未验证 canonical 19 表全链迁移；不要把下面的实施步骤当作生产已执行记录。
 2. 由实施配置明确设置 `GQXQ_BOOTSTRAP_ADMIN_USERNAME`、`GQXQ_BOOTSTRAP_ADMIN_PASSWORD` 和可选的 `GQXQ_BOOTSTRAP_ADMIN_REAL_NAME`，数据库配置使用该目标环境。用户名必填，无默认账号；口令至少 8 个字符、UTF-8 编码不超过 72 字节。通过既定安全渠道配置，禁止把口令写进工单、命令输出或培训材料。
 3. 在 `server` 目录执行 `node scripts/seed-admin.mjs`。创建时在同一事务取得授权锁、发号、写用户和更新授权版本；日志只显示账号和 `user_id`，不显示口令、散列。
 4. 首次登录自动到「修改口令」，填「当前口令」「新口令」「确认新口令」，点「保存并重新登录」。改密成功后旧令牌失效，重新登录才能使用业务功能。
@@ -17,7 +17,7 @@
 1. 管理员登录并完成改密后，左侧打开「角色权限」。需要定制角色时点「新增角色」，填写稳定「角色代码」「角色名称」「说明」，可从启用的业务角色复制，勾选注册的「功能权限」，点「保存」。也可在已有行点「编辑授权」修改名称、说明、启用状态和功能权限。
 2. 打开「账号管理」→「新增用户」，填写用户名、姓名，**明确选择一个启用角色**，填写初始口令，点「创建」。页面没有默认经办角色，也没有批量建号功能。列表只返回账号信息、角色名称、启停与登录时间、须改密状态，不回显口令或散列。
 3. 将初始口令通过既定安全渠道交给本人。用户第一次登录须完成上面的改密流程。只读用户也可以改本人口令；这个身份自助例外不开放交办、纠偏等业务 POST。
-4. **对象范围由后续 A2 独立配置。** A5 本批交付的是功能权限和账号能力；不能把选择角色理解为已经配置企业、区县等对象范围，也不能把尚未接入的范围界面作为本批已可演示的步骤。
+4. 打开账号行内「数据范围」，选择「无范围」「显式全域」或「受限范围」。受限范围按核准依据填写企业代码、区县代码（多个代码用逗号分隔），可添加多条规则，核对后保存。新建账号默认无范围，选择角色不自动授权数据；拥有 `system.users.manage` 的管理员即使自己没有诉求范围，仍可配置人员范围完成初始化。
 5. 演示角色最小授权：只授予诉求查询后，用户界面按后端有效权限显示菜单和操作按钮。直接绕过隐藏按钮请求用户管理或未授权业务端点仍返回 403；新增未登记端点对当前有效授权默认拒绝。
 
 ## 账号停用、角色停用与口令重置
@@ -44,16 +44,16 @@
 | --- | --- |
 | 本人核对 | 姓名、单位、现有平台用户名/`user_id`、账号是否重复 |
 | 授权责任 | 申请人、核准人、业务角色代码、需开放的功能权限、启停依据 |
-| 后续 A2 | 待配置的对象范围及依据；A5 不自动推定为全局范围 |
+| A2 对象范围 | 核准企业/区县、规则配对关系、是否批准显式全域、授权依据；角色不自动推定全域 |
 | 未来钉钉适配 | 已验证手机号的规范化盘点、验证来源、冲突/缺失处置；手机号不自动绑定身份 |
 
 未来复用钉钉应遵循 [复用计划](../../superpowers/plans/2026-10-09-dingtalk-reuse-plan.md)：Provider Java 示例是参考实现，不是现成 OIDC 中心。本批没有扫码、免登、同步、绑定界面或手机号自动绑定代码。将来首次外部登录如建立身份，应保留同一平台 `user_id` 的绑定边界，未批准前是零角色、零对象范围的待授权身份；不能自动赋只读或经办，也没有公共自助提权入口。
 
 ## 开发接入与验证边界
 
-`services/roleService.ts` 导出 `resolveAuthorization(userId): Promise<EffectiveAuthorization>`。类型在 `auth/permissionCatalog.ts`：`{ roleCodes: string[]; permissionCodes: PermissionCode[]; authorizationVersion: number }`。`requireAuth` 将其当前值放入 `req.user.roles / permissionCodes / authorizationVersion`，身份类型在 `http/errors.ts`，同时放 `mustChangePassword`。A2 可直接复用，不需角色缓存。
+`services/roleService.ts` 导出 `resolveAuthorization(userId): Promise<EffectiveAuthorization>`。类型在 `auth/permissionCatalog.ts`：`{ roleCodes: string[]; permissionCodes: PermissionCode[]; authorizationVersion: number }`。`requireAuth` 将其当前值放入 `req.user.roles / permissionCodes / authorizationVersion`，身份类型在 `http/errors.ts`，同时放 `mustChangePassword`。A2 直接复用，不增加角色缓存。`requireAuth` 同时建立请求级 `AccessContext`，缺上下文默认无范围。
 
-`repositories/roleRepo.ts` 导出 `lockAuthorization(exec)` 和 `bumpAuthorization(exec)`。角色、用户角色/状态改变在同一事务先锁 `platform_authorization_state(id=1)`，再操作角色/用户，最后递增单调的全局授权版本；没有用户版本与角色版本求和碰撞。A2 对象范围变更应沿用这个锁序与版本更新。`sessionVersion` 单独从账号读取并在 JWT 校验；改密/重置只递增会话版本，不用角色版本替代。
+`repositories/roleRepo.ts` 导出 `lockAuthorization(exec)` 和 `bumpAuthorization(exec)`。角色、用户角色/状态改变在同一事务先锁 `platform_authorization_state(id=1)`，再操作角色/用户，最后递增单调的全局授权版本；没有用户版本与角色版本求和碰撞。A2 对象范围变更沿用这个锁序与版本更新，另有独立的 `scopeVersion`；配置提交携带 `expectedVersion`，并发修改返回 409，刷新后重新核对。`sessionVersion` 单独从账号读取并在 JWT 校验；改密/重置只递增会话版本，不用角色版本替代。
 
 新增业务端点须在 `ROLE_POLICY` 注册具体 `permissionCode`；旧 `requireRole('admin')` 的路由闸门已迁移到对应 `requirePermission`，两层判断使用同一功能权限。B4 导入还必须校验目标模块维护权限与对象范围，`masterdata.import` 本身不提供绕过能力。机器入站与签名回调仍位于用户 Bearer 中间件之前。
 
@@ -76,6 +76,7 @@
 | GET | `/auth/user-info` | `身份自助` | S1 当前登录用户信息 |
 | GET | `/complaints` | `complaint.read` | R1 诉求总账列表 |
 | GET | `/complaints/:id` | `complaint.read` | R2 诉求详情 |
+| GET | `/complaints/:id/source-document` | `source_document.read` | R24 授权原件查看并审计；仍须诉求在范围内 |
 | GET | `/complaints/:id/timeline` | `complaint.read` | R3 诉求时间线 |
 | GET | `/complaints/:id/corrections` | `complaint.read` | R4 单条纠偏清单 |
 | GET | `/enterprises` | `enterprise.read` | R5 企业主数据列表 |
@@ -115,6 +116,8 @@
 | GET | `/dispatch/orders/:id/reporting-attachments/:id` | `dispatch.read` | authorized reporting attachment |
 | POST | `/dispatch/orders/:id/reconcile` | `dispatch.reconcile` | integration reconciliation |
 | GET | `/users` | `system.users.manage` | U1 用户列表（原 501 桩已摘除） |
+| GET | `/users/:id/scopes` | `system.users.manage` | U4 读取人员范围，不要求管理员业务范围 |
+| PUT | `/users/:id/scopes` | `system.users.manage` | U5 配置范围、版本冲突保护及到人审计 |
 | POST | `/users` | `system.users.manage` | U2 建号（bcrypt 入库，口令不回显） |
 | PATCH | `/users/:id` | `system.users.manage` | U3 改角色/姓名/启停（无删除端点） |
 | GET | `/dicts/sensitive-words` | `system.dict.manage` | D1 敏感词管理列表 |
@@ -125,3 +128,17 @@
 | POST | `/address-candidates/backfill-preview` | `system.address.backfill` | 地址候选存量预览 |
 | POST | `/address-candidates/backfill` | `system.address.backfill` | 地址候选存量补提取 |
 | POST | `/external/tianbao/status-callback` | `system.integration.manage` | X1 旧轮询回调（501 桩；它在 requireAuth 之后，仍需 Bearer） |
+
+## A2 对象范围和原件演示
+
+单条受限规则内已填写的企业与区县同时满足，多条规则满足任意一条即可。只填企业则仅限制企业，只填区县则仅限制区县；两项都空的规则、无规则都不授权。例如规则「A 企业/G1 区县」加「B 企业/G2 区县」可看 A/G1、B/G2，不能看交叉的 A/G2、B/G1。普通查询条件只能缩小范围。列表、总数、大屏、交办、纠偏、分析、报告待办和间接编号读取均以当前诉求范围为准；猜测范围外编号返回 404。
+
+A2 增量迁移仅首次给既有启用本地账号登记显式全域，并写入 `legacy-all-bootstrap-20261009` 来源标识；新账号 `new-account-deny` 默认无范围。已配置范围以后不会因重复执行迁移恢复全域。实施时须审阅历史登记并逐人收窄；这不是已在生产执行的声明。功能权限、管理权限、业务数据范围分别核准。
+
+范围修改下一次认证请求按新值执行，旧令牌不能保留已收回的数据范围。责任企业或区县更正后若诉求越出操作人的范围，整笔事务回滚，请由具备相应范围的人员处理。交办目标企业则按真实有效企业校验：当前诉求已授权时可以合法交办给不同目标企业，不自动改变已有责任企业，也不把目标企业代码当作诉求范围。
+
+详情页普通地址对照只使用公开的原地址标量。具备 `source_document.read` 且诉求在本人范围内时显示「查看来源原件」，点击才请求原件，服务器记录 `SOURCE_DOCUMENT_READ` 审计；普通详情和分析下钻不附送原报文。填报结果仅展示已核准的六个处置字段及附件元数据，被过滤的复合或未知字段显示「部分处置信息暂未展示」。完整动态表单投影须先取得对方字段契约，后续 C4 必须沿用同一投影；A6 日志不自动开放原始填报对象。
+
+批量纠偏按当前范围选择和统计；地址候选存量维护、敏感词历史重扫须同时具有维护功能权限与显式全域范围。机器诉求入站、签名回调和后台定时恢复在各自可信入口显式建立系统上下文，用户不能通过请求参数选择该上下文。推送已外发后，本地事务若因当前范围变化拒绝记账，不能撤销远端已发送请求；结果按已有未知状态及后续恢复边界处理，不宣称远端回滚。
+
+A2 验证使用独立 `gqxq_a2_contract_test`，8 个实际子测试加父容器共 9/9 通过；覆盖实际 SQL 配对矩阵、事务当前行校验、A1 版本冲突、无范围管理员配置、原件审计、旧令牌收权、合法不同目标交办与批量维护拒绝。夹具只证明这些查询/锁/迁移组件契约，不构造 M0 或声称 canonical 十九表兼容与生产迁移验收。

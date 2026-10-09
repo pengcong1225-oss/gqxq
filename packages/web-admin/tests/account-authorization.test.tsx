@@ -85,3 +85,16 @@ test('role manager creates a configured business role and excludes protected adm
   fireEvent.click(page.getByRole('button',{name:/保 存/}));await waitFor(()=>assert.equal(created,true));
  }finally{ui.unmount();cleanup();client.defaults.adapter=original;message.success=success;}
 });
+test('user scope editor is available only with current protected account capability',async()=>{
+ const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');
+ const {default:UserManager}=await vite.ssrLoadModule('/src/views/UserManager.tsx');
+ const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');const original=client.defaults.adapter;
+ client.defaults.adapter=async(config:any)=>({data:{code:200,data:config.url==='/roles'?[]:{content:[{userId:'target',username:'target',realName:'虚构',roles:['handler'],roleNames:['经办'],status:1,mustChangePassword:false,createdAt:null,lastLoginAt:null}],total:1,page:1,size:20,totalPages:1}},status:200,statusText:'OK',headers:{},config});
+ const {render,within,waitFor,cleanup}=await import('@testing-library/react');
+ try{
+  useAppStore.setState({userInfo:{roles:['admin'],permissions:['system.users.manage'],mustChangePassword:false}});
+  let ui=render(<UserManager/>);await waitFor(()=>assert.ok(within(ui.container).getByText('数据范围')));ui.unmount();cleanup();
+  useAppStore.setState({userInfo:{roles:['admin'],permissions:[],mustChangePassword:false}});
+  ui=render(<UserManager/>);assert.equal(within(ui.container).queryByText('数据范围'),null);ui.unmount();cleanup();
+ }finally{client.defaults.adapter=original;}
+});

@@ -1,4 +1,4 @@
-import {useWriteAccess} from '../stores/roleAccess';
+import {useWriteAccess,usePermissionAccess} from '../stores/roleAccess';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -34,7 +34,7 @@ import {
 import ReactECharts from 'echarts-for-react';
 import LocationClues from '../components/LocationClues';
 import type { Dayjs } from 'dayjs';
-import { getComplaint, getComplaintTimeline } from '../api/complaints';
+import { getComplaint, getComplaintTimeline, getComplaintSourceDocument } from '../api/complaints';
 import { createDispatch, getDispatchOrder } from '../api/dispatch';
 import { listEnterprises } from '../api/enterprises';
 import { getSourceAdapterState, syncSource } from '../api/source';
@@ -115,9 +115,13 @@ export function sensitiveRuleScoreLabel(confidence: number | null, version: stri
 
 const ComplaintDetail: React.FC = () => {
   const sourceAccess=useWriteAccess('complaint.source_sync');
+  const documentAccess=usePermissionAccess('source_document.read');
+  const [sourceDocument,setSourceDocument]=useState<import('../types/api').ComplaintSourceDocument|null>(null);
+  const [documentLoading,setDocumentLoading]=useState(false);
   const createAccess=useWriteAccess('dispatch.create');
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  useEffect(()=>{setSourceDocument(null);},[id,documentAccess.can]);
 
   const [detail, setDetail] = useState<ComplaintDetailModel | null>(null);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
@@ -439,6 +443,12 @@ const ComplaintDetail: React.FC = () => {
           同步来源状态
         </Button>
       </Tooltip>
+      {documentAccess.can&&detail&&<Button loading={documentLoading} onClick={async()=>{
+        setDocumentLoading(true);try{setSourceDocument(await getComplaintSourceDocument(id!));}catch(e){message.error(e instanceof Error?e.message:String(e));}finally{setDocumentLoading(false);}
+      }}>查看来源原件</Button>}
+      <Modal title="来源原件" open={Boolean(sourceDocument)&&documentAccess.can} footer={null} width={800} onCancel={()=>setSourceDocument(null)}>
+        <pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:'65vh',overflow:'auto'}}>{sourceDocument?JSON.stringify(sourceDocument,null,2):''}</pre>
+      </Modal>
     </Space>
   );
 
@@ -668,8 +678,7 @@ const ComplaintDetail: React.FC = () => {
                 <Typography.Text type="secondary">（{detail.addressCandidate.sourceField === 'title' ? '标题' : '正文'} · {detail.addressCandidate.extractorVersion}；证据：{detail.addressCandidate.evidence}）</Typography.Text>
               </Descriptions.Item>}
               <Descriptions.Item label="本次收到的来源地址">
-                {typeof detail.sourceFields?.address === 'string' ? detail.sourceFields.address
-                  : typeof detail.sourcePayload?.address === 'string' ? detail.sourcePayload.address : '未留存可核实的结构化来源原值'}
+                {detail.sourceAddress ?? '未留存可核实的结构化来源原值'}
                 <Typography.Text type="secondary">（来源顺序未知）</Typography.Text>
               </Descriptions.Item>
               <Descriptions.Item label="当前有效地址">{detail.address ?? '—'}</Descriptions.Item>

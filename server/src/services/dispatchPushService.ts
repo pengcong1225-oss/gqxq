@@ -1,3 +1,5 @@
+import { assertLockedComplaintAccess } from '../auth/accessScope';
+import { projectTransportMessage } from './complaintProjection';
 import { randomUUID } from 'node:crypto';
 import { TERMINAL_SUPERVISION_STATUSES } from '../domain/enums';
 // G3 出站：把敏感交办推送为 public-utility 的填报任务。
@@ -259,8 +261,11 @@ export async function pushDispatch(
   assignmentId: string,
   ctx: OperatorContext
 ): Promise<PushDispatchResult> {
-  assertPuCredentials();
   const {serialized,prep}=await withTransaction(async tx => {
+    const authorized=await findOrderByAssignmentId(tx,assignmentId);
+    if(!authorized)throw AppError.notFound('交办不存在');
+    await assertLockedComplaintAccess(tx,String(authorized.complaint_id));
+    assertPuCredentials();
     const [orders]=await tx.query('select assignment_id,complaint_id,request_id,status from dispatch_order where assignment_id=? for update',[assignmentId]) as [Array<{assignment_id:string;complaint_id:string;request_id:string;status:string}>,unknown];
     const order=orders[0];
     if(!order)throw AppError.notFound('交办单不存在');
@@ -299,22 +304,25 @@ export async function pushDispatch(
     const finishedAt = new Date();
     const classified = classifyOutcome(transport);
 
-    lastAttempt = await insertRequestLog(pool, {
-      assignmentId,
-      complaintId: prep.complaintId,
-      requestId: prep.requestId,
-      endpoint,
-      nonce: attempt.nonce,
-      signature: attempt.signature,
-      httpStatus: classified.httpStatus,
-      result: classified.result,
-      errorCode: classified.errorCode,
-      errorMessage: classified.message,
-      taskId: classified.taskId,
-      requestBody: serialized.bodyText,
-      responseBody: transport.kind === 'response' ? transport.bodyText : null,
-      startedAt,
-      finishedAt,
+    lastAttempt = await withTransaction(async tx => {
+      await assertLockedComplaintAccess(tx, prep.complaintId);
+      return insertRequestLog(tx, {
+        assignmentId,
+        complaintId: prep.complaintId,
+        requestId: prep.requestId,
+        endpoint,
+        nonce: attempt.nonce,
+        signature: attempt.signature,
+        httpStatus: classified.httpStatus,
+        result: classified.result,
+        errorCode: classified.errorCode,
+        errorMessage: classified.message,
+        taskId: classified.taskId,
+        requestBody: serialized.bodyText,
+        responseBody: transport.kind === 'response' ? transport.bodyText : null,
+        startedAt,
+        finishedAt,
+      });
     });
 
     finalOutcome = classified;
@@ -366,7 +374,7 @@ export async function pushDispatch(
     result: finalOutcome.result,
     httpStatus: finalOutcome.httpStatus,
     errorCode: finalOutcome.errorCode,
-    message: finalOutcome.message,
+    message: projectTransportMessage(finalOutcome.result,finalOutcome.message),
     retryable: finalOutcome.retryable,
   };
 }
@@ -378,9 +386,9 @@ async function preflightPayload(payload:Record<string,unknown>):Promise<Prefligh
  if(outcome.kind!=='response'||outcome.httpStatus!==200) throw AppError.internal('preflight transport failed; task was not sent');
  const result=JSON.parse(outcome.bodyText) as PreflightResult;
  if(typeof result.ready!=='boolean'||!Array.isArray(result.issues))throw AppError.internal('invalid preflight response');
- return result;
+ return {ready:result.ready,issues:result.issues.map(issue=>({code:String(issue.code??''),subjectCode:typeof issue.subjectCode==='string'?issue.subjectCode:null,message:typeof issue.message==='string'?issue.message:'外部预检未通过'}))};
 }
-export async function preflightDispatch(assignmentId:string):Promise<PreflightResult>{assertPuCredentials();return preflightPayload(buildTaskPayload(await preparePush(assignmentId)));}
+export async function preflightDispatch(assignmentId:string):Promise<PreflightResult>{const prep=await preparePush(assignmentId);assertPuCredentials();return preflightPayload(buildTaskPayload(prep));}
 
 /** 推送尝试日志（按 attempt 升序），交办不存在时 404 */
 export async function listPushLogs(
@@ -388,6 +396,6 @@ export async function listPushLogs(
 ): Promise<{ content: DispatchRequestLogItem[]; total: number }> {
   const order = await findOrderByAssignmentId(pool, assignmentId);
   if (!order) throw AppError.notFound('交办单不存在');
-  const content = await findRequestLogsByAssignment(assignmentId, 200);
+  const content = (await findRequestLogsByAssignment(assignmentId, 200)).map(item=>({...item,errorMessage:projectTransportMessage(item.result,item.errorMessage)}));
   return { content, total: content.length };
 }

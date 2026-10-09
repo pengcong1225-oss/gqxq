@@ -1,3 +1,5 @@
+import { projectDisposalValue } from '../services/complaintProjection';
+import { currentScopeSql, assertComplaintAccess, assertLockedComplaintAccess } from '../auth/accessScope';
 // dispatch_order（交办单）查询与写入。
 //
 // 硬约束（落地计划 G2 + 迁移设计）：
@@ -96,7 +98,7 @@ export function rowToDispatchDetail(r: ComplaintRow): DispatchOrderDetail {
     pushedAt: toIso(r.pushed_at),
     completedAt: toIso(r.completed_at),
     archivedAt: toIso(r.archived_at),
-    resultContent: toStr(r.result_content),
+    resultContent: projectDisposalValue(toStr(r.result_content)),
     cancelledAt: toIso(r.cancelled_at),
     cancelReason: toStr(r.cancel_reason),
     createdBy: toStr(r.created_by),
@@ -142,8 +144,9 @@ function inClause(column: string, values: string[] | undefined, params: unknown[
 }
 
 export function buildOrderWhere(filter: DispatchOrderFilter): DispatchWhere {
-  const params: unknown[] = [];
-  const parts: string[] = ['1 = 1'];
+  const scope = currentScopeSql();
+  const params: unknown[] = [...scope.params];
+  const parts: string[] = [scope.sql];
 
   if (filter.keyword) {
     const like = '%' + escapeLike(filter.keyword) + '%';
@@ -215,9 +218,10 @@ export async function findOrderByAssignmentId(
   db: Tx | typeof pool,
   assignmentId: string
 ): Promise<ComplaintRow | null> {
+  const scope = currentScopeSql();
   const [rows] = await db.query<Row[]>(
-    'select ' + ORDER_SELECT_COLUMNS + ORDER_FROM + ' where d.assignment_id = ? limit 1',
-    [assignmentId]
+    'select ' + ORDER_SELECT_COLUMNS + ORDER_FROM + ' where d.assignment_id = ? and '+scope.sql+' limit 1',
+    [assignmentId,...scope.params]
   );
   return (rows[0] as unknown as ComplaintRow | undefined) ?? null;
 }
@@ -227,10 +231,11 @@ export async function findActiveOrderByComplaint(
   db: Tx | typeof pool,
   complaintId: string
 ): Promise<ComplaintRow | null> {
+  const scope = currentScopeSql('c');
   const [rows] = await db.query<Row[]>(
     'select ' + ORDER_SELECT_COLUMNS + ORDER_FROM +
-      ' where d.active_complaint_id = ? limit 1',
-    [complaintId]
+      ' where d.active_complaint_id = ? and ' + scope.sql + ' limit 1',
+    [complaintId, ...scope.params]
   );
   return (rows[0] as unknown as ComplaintRow | undefined) ?? null;
 }
@@ -322,6 +327,8 @@ export interface LockedComplaint {
   supervision_status: string;
   sensitive_keywords: string | null;
   status: string;
+  district_code: string | null;
+  deleted: number | null;
 }
 
 /** 非锁定版解析：只取业务键（用于事务外把 idOrNo 归一成 complaint_id） */
@@ -329,12 +336,13 @@ export async function findComplaintRefByAnyKey(
   db: Tx | typeof pool,
   idOrNo: string
 ): Promise<{ id: number; complaint_id: string } | null> {
+  const scope = currentScopeSql('complaint');
   const numeric = /^\d+$/.test(idOrNo);
   const where = numeric ? 'id = ?' : '(complaint_id = ? or complaint_no = ?)';
   const params: unknown[] = numeric ? [Number(idOrNo)] : [idOrNo, idOrNo];
   const [rows] = await db.query<Row[]>(
-    'select id, complaint_id from complaint where ' + where + ' and coalesce(deleted, 0) = 0 limit 1',
-    params
+    'select id, complaint_id from complaint where ' + where + ' and '+scope.sql+' limit 1',
+    [...params,...scope.params]
   );
   const row = rows[0] as unknown as { id: number; complaint_id: string } | undefined;
   return row ?? null;
@@ -366,6 +374,9 @@ export async function findDispatchedComplaintIds(
  * 撤销必须先锁再判状态，否则两个并发撤销会同时通过状态检查、都执行更新。
  */
 export async function lockOrderStatus(tx: Tx, assignmentId: string): Promise<string | null> {
+  const order = await findOrderByAssignmentId(tx, assignmentId);
+  if (!order) return null;
+  await assertLockedComplaintAccess(tx, String(order.complaint_id));
   const [rows] = await tx.query<Row[]>(
     'select status from dispatch_order where assignment_id = ? for update',
     [assignmentId]
@@ -384,11 +395,12 @@ export async function lockComplaintByAnyKey(tx: Tx, idOrNo: string): Promise<Loc
   const params: unknown[] = numeric ? [Number(idOrNo)] : [idOrNo, idOrNo];
   const [rows] = await tx.query<Row[]>(
     'select id, complaint_id, complaint_no, title, enterprise_code, enterprise_name,' +
-      ' is_sensitive, supervision_status, sensitive_keywords, status' +
+      ' district_code, deleted, is_sensitive, supervision_status, sensitive_keywords, status' +
       ' from complaint where ' + where + ' and coalesce(deleted, 0) = 0 for update',
     params
   );
   const row = rows[0] as unknown as LockedComplaint | undefined;
+  if (row) assertComplaintAccess(row as unknown as Record<string,unknown>);
   return row ?? null;
 }
 

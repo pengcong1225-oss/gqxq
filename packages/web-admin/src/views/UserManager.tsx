@@ -26,7 +26,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { listRoles,type PlatformRole } from '../api/roles';
-import { createUser, listUsers, updateUser, resetPassword } from '../api/users';
+import { createUser, listUsers, updateUser, resetPassword, getUserScope, updateUserScope } from '../api/users';
 import { useAppStore } from '../stores/appStore';
 import { ROLE_ADMIN, ROLE_HANDLER, WriteGate, useAdminAccess } from '../stores/roleAccess';
 import type { AppRole, UserAdminFilter, UserAdminItem } from '../types/api';
@@ -63,6 +63,11 @@ const UserManager: React.FC = () => {
   const { can: isAdmin, tip: adminTip } = useAdminAccess();
   const myUserId = useAppStore((s) => s.userInfo?.userId ?? null);
 
+  const [scopeTarget,setScopeTarget]=useState<UserAdminItem|null>(null);
+  const [scopeVersion,setScopeVersion]=useState(0);
+  const [scopeForm]=Form.useForm();
+  const [scopeMode,setScopeMode]=useState('deny');
+  const openScope=async(user:UserAdminItem)=>{try{const value=await getUserScope(user.userId);setScopeVersion(value.scopeVersion);const mode=value.rules.some(r=>r.kind==='all')?'all':value.rules.length?'restricted':'deny';setScopeMode(mode);scopeForm.setFieldsValue({mode,rules:value.rules.filter(r=>r.kind==='restricted').map(r=>({enterpriseCodes:r.enterpriseCodes.join(','),districtCodes:r.districtCodes.join(',')}))});setScopeTarget(user);}catch(e){message.error(errText(e));}};
   const [roleRows,setRoleRows]=useState<PlatformRole[]>([]);
   const ROLE_OPTIONS=roleRows.filter(r=>r.enabled).map(r=>({value:r.roleCode,label:r.name}));
   const [resetting,setResetting]=useState<UserAdminItem|null>(null);
@@ -246,6 +251,7 @@ const UserManager: React.FC = () => {
             <span style={{ marginLeft: 8, color: '#bfbfbf' }}>无删除</span>
           </Tooltip>
           <Button type="link" disabled={!isAdmin} onClick={()=>{resetForm.resetFields();setResetting(r);}}>重置口令</Button>
+          <Button type="link" disabled={!isAdmin} onClick={()=>void openScope(r)}>数据范围</Button>
           {r.userId === myUserId ? <Tag style={{ marginLeft: 8 }}>当前登录</Tag> : null}
         </Space>
       ),
@@ -352,6 +358,24 @@ const UserManager: React.FC = () => {
 
   return (
     <div>
+      <Modal title={'数据范围：'+(scopeTarget?.username??'')} open={Boolean(scopeTarget)} onCancel={()=>setScopeTarget(null)} onOk={async()=>{
+        try{const values=await scopeForm.validateFields();const split=(v:string|undefined)=>[...new Set((v??'').split(/[,，]/).map(s=>s.trim()).filter(Boolean))];
+          const rules:import('../types/api').ScopeRule[]=values.mode==='all'?[{kind:'all'}]:values.mode==='deny'?[]:(values.rules??[]).map((r:{enterpriseCodes?:string;districtCodes?:string})=>({kind:'restricted',enterpriseCodes:split(r.enterpriseCodes),districtCodes:split(r.districtCodes)}));
+          await updateUserScope(scopeTarget!.userId,rules,scopeVersion);setScopeTarget(null);message.success('数据范围已保存，用户下次请求立即生效');refresh();
+        }catch(e){message.error(errText(e));}
+      }}>
+        <Alert type="info" showIcon message="每条规则内企业与辖区同时满足；多条规则任一满足即可。两项都空的规则不授权。" style={{marginBottom:16}}/>
+        <Form form={scopeForm} layout="vertical">
+          <Form.Item name="mode" label="授权范围"><Select onChange={setScopeMode} options={[{value:'deny',label:'无业务数据授权'},{value:'all',label:'显式全域'},{value:'restricted',label:'按企业和辖区授权'}]}/></Form.Item>
+          {scopeMode==='restricted'&&<Form.List name="rules">{(fields,{add,remove})=><>
+            {fields.map(field=><Card key={field.key} size="small" style={{marginBottom:8}}>
+              <Form.Item name={[field.name,'enterpriseCodes']} label="企业编码（多个以逗号分隔；空表示不限制企业）"><Input/></Form.Item>
+              <Form.Item name={[field.name,'districtCodes']} label="辖区编码（多个以逗号分隔；空表示不限制辖区）"><Input/></Form.Item>
+              <Button onClick={()=>remove(field.name)}>移除此规则</Button>
+            </Card>)}<Button onClick={()=>add({enterpriseCodes:'',districtCodes:''})}>添加范围规则</Button>
+          </>}</Form.List>}
+        </Form>
+      </Modal>
       <Modal title={'重置口令：'+(resetting?.username??'')} open={Boolean(resetting)} onCancel={()=>{setResetting(null);resetForm.resetFields();}} onOk={async()=>{
        let values;try{values=await resetForm.validateFields();}catch{return;}
        try{await resetPassword(resetting!.userId,values.password);setResetting(null);resetForm.resetFields();message.success('已重置；旧会话失效，下次登录须改密');refresh();}catch(e){message.error(errText(e));}

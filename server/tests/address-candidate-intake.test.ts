@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { scopedTest as test } from './helpers/scopedTest';
 import { pool } from '../src/db/pool';
 import type { IntakeCommand } from '../src/services/intakeService';
 

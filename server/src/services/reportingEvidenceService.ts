@@ -1,3 +1,5 @@
+import { assertLockedComplaintAccess } from '../auth/accessScope';
+import { projectReportingEvent } from './complaintProjection';
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool';
 import { AppError } from '../http/errors';
@@ -11,11 +13,11 @@ import { findEventById,insertBusinessEvent,updateEventProcessing } from '../repo
 export async function reportingResult(assignmentId:string){
  const order=await findOrderByAssignmentId(pool,assignmentId);if(!order)throw AppError.notFound('交办不存在');
  const [rows]=await pool.query("select event_id as eventId,processed_result as state,processed_message as message,payload from business_event where task_id=? and source_business_id=? order by occurred_at,id",[order.reporting_task_id,order.complaint_id]) as [Array<{eventId:string;state:string;message:string;payload:unknown}>,unknown];
- return {assignmentId,taskId:order.reporting_task_id,events:rows.map(row=>({...row,payload:typeof row.payload==='string'?JSON.parse(row.payload):row.payload})),taskUrl:env.pu.baseUrl?env.pu.baseUrl.replace(/\/+$/,'')+'/mobile/tasks/'+encodeURIComponent(String(order.reporting_task_id)):null};
+ return {assignmentId,taskId:order.reporting_task_id,events:rows.map(projectReportingEvent),taskUrl:env.pu.baseUrl?env.pu.baseUrl.replace(/\/+$/,'')+'/mobile/tasks/'+encodeURIComponent(String(order.reporting_task_id)):null};
 }
 async function queryContext(assignmentId:string){
- assertPuCredentials();
  const order=await findOrderByAssignmentId(pool,assignmentId);if(!order||!order.reporting_task_id)throw AppError.notFound('填报任务关联尚未建立');
+ assertPuCredentials();
  return {order,payload:{sourceAppCode:env.pu.appCode,requestId:'query:'+randomUUID(),taskId:Number(order.reporting_task_id),sourceRequestId:String(order.request_id)}};
 }
 export async function reportingAttachment(assignmentId:string,attachmentId:string){
@@ -58,10 +60,10 @@ export async function reconcileReporting(assignmentId:string){
  for await(const state of pages){
  for(const raw of state.events){const parsed=validateEvent(raw);if(!parsed.ok)throw AppError.internal('invalid reconciliation event');const event=parsed.event;
   const mismatch=relationError(event,{assignmentId,complaintId:String(order.complaint_id),status:String(order.status),requestId:String(order.request_id),subjectCode:String(order.target_enterprise_code),taskId:String(order.reporting_task_id),lastEventSequence:0,reportingItemId:null});if(mismatch)throw AppError.internal(mismatch);
-  await withTransaction(async tx=>{const existing=await findEventById(tx,event.eventId);if(existing){const stored=typeof existing.payload==='string'?JSON.parse(existing.payload):existing.payload;if(payloadDigest(stored)!==payloadDigest(raw))throw AppError.conflict('同一事件标识的不可变内容不一致');if(existing.processedResult==='ignored'&&event.contractVersion===1&&['task_approved','task_rejected'].includes(event.eventType)&&['pushed','accepted','processing','returned'].includes(String(order.status)))await updateEventProcessing(tx,event.eventId,'pending','reconcile trusted legacy final event');return;}await insertBusinessEvent(tx,{eventId:event.eventId,eventType:event.eventType,sourceAppCode:event.sourceAppCode,sourceBusinessId:event.sourceBusinessId,taskId:event.taskId,sceneCode:event.sceneCode,subjectCode:event.subjectCode,subjectName:event.subjectName,approvalConclusion:event.approvalConclusion,templateVersion:event.templateVersion,submissionVersion:event.submissionVersion,occurredAt:event.occurredAt,approvedAt:event.approvedAt,payload:raw as Record<string,unknown>,signatureKeyId:null,signatureKeyVersion:null,processedResult:'pending',processedMessage:'recovered by authorized signed query',ackBody:resolveAckBody().ackBody,receivedAt:new Date()});recovered++;});
+  await withTransaction(async tx=>{await assertLockedComplaintAccess(tx,String(order.complaint_id));const existing=await findEventById(tx,event.eventId);if(existing){const stored=typeof existing.payload==='string'?JSON.parse(existing.payload):existing.payload;if(payloadDigest(stored)!==payloadDigest(raw))throw AppError.conflict('同一事件标识的不可变内容不一致');if(existing.processedResult==='ignored'&&event.contractVersion===1&&['task_approved','task_rejected'].includes(event.eventType)&&['pushed','accepted','processing','returned'].includes(String(order.status)))await updateEventProcessing(tx,event.eventId,'pending','reconcile trusted legacy final event');return;}await insertBusinessEvent(tx,{eventId:event.eventId,eventType:event.eventType,sourceAppCode:event.sourceAppCode,sourceBusinessId:event.sourceBusinessId,taskId:event.taskId,sceneCode:event.sceneCode,subjectCode:event.subjectCode,subjectName:event.subjectName,approvalConclusion:event.approvalConclusion,templateVersion:event.templateVersion,submissionVersion:event.submissionVersion,occurredAt:event.occurredAt,approvedAt:event.approvedAt,payload:raw as Record<string,unknown>,signatureKeyId:null,signatureKeyVersion:null,processedResult:'pending',processedMessage:'recovered by authorized signed query',ackBody:resolveAckBody().ackBody,receivedAt:new Date()});recovered++;});
  }
  applied+=await reconcilePendingEvents(String(order.reporting_task_id));
- if(state.nextCursor!==undefined)await pool.execute("update dispatch_order set last_reconciled_event_id=GREATEST(CAST(last_reconciled_event_id AS UNSIGNED),CAST(? AS UNSIGNED)) where assignment_id=?",[state.nextCursor,assignmentId]);
+ if(state.nextCursor!==undefined)await withTransaction(async tx=>{await assertLockedComplaintAccess(tx,String(order.complaint_id));await tx.execute("update dispatch_order set last_reconciled_event_id=GREATEST(CAST(last_reconciled_event_id AS UNSIGNED),CAST(? AS UNSIGNED)) where assignment_id=?",[state.nextCursor!,assignmentId]);});
  }
  return {recovered,applied};
 }
