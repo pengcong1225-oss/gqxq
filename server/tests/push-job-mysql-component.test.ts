@@ -86,6 +86,20 @@ test('C4 real SQL delivery component, declared fixture only',{skip:process.env.G
    await seed('NOEVIDENCE',false);await db('dispatch_order').where('assignment_id','NOEVIDENCE').update({reporting_task_id:'T-OLD',status:'pushed'});let calls=0;globalThis.fetch=async()=>{calls++;return new Response('{"ready":true,"issues":[]}',{status:200});};
    await assert.rejects(()=>runWithAccessContext(access,()=>pushDispatch('NOEVIDENCE',ctx)),{status:409});assert.equal(calls,0);assert.equal((await db('dispatch_push_snapshot').where('assignment_id','NOEVIDENCE')).length,0);
   });
+  await t.test('signed callback during fresh preflight cannot manufacture original request evidence',async()=>{
+   await seed('PREFLIGHTCB',false);let preflights=0;
+   globalThis.fetch=async url=>{
+    assert.ok(String(url).endsWith('/preflight'));preflights++;
+    const {handleCallback}=await import('../src/services/callbackService');const {signCallback}=await import('../src/clients/callbackSignature');Object.assign(env.callback,{keyId:'c4',keyVersion:'v1',secret:'synthetic',ackMode:'BODY',ackValue:'OK'});
+    const event={contractVersion:2,eventId:'PREFLIGHT-CB',eventType:'TASK_ACCEPTED',sourceAppCode:'gqxq',sourceBusinessId:'CPREFLIGHTCB',assignmentId:'PREFLIGHTCB',requestId:'RPREFLIGHTCB',reportingItemId:'I-PREFLIGHT',eventSequence:1,taskId:'T-EXISTING-PREFLIGHT',sceneCode:'GQXQ_SENSITIVE_DISPATCH',enterpriseSubject:{subjectCode:'E1',subjectName:'Synthetic'},enterpriseDisposalResult:{},approvalConclusion:'PENDING',templateVersion:1,attachments:[],occurredAt:new Date().toISOString()};
+    const rawBody=Buffer.from(JSON.stringify(event));const timestamp=String(Math.floor(Date.now()/1000));const callback=await handleCallback({rawBody,keyId:'c4',keyVersion:'v1',timestamp,headerEventId:event.eventId,signature:signCallback('synthetic',Number(timestamp),rawBody),remoteIp:null});assert.equal(callback.status,200);
+    const order=await db('dispatch_order').where('assignment_id','PREFLIGHTCB').first();assert.equal(order.reporting_task_id,event.taskId);assert.equal(order.status,'accepted');assert.equal((await db('complaint').where('complaint_id','CPREFLIGHTCB').first()).edit_version,1);
+    return new Response('{"ready":true,"issues":[]}',{status:200});
+   };
+   await assert.rejects(()=>runWithAccessContext(access,()=>pushDispatch('PREFLIGHTCB',ctx)),{status:409});assert.equal(preflights,1);
+   assert.equal((await db('dispatch_push_snapshot').where('assignment_id','PREFLIGHTCB')).length,0);assert.equal((await db('dispatch_outbox').where('request_id','RPREFLIGHTCB')).length,0);assert.equal((await db('dispatch_request_log').where('assignment_id','PREFLIGHTCB')).length,0);
+   const preserved=await db('dispatch_order').where('assignment_id','PREFLIGHTCB').first();assert.equal(preserved.reporting_task_id,'T-EXISTING-PREFLIGHT');assert.equal(preserved.status,'accepted');assert.equal((await db('business_event').where('event_id','PREFLIGHT-CB').first()).processed_result,'applied');
+  });
   await t.test('result write failure rolls back log, business linkage and job; known callback linkage wins',async()=>{
    await enqueue('ATOMIC');await db.raw("create trigger c4_fail_audit before insert on operation_audit_log for each row begin if json_unquote(json_extract(NEW.detail,'$.stage'))='delivery' then signal sqlstate '45000' set message_text='synthetic completion crash'; end if; end");
    try{await assert.rejects(()=>recoverDispatch('RATOMIC',{queryByRequestId:unsupported,sendExact:async()=>confirmed('T-ATOMIC')}),/synthetic completion crash/);}finally{await db.raw('drop trigger c4_fail_audit');}

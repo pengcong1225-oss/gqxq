@@ -263,8 +263,13 @@ export async function pushDispatch(assignmentId:string,ctx:OperatorContext):Prom
    if((TERMINAL_SUPERVISION_STATUSES as readonly string[]).includes(String(current.status)))throw new AppError('INVALID_STATE_TRANSITION','终态交办不允许推送');
    if(identity!==currentTransportIdentity())throw AppError.conflict('集成目标已变化，请重新预检');
    const [stored]=await tx.query('select body,sha256 from dispatch_push_snapshot where assignment_id=?',[assignmentId]) as [Array<{body:string;sha256:string}>,unknown];
+   const [currentLegacy]=await tx.query('select request_body as body from dispatch_request_log where assignment_id=? and request_body is not null order by attempt,id limit 1',[assignmentId]) as [Array<{body:string}>,unknown];
+   const originalBytes=stored[0]??currentLegacy[0];
+   // A signed callback may have registered an old task during unlocked preflight.
+   // Current task facts cannot turn today's candidate into historical request evidence.
+   if(current.reporting_task_id&&!originalBytes)throw AppError.conflict('已有填报任务但缺少原始请求证据，需人工核验');
    let bytes=candidate;
-   if(stored[0])bytes=restoreSnapshot(stored[0].body,stored[0].sha256);
+   if(originalBytes)bytes=restoreSnapshot(originalBytes.body,'sha256' in originalBytes?originalBytes.sha256:undefined);
    else if(!legacyBytes){
     const [nowVersion]=await tx.query('select edit_version from complaint where complaint_id=?',[String(current.complaint_id)]) as [Array<{edit_version:number}>,unknown];
     const final=serializeOnce(buildTaskPayload(await preparePush(assignmentId,tx)));
@@ -273,7 +278,7 @@ export async function pushDispatch(assignmentId:string,ctx:OperatorContext):Prom
    validatePushIdentity(bytes,assignmentId,String(current.complaint_id),String(current.request_id),String(current.target_enterprise_code));
    if(!stored[0])await tx.execute('insert into dispatch_push_snapshot(assignment_id,request_id,body,sha256,created_at) values(?,?,?,?,?)',[assignmentId,String(current.request_id),bytes.bodyText,bytes.bodySha256,new Date()]);
    const before=await readOutbox(tx,String(current.request_id));
-   const row=await enqueueInTx(tx,{request_id:String(current.request_id),assignment_id:assignmentId,complaint_id:String(current.complaint_id),payload_hash:bytes.bodySha256,transport_identity:identity,recovery_mode:env.pu.recoveryMode,contract_version:env.pu.recoveryContractVersion,initiator_id:ctx.userId!,initiator_name:ctx.userName??null,client_ip:ctx.clientIp,scope_version:scope.scopeVersion,authorization_version:auth.authorizationVersion},!!legacyBytes);
+   const row=await enqueueInTx(tx,{request_id:String(current.request_id),assignment_id:assignmentId,complaint_id:String(current.complaint_id),payload_hash:bytes.bodySha256,transport_identity:identity,recovery_mode:env.pu.recoveryMode,contract_version:env.pu.recoveryContractVersion,initiator_id:ctx.userId!,initiator_name:ctx.userName??null,client_ip:ctx.clientIp,scope_version:scope.scopeVersion,authorization_version:auth.authorizationVersion},!!originalBytes||!!legacyBytes);
    // Explicit retry can schedule a supported unknown recovery, but never change immutable identity.
    if(row.state==='unknown'&&row.transport_identity===identity&&row.recovery_mode==='same-body-idempotent'&&row.contract_version&&env.pu.recoveryMode==='same-body-idempotent'&&row.contract_version===env.pu.recoveryContractVersion)await tx.execute('update dispatch_outbox set next_attempt_at=? where request_id=?',[new Date(),row.request_id]);
    if(!before)await insertAudit(tx,{userId:ctx.userId,appCode:'gqxq',resourceCode:assignmentId,action:'DISPATCH_PUSH',bizType:'dispatch_order',bizId:String(current.complaint_id),result:row.state==='unknown'?'unknown':'pending',clientIp:ctx.clientIp,createdAt:new Date(),detail:{assignmentId,complaintId:String(current.complaint_id),stage:'enqueue',deliveryState:row.state,scopeVersion:scope.scopeVersion,authorizationVersion:auth.authorizationVersion}});
