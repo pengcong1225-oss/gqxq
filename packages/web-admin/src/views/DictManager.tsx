@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Select,
+  InputNumber,
+  Checkbox,
   Button,
   Card,
   Col,
@@ -24,7 +27,9 @@ import {
   SearchOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
-import DemoDataNotice from '../components/DemoDataNotice';
+import {usePermissionAccess} from '../stores/roleAccess';
+import type {DictionaryType,DictionaryItem} from '../types/masterData';
+import {listDictionaryTypes,listDictionaryItems,saveDictionaryType,saveDictionaryItem,deleteDictionaryItem,deleteDictionaryType,dictionaryReferences} from '../api/masterData';
 import {
   createSensitiveWord,
   executeSensitiveRescan,
@@ -38,58 +43,6 @@ import type {
   ManagedSensitiveWord,
   SensitiveRescanPreview,
 } from '../types/api';
-
-type DemoDictItem = {
-  key: number;
-  label: string;
-  value: string;
-  sort: number;
-  status: number;
-};
-
-const dictData: Record<string, DemoDictItem[]> = {
-  complaint_type: [
-    { key: 1, label: '投诉', value: 'complaint', sort: 1, status: 1 },
-    { key: 2, label: '咨询', value: 'consult', sort: 2, status: 1 },
-    { key: 3, label: '建议', value: 'suggest', sort: 3, status: 1 },
-    { key: 4, label: '举报', value: 'report', sort: 4, status: 1 },
-    { key: 5, label: '求助', value: 'help', sort: 5, status: 1 },
-    { key: 6, label: '其他', value: 'other', sort: 6, status: 1 },
-    { key: 7, label: '表扬', value: 'praise', sort: 7, status: 1 },
-  ],
-  business_type: [
-    { key: 1, label: '供水', value: 'water', sort: 1, status: 1 },
-    { key: 2, label: '燃气', value: 'gas', sort: 2, status: 1 },
-    { key: 3, label: '液化气', value: 'lpg', sort: 3, status: 1 },
-  ],
-  urgency_level: [
-    { key: 1, label: '一般', value: 'normal', sort: 1, status: 1 },
-    { key: 2, label: '紧急', value: 'urgent', sort: 2, status: 1 },
-    { key: 3, label: '特急', value: 'critical', sort: 3, status: 1 },
-  ],
-  source: [
-    { key: 1, label: '市民之家', value: 'citizen_hall', sort: 1, status: 1 },
-    { key: 2, label: '12345热线', value: 'hotline_12345', sort: 2, status: 1 },
-    { key: 3, label: '移动端', value: 'mobile_app', sort: 3, status: 1 },
-    { key: 4, label: '网页端', value: 'web', sort: 4, status: 1 },
-  ],
-  grid_district: [
-    { key: 1, label: '西陵区', value: 'xiling', sort: 1, status: 1 },
-    { key: 2, label: '伍家岗区', value: 'wujiagang', sort: 2, status: 1 },
-    { key: 3, label: '点军区', value: 'dianjun', sort: 3, status: 1 },
-    { key: 4, label: '猇亭区', value: 'xiaoting', sort: 4, status: 1 },
-    { key: 5, label: '夷陵区', value: 'yiling', sort: 5, status: 1 },
-  ],
-};
-
-const dictTabs = [
-  { key: 'sensitive_word', label: '敏感词' },
-  { key: 'complaint_type', label: '诉求类型' },
-  { key: 'business_type', label: '业务类型' },
-  { key: 'urgency_level', label: '紧急程度' },
-  { key: 'source', label: '诉求来源' },
-  { key: 'grid_district', label: '区域划分' },
-];
 
 function errorText(error: unknown): string {
   return (error as ApiError)?.message || '操作失败，请稍后重试';
@@ -377,60 +330,36 @@ export const SensitiveWordManager: React.FC = () => {
   );
 };
 
-const demoColumns: ColumnsType<DemoDictItem> = [
-  { title: '排序', dataIndex: 'sort', width: 60 },
-  { title: '标签', dataIndex: 'label', width: 200 },
-  { title: '编码值', dataIndex: 'value', width: 200 },
-  {
-    title: '状态', dataIndex: 'status', width: 80,
-    render: (status) => <Tag color={status === 1 ? 'success' : 'error'}>{status === 1 ? '启用' : '禁用'}</Tag>,
-  },
-  {
-    title: '操作', width: 120,
-    render: () => (
-      <Tooltip title="功能未实现（批次 G1）">
-        <span><Button type="link" size="small" icon={<EditOutlined />} disabled>编辑</Button></span>
-      </Tooltip>
-    ),
-  },
-];
-
-const DictManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('sensitive_word');
-  const [search, setSearch] = useState('');
-  const currentData = dictData[activeTab] || [];
-  const filtered = currentData.filter((item) =>
-    !search || item.label.includes(search) || item.value.includes(search)
-  );
-
-  return (
-    <div>
-      <h2 style={{ marginBottom: 16 }}>字典管理</h2>
-      <Tabs activeKey={activeTab} onChange={setActiveTab} items={dictTabs} />
-      {activeTab === 'sensitive_word' ? (
-        <SensitiveWordManager />
-      ) : (
-        <>
-          <DemoDataNotice batch="G1" />
-          <Space style={{ margin: '16px 0' }}>
-            <Input
-              placeholder="搜索字典项"
-              prefix={<SearchOutlined />}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              style={{ width: 220 }}
-              allowClear
-            />
-            <Tooltip title="功能未实现（批次 G1）">
-              <span><Button type="primary" icon={<PlusOutlined />} disabled>新增字典项</Button></span>
-            </Tooltip>
-            <Tag>共 {filtered.length} 条</Tag>
-          </Space>
-          <Table rowKey="key" columns={demoColumns} dataSource={filtered} size="middle" pagination={false} />
-        </>
-      )}
-    </div>
-  );
+const fixedCodes:Record<string,string[]>={business_type:['water','gas','lpg'],complaint_type:['complaint','consult','suggest','report','help','other','praise'],urgency_level:['normal','urgent','critical']};
+const DictionaryAdmin:React.FC=()=>{
+ const [types,setTypes]=useState<DictionaryType[]>([]);const [active,setActive]=useState('complaint_category');const [current,setCurrent]=useState<{type:DictionaryType;items:DictionaryItem[]}|null>(null);const [error,setError]=useState('');const [loading,setLoading]=useState(false);const [editor,setEditor]=useState(false);const [editing,setEditing]=useState<DictionaryItem|null>(null);const [saving,setSaving]=useState(false);const [typeEditor,setTypeEditor]=useState(false);const [editingType,setEditingType]=useState<DictionaryType|null>(null);const [references,setReferences]=useState<Awaited<ReturnType<typeof dictionaryReferences>>|null>(null);const [form]=Form.useForm();const [typeForm]=Form.useForm();
+ const refresh=useCallback(async()=>{setLoading(true);try{setTypes(await listDictionaryTypes());if(active!=='sensitive_word')setCurrent(await listDictionaryItems(active));setError('');}catch(e){setError(errorText(e));}finally{setLoading(false);}},[active]);
+ useEffect(()=>{void refresh();},[refresh]);
+ const openItem=(item:DictionaryItem|null)=>{setEditing(item);form.setFieldsValue({code:item?.code??'',label:item?.label??'',parentCode:item?.parentCode??null,sort:item?.sort??0,status:item?.status??'enabled',published:item?.published??false,cascadeDisable:false});setError('');setEditor(true);};
+ const saveItem=async()=>{if(!current)return;try{const v=await form.validateFields();setSaving(true);await saveDictionaryItem(active,{...v,parentCode:v.parentCode??null,expectedVersion:editing?.version??0,expectedTypeVersion:current.type.version},Boolean(editing));setEditor(false);await refresh();}catch(e){if(!(e as {errorFields?:unknown}).errorFields)setError(errorText(e));}finally{setSaving(false);}};
+ const openType=(type:DictionaryType|null)=>{setEditingType(type);typeForm.setFieldsValue({code:type?.code??'',name:type?.name??'',status:type?.status??'enabled',published:type?.published??false,cascadeDisable:false});setTypeEditor(true);setError('');};
+ const saveType=async()=>{try{const v=await typeForm.validateFields();setSaving(true);await saveDictionaryType({...v,expectedVersion:editingType?.version??0});setTypeEditor(false);setActive(v.code);await refresh();}catch(e){if(!(e as {errorFields?:unknown}).errorFields)setError(errorText(e));}finally{setSaving(false);}};
+ const removeItem=(item:DictionaryItem)=>Modal.confirm({title:'删除未发布草稿？编码以后也不能复用。',onOk:async()=>{try{await deleteDictionaryItem(active,item.code,item.version);await refresh();}catch(e){setError(errorText(e));}}});
+ const columns:ColumnsType<DictionaryItem>=[{title:'编码',dataIndex:'code'},{title:'标签',dataIndex:'label'},{title:'父项',dataIndex:'parentCode',render:v=>v??'大类 / 根项'},{title:'排序',dataIndex:'sort'},{title:'状态',dataIndex:'status',render:v=><Tag>{v==='enabled'?'启用':'停用'}</Tag>},{title:'版本',dataIndex:'version'},{title:'发布',dataIndex:'published',render:v=>v?'已发布':'草稿'},{title:'操作',render:(_,item)=><Space>{!current?.type.readOnly&&<Button size="small" onClick={()=>openItem(item)}>编辑条目</Button>}<Button size="small" onClick={async()=>{try{setReferences(await dictionaryReferences(active,item.code));}catch(e){setError(errorText(e));}}}>引用</Button>{!item.published&&!current?.type.readOnly&&!current?.type.fixedCodes&&<Button danger size="small" onClick={()=>removeItem(item)}>删除草稿</Button>}</Space>}];
+ return <div><h2>字典管理</h2><Space style={{marginBottom:12}}><Button onClick={()=>openType(null)}>新增字典类型</Button><Button onClick={()=>void refresh()}>刷新字典</Button></Space>{error&&!editor&&!typeEditor&&<Alert type="error" message={error}/>}
+  <Tabs activeKey={active} onChange={code=>{setCurrent(null);setActive(code);}} items={[...types.map(t=>({key:t.code,label:t.name})),{key:'sensitive_word',label:'敏感词'}]}/>
+  {active==='sensitive_word'?<SensitiveWordManager/>:<Card loading={loading}>
+   {current&&<><Space wrap style={{marginBottom:16}}><Tag>字典版本 {current.type.version}</Tag>{!current.type.readOnly&&<><Button onClick={()=>openType(current.type)}>编辑类型</Button><Button type="primary" onClick={()=>openItem(null)}>新增字典项</Button>{!current.type.published&&!current.type.fixedCodes&&current.type.code!=='complaint_category'&&<Button danger onClick={()=>Modal.confirm({title:'删除空草稿类型？编码以后不能复用。',onOk:async()=>{try{await deleteDictionaryType(active,current.type.version);setActive('complaint_category');}catch(e){setError(errorText(e));}}})}>删除类型草稿</Button>}</>}<Button onClick={async()=>{try{setReferences(await dictionaryReferences(active));}catch(e){setError(errorText(e));}}}>类型引用</Button></Space>
+   {current.type.readOnly&&<Alert type="info" message="状态机枚举仅供查看；状态流转由业务流程控制。"/>}{current.type.fixedCodes&&<Alert type="info" message="协议编码固定，可维护合法编码的标签、排序和停用。停用仅限制新的人工选择，来源事实继续如实保留。"/>}
+   <Table rowKey="itemId" columns={columns} dataSource={current.items} pagination={false}/></>}
+  </Card>}
+  <Modal title={editing?'编辑字典条目':'新增字典条目'} open={editor} onCancel={()=>setEditor(false)} onOk={()=>void saveItem()} okText="保存条目" confirmLoading={saving}>
+   {error&&<Alert type="error" message={error}/>}<Form form={form} layout="vertical">
+    <Form.Item label="编码" name="code" rules={[{required:true}]}>{current?.type.fixedCodes?<Select aria-label="条目编码" disabled={Boolean(editing)} options={(fixedCodes[active]??[]).filter(code=>code===editing?.code||!current.items.some(i=>i.code===code)).map(code=>({value:code,label:code}))}/>:<Input aria-label="条目编码" disabled={Boolean(editing)}/>}</Form.Item>
+    <Form.Item label="标签" name="label" rules={[{required:true}]}><Input aria-label="条目标签"/></Form.Item>
+    {!current?.type.fixedCodes&&<Form.Item label="父项（不选为大类）" name="parentCode"><Select aria-label="条目父项" allowClear options={current?.items.filter(i=>!i.parentCode&&i.code!==editing?.code).map(i=>({value:i.code,label:i.label}))}/></Form.Item>}
+    <Form.Item label="排序" name="sort"><InputNumber aria-label="条目排序"/></Form.Item><Form.Item label="状态" name="status"><Select options={[{value:'enabled',label:'启用'},{value:'disabled',label:'停用'}]}/></Form.Item>
+    <Form.Item name="published" valuePropName="checked"><Checkbox disabled={editing?.published}>发布后禁止物理删除</Checkbox></Form.Item><Form.Item name="cascadeDisable" valuePropName="checked"><Checkbox>明确确认：停用父项时同时停用所有小类</Checkbox></Form.Item>
+   </Form>
+  </Modal>
+  <Modal title="字典类型" open={typeEditor} onCancel={()=>setTypeEditor(false)} onOk={()=>void saveType()} okText="保存类型" confirmLoading={saving}>{error&&<Alert type="error" message={error}/>}<Form form={typeForm} layout="vertical"><Form.Item label="类型编码" name="code" rules={[{required:true}]}><Input disabled={Boolean(editingType)}/></Form.Item><Form.Item label="类型名称" name="name" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="状态" name="status"><Select options={[{value:'enabled',label:'启用'},{value:'disabled',label:'停用'}]}/></Form.Item><Form.Item name="published" valuePropName="checked"><Checkbox disabled={editingType?.published}>发布类型</Checkbox></Form.Item><Form.Item name="cascadeDisable" valuePropName="checked"><Checkbox>明确确认停用该类型的全部条目</Checkbox></Form.Item></Form></Modal>
+  <Modal title="可见引用（最多100条诉求）" open={references!==null} onCancel={()=>setReferences(null)} footer={null}><p>子项：{references?.children.join(' / ')||'无'}</p><Table rowKey="complaintId" dataSource={references?.complaints??[]} columns={[{title:'诉求编号',dataIndex:'complaintNo'}]} pagination={false}/><p>列表按当前数据范围显示；历史或范围外引用也会阻止删除。</p></Modal>
+ </div>;
 };
-
+const DictManager:React.FC=()=>{const access=usePermissionAccess('system.dict.manage');return access.can?<DictionaryAdmin/>:<Alert type="error" message="无权限，请联系管理员"/>;};
 export default DictManager;

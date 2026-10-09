@@ -1,0 +1,13 @@
+import request from './request';
+import type { CategoryRef, CategoryRevision, DictionaryType, DictionaryItem } from '../types/masterData';
+const encode=encodeURIComponent;
+export const listDictionaryTypes=()=>request.get<never,DictionaryType[]>('/dict-types');
+export const listDictionaryItems=(code:string)=>request.get<never,{type:DictionaryType;items:DictionaryItem[]}>('/dict-types/'+encode(code)+'/items');
+export const saveDictionaryType=(body:{code:string;name:string;expectedVersion:number;status?:string;published?:boolean;cascadeDisable?:boolean})=>request.post('/dict-types',body);
+export const saveDictionaryItem=(typeCode:string,body:Record<string,unknown>,editing=false)=>editing?request.patch('/dict-types/'+encode(typeCode)+'/items/'+encode(String(body.code)),body):request.post('/dict-types/'+encode(typeCode)+'/items',body);
+export const deleteDictionaryItem=(typeCode:string,code:string,expectedVersion:number)=>request.delete('/dict-types/'+encode(typeCode)+'/items/'+encode(code),{data:{expectedVersion}});
+export const deleteDictionaryType=(typeCode:string,expectedVersion:number)=>request.delete('/dict-types/'+encode(typeCode),{data:{expectedVersion}});
+export const dictionaryReferences=(typeCode:string,code?:string)=>request.get<never,{complaints:{complaintId:string;complaintNo:string}[];children:string[];limited:boolean}>('/dict-types/'+encode(typeCode)+(code?'/items/'+encode(code):'')+'/references');
+export const getCategoryOptions=()=>request.get<never,{dictionaryVersion:string;items:DictionaryItem[]}>('/categories');
+export const saveComplaintCategory=(complaintId:string,category:CategoryRef,expectedVersion:number,basis:string)=>request.post<never,{editVersion:number;changed:boolean}>('/complaints/'+encode(complaintId)+'/category',{category,expectedVersion,basis});
+export const getCategoryHistory=(complaintId:string)=>request.get<never,CategoryRevision[]>('/complaints/'+encode(complaintId)+'/category-history');

@@ -7,7 +7,7 @@ export function projectComplaintDetail(row:ComplaintRow,_ctx:AccessContext):Comp
  const {sourcePayload:_payload,sourceFields:_fields,sourcePayloadHash:_hash,...detail}=rowToDetail(row);
  const fields=_fields ?? _payload;
  const effectiveFieldState=detail.effectiveFieldState===null?null:Object.fromEntries(
-  Object.entries(detail.effectiveFieldState).filter(([field])=>[...EFFECTIVE_COLUMNS,'enterprise_code','enterprise_name'].includes(field as typeof EFFECTIVE_COLUMNS[number])).map(([field,state])=>[field,pick(state,['resolution','value','version','reason','correctionId'])]));
+  Object.entries(detail.effectiveFieldState).filter(([field])=>[...EFFECTIVE_COLUMNS,'enterprise_code','enterprise_name','major_category_code','minor_category_code','category_dictionary_version'].includes(field as typeof EFFECTIVE_COLUMNS[number])).map(([field,state])=>[field,pick(state,['resolution','value','version','reason','correctionId'])]));
  return {...detail,effectiveFieldState,sourceAddress:typeof fields?.address==='string'?fields.address:null,addressCandidate:null,locationClues:[],locationConflict:false};
 }
 function pick(value:unknown,keys:string[]):Record<string,unknown>{

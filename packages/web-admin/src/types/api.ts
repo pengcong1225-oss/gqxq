@@ -209,6 +209,8 @@ export interface LocationClueView {
 }
 
 export interface ComplaintDetail extends ComplaintListItem {
+  category?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
+  sourceCategory?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
   sourceAddress: string | null;
   effectiveFieldState: Record<string, unknown> | null;
   editVersion: number;

@@ -38,7 +38,8 @@ export const CORRECTION_FIELD_DEFS: readonly CorrectionFieldDef[] = [
   { code: 'enterprise_name', label: '企业名称/归属', column: 'enterprise_name', pairedCodeColumn: 'enterprise_code' },
   { code: 'district_name', label: '归属区域', column: 'district_name' },
   { code: 'address', label: '地址', column: 'address' },
-  { code: 'complaint_type', label: '诉求分类', column: 'complaint_type' },
+  { code: 'complaint_type', label: '诉求性质', column: 'complaint_type' },
+  { code: 'formal_category', label: '正式大小类', column: null },
   { code: 'location_lng', label: '经度', column: 'location_lng' },
   { code: 'location_lat', label: '纬度', column: 'location_lat' },
   { code: 'summary', label: '诉求摘要', column: 'title' },
@@ -54,6 +55,7 @@ export function fieldDef(code: string): CorrectionFieldDef | null {
 
 /** Human decisions protect paired district/coordinate columns as one effective group. */
 export function protectedColumnsForCorrection(code: string): string[] {
+  if (code === 'formal_category') return ['major_category_code','minor_category_code','category_dictionary_version'];
   if (code === 'district_name') return ['district_name', 'district_code'];
   if (code === 'location_lng' || code === 'location_lat') return ['location_lng', 'location_lat'];
   const def = fieldDef(code);
@@ -129,7 +131,7 @@ export function rowToCorrectionItem(r: CorrectionRow, hasDispatch: boolean): Cor
 }
 
 const SELECT_COLUMNS =
-  '(select case correction_item.field_name ' + CORRECTION_FIELD_DEFS.filter(def => def.column).map(def =>
+  "(select case correction_item.field_name when 'formal_category' then case when c.major_category_code is null then null else json_object('majorCode',c.major_category_code,'minorCode',c.minor_category_code,'dictionaryVersion',c.category_dictionary_version) end " + CORRECTION_FIELD_DEFS.filter(def => def.column).map(def =>
     "when '" + def.code + "' then cast(c." + (def.pairedCodeColumn ?? def.column) + ' as char)'
   ).join(' ') + ' else correction_item.old_value end from complaint c where c.complaint_id = correction_item.complaint_id) as effectiveValue,' +
   '(select c.edit_version from complaint c where c.complaint_id = correction_item.complaint_id) as editVersion,' +

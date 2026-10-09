@@ -1,4 +1,8 @@
-import { assertComplaintAccess } from '../auth/accessScope';
+import { writeCategoryInTx, parseCategoryRef, validateCategoryInTx } from './categoryService';
+import { readDictionaryType, readDictionaryItems } from './dictService';
+import { DICT } from '../domain/enums';
+import type { MasterDataContext } from '../types/masterData';
+import { currentAccessContext, assertComplaintAccess } from '../auth/accessScope';
 // G5 纠偏与入库服务：纠偏待办 -> 分析库 -> 待查报告待办。
 //
 // 业务规则（业主 2026-09-17 确认 + 2026-09-20 修正，不得自行发挥）：
@@ -113,7 +117,7 @@ interface ComplaintFullRow {
 const COMPLAINT_FULL_COLUMNS =
   'deleted, complaint_id, complaint_no, title, enterprise_code, enterprise_name, district_code, district_name,' +
   ' address, business_type, complaint_type, location_lng, location_lat, reporting_status, supervision_status,' +
-  ' edit_version, effective_field_state, content, urgency_level, is_sensitive, sensitive_keywords, rule_confidence, rule_version';
+  ' analysis_included, major_category_code, minor_category_code, category_dictionary_version, edit_version, effective_field_state, content, urgency_level, is_sensitive, sensitive_keywords, rule_confidence, rule_version';
 
 async function resolveComplaintId(db: Tx | typeof pool, idOrNo: string): Promise<string> {
   const ref = await findComplaintRefByAnyKey(db, idOrNo);
@@ -252,6 +256,7 @@ export async function generateCorrectionsInTx(
     district_name: textOf(complaint.district_name),
     address: textOf(complaint.address),
     complaint_type: textOf(complaint.complaint_type),
+    formal_category: (complaint as unknown as Record<string,unknown>).major_category_code == null ? null : JSON.stringify({majorCode:(complaint as unknown as Record<string,unknown>).major_category_code,minorCode:(complaint as unknown as Record<string,unknown>).minor_category_code??null,dictionaryVersion:(complaint as unknown as Record<string,unknown>).category_dictionary_version}),
     location_lng: textOf(complaint.location_lng),
     location_lat: textOf(complaint.location_lat),
     summary: textOf(complaint.title),
@@ -651,14 +656,32 @@ async function decide(
   // 先取 complaintId（不加锁），再按固定顺序：锁 complaint -> 锁 correction。
   // 顺序固定是为了避免与其它路径交叉加锁造成死锁。
   const [probe] = await pool.query(
-    'select complaint_id as complaintId from correction_item where correction_id = ? limit 1',
+    'select complaint_id as complaintId,field_name as fieldName from correction_item where correction_id = ? limit 1',
     [correctionId]
   );
-  const probeRow = (probe as unknown as Array<{ complaintId: string }>)[0];
+  const probeRow = (probe as unknown as Array<{ complaintId: string; fieldName?: string }>)[0];
   if (!probeRow) throw AppError.notFound('纠偏项不存在');
   const complaintId = String(probeRow.complaintId);
 
   const result = await withTransaction(async (tx) => {
+    // Dictionary locks precede complaint/correction in every interactive/import writer.
+    const fieldName=probeRow.fieldName;
+    const masterCtx:MasterDataContext={...ctx,permissionCodes:(ctx as Partial<MasterDataContext>).permissionCodes??[],access:currentAccessContext()};
+    let natureAvailable=true;
+    let formalRef:ReturnType<typeof parseCategoryRef>|null=null;
+    if(fieldName==='formal_category'){
+      if(status==='confirmed'&&body.newValue!=null){try{formalRef=parseCategoryRef(typeof body.newValue==='string'?JSON.parse(body.newValue):body.newValue);}catch{throw AppError.validation('正式分类取值不合法');}}
+      if(formalRef)await validateCategoryInTx(tx,formalRef,{forNewSelection:true});
+      else{await readDictionaryType(tx,'complaint_category',true);await readDictionaryItems(tx,'complaint_category',true);}
+    }
+    if(fieldName==='complaint_type'&&status==='confirmed'&&body.newValue!=null){
+      const type=await readDictionaryType(tx,'complaint_type',true);const options=await readDictionaryItems(tx,'complaint_type',true);
+      if(typeof body.newValue!=='string'||!Object.hasOwn(DICT.complaint_type,body.newValue))throw AppError.validation('诉求性质协议编码不合法');
+      // Confirming the current historical value remains allowed below; a changed value must be active.
+      const selected=options.find(i=>i.code===body.newValue);
+      const available=!type||type.status==='enabled'&&Boolean(selected?.published&&selected.status==='enabled');
+      natureAvailable=available;
+    }
     const complaint = await lockComplaintFull(tx, complaintId);
     if (Number(complaint.edit_version) !== body.expectedVersion) {
       throw AppError.conflict('该诉求已被其它窗口修改；已保留未提交内容，请刷新核对后重新提交');
@@ -675,11 +698,13 @@ async function decide(
     let newValue: string | null = null;
     let writtenBack = false;
     const states = await loadEffectiveFieldState(tx, complaint as unknown as Record<string, unknown>);
+    if(status==='confirmed'&&fieldName==='complaint_type'&&body.newValue!==complaint.complaint_type&&!natureAvailable)throw AppError.validation('停用诉求性质不可用于新选择');
     if (status === 'confirmed') {
-      newValue = optionalText(body.newValue, 'newValue', 2000);
+      if(fieldName==='formal_category'&&formalRef){newValue=JSON.stringify(formalRef);writtenBack=await writeCategoryInTx(tx,complaint as unknown as Record<string,unknown>,formalRef,masterCtx,typeof body.basis==='string'?body.basis:'人工分类纠偏',now,{pendingCorrectionId:correctionId});}
+      else newValue = optionalText(body.newValue, 'newValue', 2000);
       const currentColumn = fieldDef(String(locked.fieldName))?.column;
       const currentValue = currentColumn ? textOf((complaint as unknown as Record<string, unknown>)[currentColumn]) : locked.oldValue;
-      if (newValue !== null && newValue !== currentValue) {
+      if (fieldName!=='formal_category' && newValue !== null && newValue !== currentValue) {
         writtenBack = await writeBackToComplaint(tx, complaint, String(locked.fieldName), newValue, ctx, now);
       }
     }

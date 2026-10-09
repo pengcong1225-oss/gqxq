@@ -22,6 +22,8 @@ export const COMPLAINT_COLUMNS = [
   'c.content',
   'c.business_type',
   'c.complaint_type',
+  'c.major_category_code', 'c.minor_category_code', 'c.category_dictionary_version',
+  'c.source_major_category_code', 'c.source_minor_category_code', 'c.source_category_version',
   'c.urgency_level',
   'c.status',
   'c.is_sensitive',
@@ -236,6 +238,8 @@ export type ComplaintDetailProjection = Omit<ComplaintDetail, 'addressCandidate'
 export function rowToDetail(r: ComplaintRow): ComplaintDetailProjection {
   return {
     ...rowToListItem(r),
+    category: r.major_category_code == null || r.category_dictionary_version == null ? null : {majorCode:String(r.major_category_code),minorCode:r.minor_category_code==null?null:String(r.minor_category_code),dictionaryVersion:String(r.category_dictionary_version)},
+    sourceCategory: r.source_major_category_code == null || r.source_category_version == null ? null : {majorCode:String(r.source_major_category_code),minorCode:r.source_minor_category_code==null?null:String(r.source_minor_category_code),dictionaryVersion:String(r.source_category_version)},
     content: toStr(r.content),
     address: toStr(r.address),
     correctedAddress: toStr(r.corrected_address),

@@ -1,5 +1,6 @@
 // 字典读取：优先 dict_type / dict_item（库中已有 12 项），库中缺失时回退受控词汇表。
 // 回退不是"假数据"：DICT 是 domain/enums.ts 里的受控词汇表（与校验用合法集合同源）。
+import { currentScopeSql } from '../auth/accessScope';
 import { pool, type Row } from '../db/pool';
 import type { DictItem } from '../types/api';
 import { DICT, type DictCode } from '../domain/enums';
@@ -36,10 +37,11 @@ function fallbackItems(code: SupportedDictCode): DictItem[] {
  * 退回"库中实际出现过的来源系统取值"——这是真实数据，不是编造。
  */
 async function findObservedSourceSystems(): Promise<DictItem[]> {
+  const scope=currentScopeSql('c');
   const [rows] = await pool.query<Row[]>(
     'select distinct c.source_system as value from complaint c' +
       " where coalesce(c.deleted, 0) = 0 and c.source_system is not null and c.source_system <> ''" +
-      ' order by c.source_system asc'
+      ' and '+scope.sql+' order by c.source_system asc', scope.params
   );
   return (rows as unknown as Array<Record<string, unknown>>).map((r) => ({
     value: String(r.value),
@@ -47,18 +49,22 @@ async function findObservedSourceSystems(): Promise<DictItem[]> {
   }));
 }
 
-export async function findDictItems(code: SupportedDictCode): Promise<DictItem[]> {
+export async function findDictItems(code: string): Promise<DictItem[]> {
+  const [types]=await pool.query<Row[]>('select dict_type,status,published from dict_type where dict_type=?',[code]);
+  if(types.length&&((types[0] as any).status!=='enabled'||Number((types[0] as any).published??1)!==1))return [];
   const [rows] = await pool.query<Row[]>(
-    "select item_value as value, item_label as label from dict_item where dict_type = ? and status = 'enabled' order by id asc",
+    "select item_value as value, item_label as label from dict_item where dict_type = ? and status = 'enabled' and published=1 order by sort_order asc,id asc",
     [code]
   );
   const items = (rows as unknown as Array<Record<string, unknown>>).map((r) => ({
     value: String(r.value),
     label: String(r.label ?? r.value),
   }));
-  if (items.length > 0) return items;
+  if (items.length > 0 || types.length > 0) return items;
+  const [used]=await pool.query<Row[]>("select type_code from dictionary_code_registry where type_code=? and item_code=''",[code]);
+  if(used.length)return [];
 
-  const fallback = fallbackItems(code);
+  const fallback = fallbackItems(code as SupportedDictCode);
   if (fallback.length > 0) return fallback;
 
   if (code === 'source_system') return findObservedSourceSystems();

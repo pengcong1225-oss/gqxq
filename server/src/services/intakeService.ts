@@ -84,12 +84,15 @@ export interface IntakeContext {
 // 任何使用它的查询都会 ER_BAD_FIELD_ERROR。接收层只需要"身份 + 可覆盖白名单列"，
 // 因此从冻结的 REDELIVERY_UPDATABLE_COLUMNS 派生，既不硬编码列名，也不受该缺陷影响。
 const SELECT_ROW =
-  'select c.complaint_id, c.complaint_no, c.source_fields, c.effective_field_state, c.edit_version, ' +
+  'select c.complaint_id, c.complaint_no, c.source_fields, c.effective_field_state, c.edit_version, c.major_category_code, c.minor_category_code, c.category_dictionary_version, ' +
   REDELIVERY_UPDATABLE_COLUMNS.map((column) => 'c.' + column).join(', ') +
   ' from complaint c where c.source_system = ? and c.source_id = ?';
 
 /** 外部重传**绝不允许**覆盖的列：这里只用来说明"报文试图改写"，UPDATE 语句里绝不出现它们 */
 const PROTECTED_REQUEST_KEYS: ReadonlyArray<{ column: string; keys: readonly string[] }> = [
+  { column: 'major_category_code', keys: ['majorCategoryCode','major_category_code'] },
+  { column: 'minor_category_code', keys: ['minorCategoryCode','minor_category_code'] },
+  { column: 'category_dictionary_version', keys: ['categoryDictionaryVersion','category_dictionary_version'] },
   { column: 'enterprise_code', keys: ['enterpriseCode', 'enterprise_code'] },
   { column: 'enterprise_name', keys: ['enterpriseName', 'enterprise_name'] },
   { column: 'corrected_address', keys: ['correctedAddress', 'corrected_address'] },

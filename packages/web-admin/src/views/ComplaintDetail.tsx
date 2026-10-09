@@ -1,3 +1,4 @@
+import ComplaintCategoryEditor from '../components/ComplaintCategoryEditor';
 import {useWriteAccess,usePermissionAccess} from '../stores/roleAccess';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -598,9 +599,10 @@ const ComplaintDetail: React.FC = () => {
                   {detail.businessTypeName}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="诉求类型">
+              <Descriptions.Item label="诉求性质">
                 <Tag>{detail.complaintTypeName}</Tag>
               </Descriptions.Item>
+              <Descriptions.Item label="正式大小类" span={2}><ComplaintCategoryEditor detail={detail} onSaved={()=>void load()}/></Descriptions.Item>
               <Descriptions.Item label="紧急程度">
                 <Tag color={detail.urgencyLevelCode === 'critical' ? 'red' : detail.urgencyLevelCode === 'urgent' ? 'orange' : 'blue'}>
                   {detail.urgencyLevelName}

@@ -1,3 +1,7 @@
+import CategorySelector from './CategorySelector';
+import {getDictItems} from '../api/dicts';
+import type {DictItem} from '../types/api';
+import type {CategoryRef} from '../types/masterData';
 import React, { useEffect, useState } from 'react';
 import { Button, Input, Select, Space, Typography } from 'antd';
 import type { CorrectionItem, EnterpriseListItem } from '../types/api';
@@ -23,6 +27,9 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
   item, enterpriseOptions, enterpriseLoading, enterpriseError, disabled, saving,
   onSearchEnterprises, onSave, draft, onDraftChange,
 }) => {
+  const [natureOptions,setNatureOptions]=useState<DictItem[]>([]);
+  const [natureError,setNatureError]=useState('');
+  useEffect(()=>{if(item.fieldName==='complaint_type')getDictItems('complaint_type').then(setNatureOptions).catch(e=>setNatureError(e.message??'诉求性质加载失败'));},[item.fieldName]);
   const isEnterprise = item.fieldName === 'enterprise_name';
   const label = item.fieldLabel ?? item.fieldName;
   const [localValue, setValue] = useState(isEnterprise ? '' : correctionEffectiveText(item));
@@ -64,7 +71,7 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
 
   return (
     <Space direction="vertical" size={6} style={{ width: '100%' }}>
-      {isEnterprise ? (
+      {item.fieldName==='formal_category'? <CategorySelector value={(()=>{try{return value?JSON.parse(value) as CategoryRef:null;}catch{return null;}})()} onChange={ref=>changeValue(ref?JSON.stringify(ref):'')} disabled={disabled}/>:item.fieldName==='complaint_type'? <><Select aria-label={'纠偏后取值：'+label} value={value||undefined} options={natureOptions} disabled={disabled||Boolean(natureError)} onChange={changeValue}/>{natureError&&<Typography.Text type='danger'>{natureError}</Typography.Text>}</>:isEnterprise ? (
         <Select
           aria-label={'纠偏后取值：' + label}
           value={value || undefined}

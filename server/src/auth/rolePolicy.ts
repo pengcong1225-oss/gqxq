@@ -47,6 +47,15 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
+  {method:'GET',path:/^\/categories$/,roles:R,permissionCode:'dict.read',desc:'正式分类可选项'},
+  {method:'POST',path:/^\/complaints\/[^/]+\/category$/,roles:W,permissionCode:'complaint.correct',desc:'正式分类纠偏'},
+  {method:'GET',path:/^\/complaints\/[^/]+\/category-history$/,roles:R,permissionCode:'complaint.read',desc:'正式分类修订'},
+  ...(['GET','POST'] as const).map(method=>({method,path:/^\/dict-types$/,roles:A,permissionCode:'system.dict.manage' as const,desc:'通用字典类型管理'})),
+  ...(['PATCH','DELETE'] as const).map(method=>({method,path:/^\/dict-types\/[^/]+$/,roles:A,permissionCode:'system.dict.manage' as const,desc:'字典类型维护'})),
+  ...(['GET','POST'] as const).map(method=>({method,path:/^\/dict-types\/[^/]+\/items$/,roles:A,permissionCode:'system.dict.manage' as const,desc:'字典条目管理'})),
+  ...(['PATCH','DELETE'] as const).map(method=>({method,path:/^\/dict-types\/[^/]+\/items\/[^/]+$/,roles:A,permissionCode:'system.dict.manage' as const,desc:'字典条目维护'})),
+  {method:'GET',path:/^\/dict-types\/[^/]+\/items\/[^/]+\/references$/,roles:A,permissionCode:'system.dict.manage',desc:'字典条目可见引用'},
+  {method:'GET',path:/^\/dict-types\/[^/]+\/references$/,roles:A,permissionCode:'system.dict.manage',desc:'字典类型可见引用'},
   {method:'GET',path:/^\/audit-logs$/,roles:A,permissionCode:'system.audit.read',desc:'A6 登录与操作日志列表'},
   {method:'GET',path:/^\/audit-logs\/[^/]+$/,roles:A,permissionCode:'system.audit.read',desc:'A6 安全审计详情与当前对象范围'},
   {method:'GET',path:/^\/users\/[^/]+\/scopes$/,roles:A,permissionCode:'system.users.manage',desc:'U4 读取用户数据范围'},

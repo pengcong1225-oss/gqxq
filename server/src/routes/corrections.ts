@@ -1,3 +1,5 @@
+import { currentAccessContext } from '../auth/accessScope';
+import type { MasterDataContext } from '../types/masterData';
 import { Router } from 'express';
 import type { Request } from 'express';
 import { ok } from '../http/respond';
@@ -25,8 +27,9 @@ import { closeComplaint } from '../services/closureService';
 export const correctionsRouter = Router();
 
 /** 操作者上下文：用户来自 requireAuth 注入的 req.user，IP 来自 requestContext */
-function ctxOf(req: Request): OperatorContext {
+function ctxOf(req: Request): MasterDataContext {
   return {
+    permissionCodes:req.user?.permissionCodes??[], access:req.accessContext??currentAccessContext(),
     userId: req.user?.id ?? null,
     userName: req.user?.username ?? null,
     clientIp: req.remoteIp ?? null,
