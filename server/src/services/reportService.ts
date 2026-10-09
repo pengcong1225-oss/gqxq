@@ -9,7 +9,7 @@ import {insertAudit} from '../repositories/auditLogRepo';
 import {insertStatisticsSnapshot,storedSnapshot} from '../repositories/statisticsSnapshotRepo';
 import {authorizedReport,claimReport,fenceCurrent,findReportRequest,insertReportJob,listReportRows,readReport,reportBinary,reportView,saveReportArtifact,type ReportClaim} from '../repositories/reportRepo';
 import {AppError} from '../http/errors';
-import {canonical,digest,freezeReportSnapshot,parseReportInput,RENDER_PLAN,type ReportSnapshot} from '../domain/reportSnapshot';
+import {canonical,digest,freezeReportSnapshot,parseReportInput,RENDER_PLAN,REPORT_LIMITS,type ReportSnapshot} from '../domain/reportSnapshot';
 import {normalizeStatisticsQuery} from '../domain/statisticsQuery';
 import {captureStatisticsIn} from './statisticsService';
 import {captureHeatIn} from './heatRuleService';
@@ -31,15 +31,101 @@ function gates(ctx:MasterDataContext,s:ReportSnapshot,operation:'create'|'read'|
 /** Current locking reads are separate from the immutable earlier RR capture.
  * No current rows are inserted back into the original snapshot. */
 async function lockCurrentObjects(db:SqlExecutor,s:ReportSnapshot):Promise<void>{
- const masters=[...new Set(s.statistics.masterScopeFacts.map(f=>f.enterpriseCode))].sort();
- for(const code of masters)await db.query('select enterprise_code,district_code from enterprise where enterprise_code=? for share',[code]);
+ const enterprises=new Set(s.statistics.masterScopeFacts.map(f=>f.enterpriseCode));
+ const admins=new Set<string>(),communities=new Set<string>();
  const grids=[...new Set(s.statistics.coverageEvidence.map(f=>f.coverage.code))].sort();
- for(const code of grids){await db.query('select grid_code,version,import_state from service_grid where grid_code=? for share',[code]);await db.query('select enterprise_code from grid_enterprise where grid_code=? order by enterprise_code for share',[code]);await db.query('select ga.admin_grid_code,ag.district_code from service_grid_admin ga left join admin_grid ag on ag.code=ga.admin_grid_code join service_grid g on g.grid_code=ga.grid_code and g.version=ga.version where ga.grid_code=? order by ga.admin_grid_code for share',[code]);}
  const ids=[...new Set(s.statistics.scopeFacts.map(f=>f.complaintId))].sort();
- for(let i=0;i<ids.length;i+=200){const keys=ids.slice(i,i+200);await db.query('select complaint_id,enterprise_code,district_code,deleted from complaint where complaint_id in ('+keys.map(()=>'?').join(',')+') order by complaint_id for share',keys);}
+ let discoveredCount=0;
+ const bounded=(rows:Record<string,unknown>[])=>{
+  discoveredCount+=rows.length;
+  if(discoveredCount>REPORT_LIMITS.proofs)throw AppError.validation('报告当前关联超过工程限额，请缩小选择');
+  return rows;
+ };
+ const parents=(row:Record<string,unknown>)=>{
+  if(row.enterprise_code!=null)enterprises.add(String(row.enterprise_code));
+  if(row.admin_grid_code!=null)admins.add(String(row.admin_grid_code));
+  if(row.community_code!=null)communities.add(String(row.community_code));
+ };
+ // READ COMMITTED probes discover keys only. They never replace frozen facts or
+ // establish authorization. Locking reads below must reproduce these references.
+ const gridReferences=async(code:string,lock:boolean)=>{
+  const suffix=lock?' for share':'';
+  const header=await rowsIn(db,'select grid_code,version,import_state from service_grid where grid_code=?'+suffix,[code]);
+  if(header.length!==1)throw AppError.notFound('报告当前网格不存在');
+  const version=Number(header[0].version);
+  const limit=' limit '+(REPORT_LIMITS.proofs+1);
+  const enterprise=await rowsIn(db,'select enterprise_code from grid_enterprise where grid_code=? order by enterprise_code'+limit+suffix,[code]);
+  const admin=await rowsIn(db,'select admin_grid_code from service_grid_admin where grid_code=? and version=? order by admin_grid_code'+limit+suffix,[code,version]);
+  const community=await rowsIn(db,'select community_code from service_grid_community where grid_code=? and version=? order by community_code'+limit+suffix,[code,version]);
+  bounded(enterprise);bounded(admin);bounded(community);
+  return {header,enterprise,admin,community};
+ };
+ const priorGrids=new Map<string,Awaited<ReturnType<typeof gridReferences>>>();
+ for(const code of grids){
+  const refs=await gridReferences(code,false);priorGrids.set(code,refs);
+  for(const row of [...refs.enterprise,...refs.admin,...refs.community])parents(row);
+ }
+ const complaintSql='select complaint_id,enterprise_code,admin_grid_code,community_code from complaint where complaint_id in ';
+ const priorComplaints=new Map<string,string>();
+ for(let i=0;i<ids.length;i+=200){
+  const keys=ids.slice(i,i+200);
+  const rows=bounded(await rowsIn(db,complaintSql+'('+keys.map(()=>'?').join(',')+') order by complaint_id',keys));
+  for(const row of rows){parents(row);priorComplaints.set(String(row.complaint_id),canonical(row));}
+ }
+ const priorCommunities=new Map<string,string>();
+ for(const code of [...communities].sort()){
+  const row=(await rowsIn(db,'select code,admin_grid_code from community where code=?',[code]))[0];
+  if(!row)throw AppError.notFound('报告当前小区关联不存在');
+  admins.add(String(row.admin_grid_code));priorCommunities.set(code,String(row.admin_grid_code));
+ }
+ // Same parent-before-child order as B3/B4 and C2. In particular, coverage
+ // enterprises are locked even when enterprise.read omitted household masters.
+ for(const code of [...enterprises].sort()){
+  await db.query('select enterprise_code,district_code from enterprise where enterprise_code=? for share',[code]);
+ }
+ for(const code of [...admins].sort()){
+  const rows=await rowsIn(db,'select code,district_code from admin_grid where code=? for share',[code]);
+  if(rows.length!==1)throw AppError.notFound('报告当前行政网格关联不存在');
+ }
+ for(const code of [...communities].sort()){
+  const row=(await rowsIn(db,'select code,admin_grid_code from community where code=? for share',[code]))[0];
+  if(!row||String(row.admin_grid_code)!==priorCommunities.get(code))throw AppError.conflict('报告小区父级已变化，请重试');
+ }
+ discoveredCount=0;
+ for(const code of grids){
+  const current=await gridReferences(code,true);
+  if(canonical(current)!==canonical(priorGrids.get(code)))throw AppError.conflict('报告网格关联已变化，请重试');
+ }
+ for(let i=0;i<ids.length;i+=200){
+  const keys=ids.slice(i,i+200);
+  let rows:Record<string,unknown>[];
+  try{
+   // Legacy assignment writers hold complaint before enterprise. Keep C2/B4
+   // parent order here, but never wait on their child while holding its parent.
+   rows=bounded(await rowsIn(db,complaintSql+'('+keys.map(()=>'?').join(',')+') order by complaint_id for share nowait',keys));
+  }catch(e){
+   if((e as {code?:string}).code==='ER_LOCK_NOWAIT'){
+    throw new AppError('REPORT_BUSY','报告相关诉求正在修改，请稍后刷新或重试',{cause:e});
+   }
+   throw e;
+  }
+  if(rows.length!==keys.length||rows.some(row=>canonical(row)!==priorComplaints.get(String(row.complaint_id)))){
+   throw AppError.conflict('报告诉求当前关联已变化，请重试');
+  }
+ }
 }
 async function authorizeIn(db:SqlExecutor,id:string,ctx:MasterDataContext,operation:'read'|'download'|'retry'|'finalize'|'create'){
- const row=await readReport(db,id);if(!row)throw AppError.notFound('报告不存在或不在授权范围');const s=storedSnapshot(row);gates(ctx,s,operation);await lockCurrentObjects(db,s);const allowed=await authorizedReport(db,id,ctx.access,ctx.permissionCodes);if(!allowed)throw AppError.notFound('报告不存在或不在授权范围');return {row:allowed,snapshot:s};
+ const row=await readReport(db,id);
+ if(!row)throw AppError.notFound('报告不存在或不在授权范围');
+ const s=storedSnapshot(row);
+ gates(ctx,s,operation);
+ // Early deny only: unauthorized guessed IDs must not disclose REPORT_BUSY.
+ // This ordinary read cannot replace the complete locked/current proof below.
+ if(!await authorizedReport(db,id,ctx.access,ctx.permissionCodes))throw AppError.notFound('报告不存在或不在授权范围');
+ await lockCurrentObjects(db,s);
+ const allowed=await authorizedReport(db,id,ctx.access,ctx.permissionCodes);
+ if(!allowed)throw AppError.notFound('报告不存在或不在授权范围');
+ return {row:allowed,snapshot:s};
 }
 async function audit(db:SqlExecutor,id:string,actor:string,action:string,result:'success'|'failed',detail:Record<string,unknown>){await insertAudit(db as any,{userId:actor,appCode:'gqxq',resourceCode:'report',action,bizType:'report_record',bizId:id,result,clientIp:null,detail,createdAt:new Date()});}
 const cursorKey=()=>createHash('sha256').update(env.jwtSecret+'|report-continuation-v1').digest();
@@ -79,12 +165,19 @@ export async function finalizeReport(c:ReportClaim,bytes:Buffer):Promise<boolean
   await audit(db,c.reportId,c.actor,'REPORT_GENERATE','success',{format:c.snapshot.input.format,state:'succeeded',contentHash:digest(bytes),byteLength:bytes.length,fence:c.fence});return true;
  });
 }
-export async function failReport(c:ReportClaim,reason:'AUTH_CHANGED'|'RENDER_FAILED'|'RENDERER_UNAVAILABLE'):Promise<void>{await transaction(async db=>{if(!await fenceCurrent(db,c))return;await db.query("update report_job set state='failed',failure_reason=?,owner_token=null,lease_until=null where report_id=? and fence=?",[reason,c.reportId,c.fence]);await audit(db,c.reportId,c.actor,'REPORT_GENERATE','failed',{format:c.snapshot.input.format,state:'failed',failureReason:reason,fence:c.fence});});}
+export async function failReport(c:ReportClaim,reason:'AUTH_CHANGED'|'RENDER_FAILED'|'RENDERER_UNAVAILABLE'|'REPORT_BUSY'):Promise<void>{await transaction(async db=>{if(!await fenceCurrent(db,c))return;await db.query("update report_job set state='failed',failure_reason=?,owner_token=null,lease_until=null where report_id=? and fence=?",[reason,c.reportId,c.fence]);await audit(db,c.reportId,c.actor,'REPORT_GENERATE','failed',{format:c.snapshot.input.format,state:'failed',failureReason:reason,fence:c.fence});});}
 /** Explicit server-owned trust boundary: claim persisted jobs, render ONLY their
  * frozen safe input, then fresh actor + whole authorization + fence finalization.
  * Never establishes trusted all scope or refreshes business statistics. */
 export async function generateReport(id?:string,leaseMs=60000):Promise<boolean>{const c=await transaction(db=>claimReport(db,id,leaseMs));if(!c)return false;let bytes:Buffer;
  try{bytes=await renderReport(c.snapshot);}catch{await failReport(c,c.snapshot.renderPlan!==RENDER_PLAN?'RENDERER_UNAVAILABLE':'RENDER_FAILED');return true;}
- try{await finalizeReport(c,bytes);}catch(e){await failReport(c,e instanceof AppError&&[401,403,404].includes(e.status)?'AUTH_CHANGED':'RENDER_FAILED');}return true;
+ try{
+  await finalizeReport(c,bytes);
+ }catch(e){
+  const reason=e instanceof AppError&&e.errorCode==='REPORT_BUSY'?'REPORT_BUSY':
+   e instanceof AppError&&[401,403,404].includes(e.status)?'AUTH_CHANGED':'RENDER_FAILED';
+  await failReport(c,reason);
+ }
+ return true;
 }
 export function startReportWorker(){let busy=false;const run=async()=>{if(busy)return;busy=true;try{for(let n=0;n<3;n++)if(!await generateReport())break;}catch{console.error('[report] durable job retained for retry');}finally{busy=false;}};const timer=setInterval(()=>void run(),15000);timer.unref();void run();return ()=>clearInterval(timer);}

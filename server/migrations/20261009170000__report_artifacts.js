@@ -36,13 +36,25 @@ exports.up=async k=>{
  if(!await k.schema.hasTable('report_record'))throw Error('D3 report_record required; canonical baseline is not supplied');
  const old=await columns(k,'report_record');
  for(const [name,type] of Object.entries({id:'bigint',report_title:'varchar(255)',preview_content:'longtext',date_from:'date',date_to:'date',template_version:'varchar(64)'})){
-  const c=old.find(c=>c.Field===name);if(!c||!typeMatches(c.Type,type))throw Error('D3 unsupported legacy report_record column '+name);
+  const c=old.find(c=>c.Field===name);
+  if(!c||!typeMatches(c.Type,type))throw Error('D3 unsupported legacy report_record column '+name);
+  // The existing id is deliberately omitted from INSERT. Every other listed
+  // legacy field receives an explicit value, which generated columns reject.
+  if(name!=='id'&&/GENERATED|auto_increment/i.test(String(c.Extra))){
+   throw Error('D3 incompatible generated insert column report_record.'+name);
+  }
  }
  if(!old.find(c=>c.Field==='id'&&c.Key==='PRI'&&String(c.Extra).includes('auto_increment'))||!await fullUnique(k,'report_record',['id']))throw Error('D3 requires full existing auto id primary key');
  const supplied=['report_title','preview_content','date_from','date_to','template_version','d3_report_id'];
  await insertUniqueContract(k,'report_record',[['id'],['d3_report_id']],supplied,old);
  for(const c of old)if(c.Null==='NO'&&c.Default==null&&!String(c.Extra).includes('auto_increment')&&!String(c.Extra).includes('GENERATED')&&!supplied.includes(c.Field))throw Error('D3 cannot supply extra mandatory legacy column '+c.Field);
- const ext=old.find(c=>c.Field==='d3_report_id');if(ext&&(!typeMatches(ext.Type,'varchar(64)')||ext.Null!=='YES'||!await fullUnique(k,'report_record',['d3_report_id'])))throw Error('D3 incompatible existing report identity');
+ const ext=old.find(c=>c.Field==='d3_report_id');
+ if(ext&&/GENERATED|auto_increment/i.test(String(ext.Extra))){
+  throw Error('D3 incompatible generated insert column report_record.d3_report_id');
+ }
+ if(ext&&(!typeMatches(ext.Type,'varchar(64)')||ext.Null!=='YES'||!await fullUnique(k,'report_record',['d3_report_id']))){
+  throw Error('D3 incompatible existing report identity');
+ }
  if(!await k.schema.hasTable('report_todo')||!(await columns(k,'report_todo')).some(c=>c.Field==='report_id'&&typeMatches(c.Type,'varchar(64)')))throw Error('D3 report_todo linkage contract missing');
  // ALL owned-table compatibility checks precede the first DDL.
  for(const [name,spec] of Object.entries(tables))if(await k.schema.hasTable(name)){

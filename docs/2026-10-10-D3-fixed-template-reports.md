@@ -40,10 +40,12 @@ snapshot 与最终二进制保存在有界 DB 表中。产物 hash/MIME/length �
 
 成功下载始终返回存储的原字节。冻结 renderer 为 `statistics-draft-v1/docx9.9.0-exceljs4.4.0/2`，旧 renderer 不存在时明确 RENDERER_UNAVAILABLE，不自动重新捕获、升级或改版。DOCX 小数只在展示中取两位，XLSX 原数值保留实际精度。OOXML 时间和图片 docPr 编号按文档冻结；不修改实际聚合内容。
 
+当前对象按 enterprise → admin → community → grid → complaint 顺序锁定，并重验探测到的父级关联。末尾 complaint 使用 SHARE NOWAIT，避免与既有责任单位确认的 complaint → enterprise 顺序形成等待环。相关诉求正在业务修改时，接口立即回滚并返回 `REPORT_BUSY`（409）；稍后刷新或由有权操作者重试。生成完成遇忙记录 `REPORT_BUSY` 失败原因，不写成功产物、不完成待办；显式重试仍使用原冻结快照。父对象锁保持正常等待，短时并发可能需要额外刷新或重试。
+
 ## 工程限额与迁移
 
 当前及全部比较/排除期间去重最多20000对象，serialized snapshot 和单产物各16MiB，单 string 最多8192 UTF-8字节。有限证明最多100000项、100条授权规则、每维每规则最多200个编码；保留 D1/D2 更严格的资源拒绝。DB 实际 max_allowed_packet 更小时明确拒绝并提示缩小选择，不改 MySQL 全局参数，不截断假成功。
 
-当前没有 canonical 外部完整 DDL。本次仅验证明确声明的相关 legacy component fixture 加真实增量 migrations，不是 M0/canonical PASS。170000迁移在任何 DDL 前检查旧 report_record 所需字段/类型、既有 auto numeric id/full unique、未知必填列、附加 UNIQUE 实际插入约束、report_todo.report_id，以及 owned/shared insert 依赖的类型、nullability、完整非 prefix identity/default。未知 mandatory/no-default 依赖或不兼容唯一约束直接失败；不会重建表或清历史。MySQL DDL 不提供跨语句原子回滚；down 明确拒绝自动删数据，保留状态供操作员处理。
+当前没有 canonical 外部完整 DDL。本次仅验证明确声明的相关 legacy component fixture 加真实增量 migrations，不是 M0/canonical PASS。170000迁移在任何 DDL 前检查旧 report_record 所需字段/类型、既有 auto numeric id/full unique、未知必填列、附加 UNIQUE 实际插入约束、report_todo.report_id，以及 owned/shared insert 依赖的类型、nullability、完整非 prefix identity/default。显式插入的 legacy 字段与已有 d3_report_id 若为 GENERATED/auto_increment，同样在任何 DDL 前拒绝。未知 mandatory/no-default 依赖或不兼容唯一约束直接失败；不会重建表或清历史。MySQL DDL 不提供跨语句原子回滚；down 明确拒绝自动删数据，保留状态供操作员处理。
 
 重启证据来自仅运行报告任务的独立 synthetic 子进程，未启动生产应用、provider 或全库任务。最终样稿使用真实 stored artifacts，并经 DOCX 每页、XLSX 每 sheet 和原始 OOXML/图数独立检查。
