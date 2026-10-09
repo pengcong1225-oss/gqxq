@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 用户已授权拆分并交由 GPT-6.1 Sol / High 子代理执行；逐任务开发、独立复核。
 
-> 实施状态更新于 2026-10-10：用户已授权拆分实施，执行与独立复核均使用 GPT-6.1 Sol / High。当前 17/17 项通过任务复核，正在进行全分支审查。具体提交、验证边界和培训材料见 [交付进度与培训索引](../../acceptance/abcd/delivery-status.md)，技术决策及业务影响见 [实施决策](../../acceptance/abcd/implementation-decisions.md)。原任务复选项保留为方案检查清单，未执行的正式业务确认、历史库迁移和真实联调不得据代码完成自动勾选。
+> 实施状态更新于 2026-10-10：用户已授权拆分实施，执行与独立复核均使用 GPT-6.1 Sol / High。17/17 项通过任务复核，整分支审查的 8 组问题已在 `4a449a8` 集中修复并通过最终限定范围复核，本地 A—D 工程交付完成。具体提交、验证边界和培训材料见 [交付进度与培训索引](../../acceptance/abcd/delivery-status.md)，技术决策及业务影响见 [实施决策](../../acceptance/abcd/implementation-decisions.md)。原任务复选项保留为方案检查清单，未执行的正式业务确认、历史库迁移和真实联调不得据代码完成自动勾选；钉钉实际接入及 E/F 仍留待后续。
 
 **Goal:** 将差距报告中的非大屏 A—D 能力拆成可单独验收的交付批次，明确钉钉复用边界及外部依赖。
 
