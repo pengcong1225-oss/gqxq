@@ -269,6 +269,7 @@ export async function pushDispatch(
     const [orders]=await tx.query('select assignment_id,complaint_id,request_id,status from dispatch_order where assignment_id=? for update',[assignmentId]) as [Array<{assignment_id:string;complaint_id:string;request_id:string;status:string}>,unknown];
     const order=orders[0];
     if(!order)throw AppError.notFound('交办单不存在');
+    if(String(order.complaint_id)!==String(authorized.complaint_id))throw AppError.conflict('交办归属已变化，请重试');
     if((TERMINAL_SUPERVISION_STATUSES as readonly string[]).includes(order.status))throw new AppError('INVALID_STATE_TRANSITION','终态交办不允许推送');
     const identity={complaintId:String(order.complaint_id),requestId:String(order.request_id)};
     const [stored] = await tx.query('select body,sha256 from dispatch_push_snapshot where assignment_id=?',[assignmentId]) as [Array<{body:string;sha256:string}>,unknown];

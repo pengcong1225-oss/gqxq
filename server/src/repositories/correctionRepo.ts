@@ -108,7 +108,7 @@ export function rowToCorrectionItem(r: CorrectionRow, hasDispatch: boolean): Cor
   const def = fieldDef(String(r.fieldName));
   return {
     editVersion: Number(r.editVersion ?? 1),
-    effectiveValue: r.effectiveValue == null ? null : String(r.effectiveValue),
+    effectiveValue: r.effectiveValue == null ? null : String(r.fieldName)==='disposal_result'?projectDisposalValue(String(r.effectiveValue)):String(r.effectiveValue),
     id: Number(r.id),
     correctionId: String(r.correctionId),
     complaintId: String(r.complaintId),

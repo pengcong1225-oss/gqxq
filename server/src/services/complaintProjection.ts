@@ -41,4 +41,10 @@ export function projectReportingEvent(row:{eventId:string;state?:string;message?
   attachments:Array.isArray(raw.attachments)?raw.attachments.map(a=>pick(a,['attachmentId','fileName','size','sha256','contentType'])):[]};
  return {eventId:row.eventId,state:row.state,payload};
 }
-export function projectAuditDetail(value:unknown) {return pick(value,['basis','fieldName','oldValue','newValue','statusBefore','statusAfter','reportingStatus','supervisionStatus','changedCount']);}
+export function projectAuditDetail(value:unknown) {
+ const detail=pick(value,['basis','fieldName','oldValue','newValue','statusBefore','statusAfter','reportingStatus','supervisionStatus','changedCount']);
+ if(detail.fieldName==='disposal_result'){
+  for(const key of ['oldValue','newValue'])if(typeof detail[key]==='string')detail[key]=projectDisposalValue(detail[key] as string);
+ }
+ return detail;
+}

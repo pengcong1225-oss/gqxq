@@ -12,7 +12,7 @@ test('A2 isolated MySQL object scope component, not canonical M0 acceptance',{sk
  // Owned synthetic schema only. app_user follows M1; remaining tables are explicit
  // query-contract fixtures. Types required for edit_version/JSON/locks are real;
  // no nineteen-table baseline, no M0 validation or complete migration claim.
- const tables=['sensitive_hit','dict_item','complaint_assignment','enterprise','complaint_location_clue','complaint_address_candidate','business_event','dispatch_request_log','approval_trace','report_todo','analysis_record','correction_item','complaint_field_version','complaint_source_log','dispatch_order','complaint','platform_role_permission','platform_permission','platform_role','platform_authorization_state','operation_audit_log','app_user','number_sequence'];
+ const tables=['sensitive_hit','dict_item','complaint_assignment','enterprise','complaint_location_clue','complaint_address_candidate','business_event','dispatch_request_log','approval_trace','dispatch_push_snapshot','report_todo','analysis_record','correction_item','complaint_field_version','complaint_source_log','dispatch_order','complaint','platform_role_permission','platform_permission','platform_role','platform_authorization_state','operation_audit_log','app_user','number_sequence'];
  for(const table of tables)await db.schema.dropTableIfExists(table);
  await db.raw("create table app_user (id bigint primary key auto_increment,user_id varchar(64) not null unique,username varchar(64) not null unique,password_hash varchar(100) not null,real_name varchar(64) not null,roles json not null,permissions json not null,status tinyint not null default 1,last_login_at datetime,created_at datetime not null default current_timestamp,updated_at datetime not null default current_timestamp on update current_timestamp) engine=InnoDB default charset=utf8mb4");
  await db.raw('create table operation_audit_log (id bigint auto_increment primary key,audit_id varchar(64),user_id varchar(64),app_code varchar(64),resource_code varchar(128),action varchar(64),biz_type varchar(64),biz_id varchar(128),result varchar(32),client_ip varchar(64),detail json,created_at datetime) engine=InnoDB');
@@ -27,8 +27,9 @@ test('A2 isolated MySQL object scope component, not canonical M0 acceptance',{sk
  const nums=new Set(['edit_version','deleted','is_sensitive','closed_in_system','analysis_included','overtime_flag']);
  await db.raw('create table complaint ('+columns.map(c=>c==='id'?'id bigint auto_increment primary key':c==='complaint_id'?'complaint_id varchar(64) unique':json.has(c)?c+' json':nums.has(c)?c+' bigint default '+(c==='edit_version'?1:0):c.endsWith('_at')?c+' datetime':c+' text').join(',')+') engine=InnoDB');
  const {ORDER_SELECT_COLUMNS}=await import('../src/repositories/dispatchRepo');
- const dispatchColumns=[...new Set([...ORDER_SELECT_COLUMNS.matchAll(/\bd\.(\w+)/g)].map(m=>m[1]).concat(['active_complaint_id']))];
- await db.raw('create table dispatch_order ('+dispatchColumns.map(c=>c==='id'?'id bigint primary key auto_increment':c.endsWith('_at')||c==='deadline'?c+' datetime':c==='template_version'||c==='approval_definition_version'?c+' bigint':c+' varchar(255)').join(',')+') engine=InnoDB');
+ const dispatchColumns=[...new Set([...ORDER_SELECT_COLUMNS.matchAll(/\bd\.(\w+)/g)].map(m=>m[1]).concat(['active_complaint_id','reporting_item_id','last_event_sequence']))];
+ await db.raw('create table dispatch_order ('+dispatchColumns.map(c=>c==='id'?'id bigint primary key auto_increment':c.endsWith('_at')||c==='deadline'?c+' datetime':c==='template_version'||c==='approval_definition_version'?c+' bigint':c+' varchar(255)').join(',')+', unique key uk_assignment(assignment_id), key idx_task(reporting_task_id)) engine=InnoDB');
+ await db.raw('create table dispatch_push_snapshot (assignment_id varchar(64) primary key,request_id varchar(64),body longtext,sha256 varchar(64),created_at datetime) engine=InnoDB');
  await db.raw('create table correction_item (id bigint primary key auto_increment,correction_id varchar(64) unique,complaint_id varchar(64),assignment_id varchar(64),field_name varchar(64),field_label varchar(64),old_value text,new_value text,basis text,status varchar(32),confirmer_id varchar(64),confirmer_name varchar(64),confirmed_at datetime,created_at datetime) engine=InnoDB');
  await db.raw('create table analysis_record (id bigint primary key auto_increment,analysis_id varchar(64),complaint_id varchar(64),assignment_id varchar(64),business_type varchar(32),complaint_type varchar(32),district_code varchar(64),district_name varchar(64),enterprise_code varchar(64),enterprise_name varchar(64),summary text,disposal_result text,confirmed_at datetime,created_at datetime) engine=InnoDB');
  await db.raw('create table report_todo (id bigint primary key auto_increment,todo_id varchar(64),analysis_id varchar(64),complaint_id varchar(64),report_id varchar(64),status varchar(32),note text,created_at datetime,updated_at datetime) engine=InnoDB');
@@ -39,8 +40,8 @@ test('A2 isolated MySQL object scope component, not canonical M0 acceptance',{sk
  await db.raw('create table dict_item (id bigint primary key auto_increment,item_id varchar(64),dict_type varchar(64),item_value varchar(64),item_label varchar(64),status varchar(32)) engine=InnoDB');
  await db.raw('create table sensitive_hit (id bigint primary key auto_increment,dict_item_id varchar(64),complaint_id varchar(64)) engine=InnoDB');
  await db('dict_item').insert({item_id:'WORD',dict_type:'sensitive_word',item_value:'虚构',item_label:'虚构',status:'enabled'});
- await db.raw('create table business_event (id bigint primary key auto_increment,event_id varchar(64),processed_result varchar(32),processed_message text,payload json,task_id varchar(64),source_business_id varchar(64),occurred_at datetime) engine=InnoDB');
- await db.raw('create table approval_trace (id bigint primary key auto_increment,trace_id varchar(64),assignment_id varchar(64),task_id varchar(64),event_id varchar(64),event_type varchar(32),approval_conclusion varchar(32),submission_version bigint,actor_name varchar(64),occurred_at datetime,summary text) engine=InnoDB');
+ await db.raw('create table business_event (id bigint primary key auto_increment,event_id varchar(64) unique,event_type varchar(32),source_app_code varchar(64),scene_code varchar(64),subject_code varchar(64),subject_name varchar(200),approval_conclusion varchar(32),template_version bigint,submission_version bigint,approved_at datetime,signature_key_id varchar(64),signature_key_version varchar(32),ack_body text,received_at datetime,processed_result varchar(32),processed_message text,payload json,task_id varchar(64),source_business_id varchar(64),occurred_at datetime) engine=InnoDB');
+ await db.raw('create table approval_trace (id bigint primary key auto_increment,trace_id varchar(64),complaint_id varchar(64),assignment_id varchar(64),task_id varchar(64),event_id varchar(64),event_type varchar(32),approval_conclusion varchar(32),submission_version bigint,actor_name varchar(64),occurred_at datetime,summary text,detail json,created_at datetime) engine=InnoDB');
  await db.raw('create table dispatch_request_log (id bigint primary key auto_increment,request_log_id varchar(64),assignment_id varchar(64),request_id varchar(64),attempt bigint,nonce varchar(64),http_status bigint,result varchar(64),error_code varchar(64),error_message text,task_id varchar(64),started_at datetime,finished_at datetime,created_at datetime) engine=InnoDB');
  await db.raw('create table enterprise (id bigint primary key auto_increment,enterprise_code varchar(64),enterprise_name varchar(64),business_type varchar(32),uscc varchar(64),legal_person varchar(64),contact_person varchar(64),contact_phone varchar(64),service_area text,annual_score decimal(10,2),status varchar(32)) engine=InnoDB');
  await db.raw('create table complaint_assignment (assignment_log_id varchar(64),complaint_id varchar(64),before_enterprise_code varchar(64),before_enterprise_name varchar(64),after_enterprise_code varchar(64),after_enterprise_name varchar(64),match_type varchar(32),reason text,operator_id varchar(64),operator_name varchar(64),created_at datetime) engine=InnoDB');
@@ -137,6 +138,66 @@ test('A2 isolated MySQL object scope component, not canonical M0 acceptance',{sk
    assert.equal((await db('complaint').where('complaint_id','C1').first()).enterprise_code,'A');
    await db('dispatch_order').where('assignment_id',dispatch.body.data.order.assignmentId).delete();
    await db('complaint').where('complaint_id','C1').update({supervision_status:'none'});
+  });
+  await t.test('ordinary corrections analysis and timeline cannot expose stored disposal JSON aliases',async()=>{
+   const raw=JSON.stringify({result:'已处置',reason:{token:'DISPOSAL_ALIAS_SECRET'},sourcePayload:{token:'DISPOSAL_ALIAS_SECRET'},token:'DISPOSAL_ALIAS_SECRET'});
+   await db('correction_item').insert({correction_id:'DISPOSAL-C1',complaint_id:'C1',field_name:'disposal_result',old_value:raw,status:'pending',created_at:new Date()});
+   for(const path of ['/complaints/C1/corrections','/corrections/pending','/analysis/records/ANA-C1']){
+    const response=await api('get',path);assert.equal(response.status,200,path);assert.equal(JSON.stringify(response.body).includes('DISPOSAL_ALIAS_SECRET'),false,path);
+   }
+   const version=Number((await db('complaint').where('complaint_id','C1').first()).edit_version);
+   assert.equal((await api('post','/corrections/DISPOSAL-C1/reject','paired',{expectedVersion:version,basis:'核实当前处置'})).status,200);
+   const timeline=await api('get','/complaints/C1/timeline');assert.equal(timeline.status,200);assert.equal(JSON.stringify(timeline.body).includes('DISPOSAL_ALIAS_SECRET'),false);
+   assert.equal((await db('correction_item').where('correction_id','DISPOSAL-C1').first()).old_value,raw);
+   assert.equal(JSON.stringify((await db('operation_audit_log').where('action','CORRECTION_REJECT')).map(row=>row.detail)).includes('DISPOSAL_ALIAS_SECRET'),true);
+  });
+  await t.test('real interleaved archive and signed callback share complaint before dispatch lock order',async()=>{
+   const {recordPushFailure}=await import('../src/services/dispatchService');const {archiveDispatchOrder}=await import('../src/services/closureService');
+   const {handleCallback}=await import('../src/services/callbackService');const {signCallback}=await import('../src/clients/callbackSignature');
+   const {runAsTrustedSystem}=await import('../src/auth/accessScope');const {env}=await import('../src/config/env');
+   const access=await resolveAccessContext('paired');const operator={userId:'paired',userName:'虚构',clientIp:null};
+   const originalGet=pool.getConnection;const originalCallback={...env.callback};
+   const gate=<T=void>()=>{let resolve!:(value:T)=>void;const promise=new Promise<T>(r=>{resolve=r;});return {promise,resolve};};
+   const bounded=async<T>(promise:Promise<T>)=>{let timer:ReturnType<typeof setTimeout>;try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('lock choreography timed out')),5000);})]);}finally{clearTimeout(timer!);}};
+   Object.assign(env.callback,{keyId:'scope-lock-key',keyVersion:'v1',secret:'synthetic-lock-secret',ackMode:'BODY',ackValue:'OK'});
+   try{for(const kind of ['archive','callback']){
+    await db('dispatch_order').where('assignment_id','D-C2').update({status:kind==='archive'?'completed':'pushed',request_id:'LOCK-R',target_enterprise_code:'B',reporting_task_id:'T-C2',reporting_item_id:null,last_event_sequence:'0'});
+    await db('correction_item').where('complaint_id','C2').update({status:'rejected'});
+    const userHeld=gate(),userRelease=gate(),otherFirst=gate<string>(),otherHeld=gate(),otherRelease=gate(),userDispatchAttempt=gate();
+    const trace:string[]=[];let connectionIndex=0;
+    (pool as any).getConnection=async()=>{
+     const conn=await originalGet.call(pool);const index=connectionIndex++;const query=conn.query.bind(conn);const release=conn.release.bind(conn);let first=true;
+     (conn as any).query=async(sql:string,...args:any[])=>{
+      const target=/for update/.test(sql)?sql.includes('from complaint')?'complaint':sql.includes('from dispatch_order')?'dispatch':null:null;
+      if(index===0&&target==='dispatch'){trace.push('user:dispatch-attempt');userDispatchAttempt.resolve();}
+      if(index===1&&target&&first){first=false;trace.push('other:first-'+target);otherFirst.resolve(target);const value=await (query as any)(sql,...args);if(target==='dispatch'){otherHeld.resolve();await otherRelease.promise;}return value;}
+      const value=await (query as any)(sql,...args);
+      if(index===0&&target==='complaint'&&first){first=false;trace.push('user:complaint-held');userHeld.resolve();await userRelease.promise;}
+      return value;
+     };
+     conn.release=()=>{conn.query=query as any;conn.release=release;release();};return conn;
+    };
+    const capture=<T>(promise:Promise<T>)=>promise.then(value=>({ok:true as const,value}),error=>({ok:false as const,error}));
+    const write=capture(runWithAccessContext(access,()=>recordPushFailure('D-C2','C2',{result:'conflict',httpStatus:409,errorCode:'SYNTHETIC',message:'synthetic',attempt:1},operator)));
+    let concurrent:Promise<any>|undefined;
+    try{
+     await bounded(userHeld.promise);
+     if(kind==='archive')concurrent=capture(runWithAccessContext(access,()=>archiveDispatchOrder('D-C2',operator)));
+     else{
+      const body=Buffer.from(JSON.stringify({contractVersion:2,eventId:'LOCK-EVENT',eventType:'TASK_ACCEPTED',sourceAppCode:env.pu.appCode,sourceBusinessId:'C2',taskId:'T-C2',sceneCode:'GQXQ_SENSITIVE_DISPATCH',assignmentId:'D-C2',requestId:'LOCK-R',reportingItemId:'LOCK-I',eventSequence:1,enterpriseSubject:{subjectCode:'B',subjectName:'虚构B'},enterpriseDisposalResult:{},approvalConclusion:'PENDING',templateVersion:1,attachments:[],occurredAt:new Date().toISOString()}));
+      const seconds=Math.floor(Date.now()/1000);
+      concurrent=capture(runAsTrustedSystem(()=>handleCallback({rawBody:body,keyId:env.callback.keyId,keyVersion:env.callback.keyVersion,timestamp:String(seconds),headerEventId:'LOCK-EVENT',signature:signCallback(env.callback.secret,seconds,body),remoteIp:null})));
+     }
+     const first=await bounded(otherFirst.promise);
+     if(first==='dispatch'){await bounded(otherHeld.promise);userRelease.resolve();await bounded(userDispatchAttempt.promise);otherRelease.resolve();}
+     else userRelease.resolve();
+     const results=await bounded(Promise.all([write,concurrent]));
+     console.log('[A2 lock '+kind+'] '+trace.join(' -> ')+'; outcomes='+results.map(r=>r.ok?'success':r.error.code??r.error.message).join(','));
+     assert.deepEqual(results.filter(r=>!r.ok).map(r=>r.error.code??r.error.message),[],kind+' must not deadlock');assert.equal(first,'complaint',kind);
+     if(kind==='callback'){assert.equal(results[1].value.status,200);assert.equal(results[1].value.result.processedResult,'applied');}
+     const order=await db('dispatch_order').where('assignment_id','D-C2').first();assert.equal(order.status,kind==='archive'?'archived':'accepted');
+    }finally{userRelease.resolve();otherRelease.resolve();await bounded(Promise.all([write,...(concurrent?[concurrent]:[])]));pool.getConnection=originalGet;}
+   }}finally{pool.getConnection=originalGet;Object.assign(env.callback,originalCallback);await db('dispatch_order').where('assignment_id','D-C2').update({status:'completed'});await db('correction_item').where('complaint_id','C2').update({status:'pending'});}
   });
   await t.test('bulk counts stay scoped and maintenance requires explicit all',async()=>{
    const batch=await api('post','/corrections/generate-batch','paired',{});assert.equal(batch.status,200);assert.equal(batch.body.data.totalComplaints,2);assert.equal(batch.body.data.uncoveredComplaints,0);

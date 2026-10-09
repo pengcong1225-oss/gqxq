@@ -13,6 +13,7 @@ import { currentScopeSql, assertComplaintAccess, assertLockedComplaintAccess } f
 // 本文件同时提供 lockComplaintByAnyKey()：G2 的创建交办 / 分配责任单位 / 归库处置三条路径
 // 都需要先锁住 complaint 行再改状态，共用一份实现避免语义漂移。
 import { pool, type Row } from '../db/pool';
+import { AppError } from '../http/errors';
 import type { Tx } from '../db/tx';
 import type { DispatchOrderDetail, DispatchOrderFilter, DispatchOrderListItem } from '../types/api';
 import { labelOf } from '../domain/enums';
@@ -378,10 +379,11 @@ export async function lockOrderStatus(tx: Tx, assignmentId: string): Promise<str
   if (!order) return null;
   await assertLockedComplaintAccess(tx, String(order.complaint_id));
   const [rows] = await tx.query<Row[]>(
-    'select status from dispatch_order where assignment_id = ? for update',
+    'select status, complaint_id from dispatch_order where assignment_id = ? for update',
     [assignmentId]
   );
-  const row = rows[0] as { status?: unknown } | undefined;
+  const row = rows[0] as { status?: unknown; complaint_id?: unknown } | undefined;
+  if (row && String(row.complaint_id) !== String(order.complaint_id)) throw AppError.conflict('交办归属已变化，请重试');
   return row === undefined || row.status === undefined || row.status === null ? null : String(row.status);
 }
 

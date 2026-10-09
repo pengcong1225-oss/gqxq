@@ -16,7 +16,7 @@ import { env } from '../config/env';
 import { withTransaction } from '../db/tx';
 import { generateCorrectionsInTx } from './correctionService';
 import { pool } from '../db/pool';
-import type { FieldError } from '../http/errors';
+import { AppError, type FieldError } from '../http/errors';
 import type { ApprovalConclusion, BusinessEventType, CallbackAcceptedResult } from '../types/api';
 import { insertAudit } from '../repositories/auditLogRepo';
 import {
@@ -433,10 +433,10 @@ function isDuplicateKey(err: unknown): boolean {
   return e?.code === 'ER_DUP_ENTRY' || e?.errno === 1062;
 }
 
-/** v1 按已登记 taskId，v2 按 assignmentId 精确锁定；不回退到案件最新交办。 */
-async function findDispatchRef(tx: { query: (sql:string, params?:unknown[]) => Promise<unknown> }, event: ParsedEvent): Promise<DispatchRef | null> {
+/** v1 按已登记 taskId，v2 按 assignmentId 精确解析；不回退到案件最新交办。 */
+async function findDispatchRef(tx: { query: (sql:string, params?:unknown[]) => Promise<unknown> }, event: ParsedEvent, lock=false): Promise<DispatchRef | null> {
   const predicate = event.contractVersion === 2 ? 'assignment_id = ?' : 'reporting_task_id = ?';
-  const [rows] = await tx.query('select d.assignment_id as assignmentId, d.complaint_id as complaintId,d.status,d.request_id as requestId,d.target_enterprise_code as subjectCode,d.reporting_task_id as taskId,d.last_event_sequence as lastEventSequence,d.reporting_item_id as reportingItemId,ps.body as pushPayload from dispatch_order d left join dispatch_push_snapshot ps on ps.assignment_id=d.assignment_id where d.'+predicate+' for update',[event.contractVersion === 2 ? event.assignmentId : event.taskId]) as [DispatchRef[],unknown];
+  const [rows] = await tx.query('select d.assignment_id as assignmentId, d.complaint_id as complaintId,d.status,d.request_id as requestId,d.target_enterprise_code as subjectCode,d.reporting_task_id as taskId,d.last_event_sequence as lastEventSequence,d.reporting_item_id as reportingItemId,ps.body as pushPayload from dispatch_order d left join dispatch_push_snapshot ps on ps.assignment_id=d.assignment_id where d.'+predicate+(lock?' for update':''),[event.contractVersion === 2 ? event.assignmentId : event.taskId]) as [DispatchRef[],unknown];
   return rows.length === 1 ? rows[0] : null;
 }
 
@@ -449,7 +449,16 @@ export function relationError(event: ParsedEvent, ref: DispatchRef): string | nu
 
 async function applyStoredEvent(tx: import('../db/tx').Tx,event:ParsedEvent,parsedBody:unknown,eventId:string,now:Date,remoteIp:string|null) {
       // 9b) 匹配交办
-      const ref = await findDispatchRef(tx, event);
+      const probe = await findDispatchRef(tx, event);
+      let ref = probe;
+      if (probe !== null) {
+        // Shared order: resolve without a lock, complaint, dispatch, then revalidate binding.
+        await assertLockedComplaintAccess(tx, probe.complaintId);
+        ref = await findDispatchRef(tx, event, true);
+        if (ref !== null && (ref.complaintId !== probe.complaintId || ref.assignmentId !== probe.assignmentId)) {
+          throw AppError.conflict('交办归属已变化，请重试');
+        }
+      }
       if (ref === null) {
         const message = '等待精确交办/任务关联；不会按最新诉求交办猜测关联';
         await updateEventProcessing(tx, eventId, 'pending', message);
@@ -472,7 +481,6 @@ async function applyStoredEvent(tx: import('../db/tx').Tx,event:ParsedEvent,pars
         };
       }
 
-      await assertLockedComplaintAccess(tx,ref.complaintId);
       const invalid = relationError(event, ref);
       if (invalid !== null) {
         await updateEventProcessing(tx,eventId,'rejected',invalid);

@@ -119,6 +119,10 @@ export async function archiveDispatchOrder(
   const now = new Date();
 
   return withTransaction(async (tx) => {
+    const probe = await findOrderByAssignmentId(tx, assignmentId);
+    if (!probe) throw AppError.notFound('交办单不存在');
+    const complaintId = String(probe.complaint_id);
+    await assertLockedComplaintAccess(tx, complaintId);
     const [rows] = await tx.query(
       'select status, complaint_id as complaintId from dispatch_order where assignment_id = ? for update',
       [assignmentId]
@@ -127,8 +131,7 @@ export async function archiveDispatchOrder(
     if (!row) throw AppError.notFound('交办单不存在');
 
     const status = String(row.status);
-    const complaintId = String(row.complaintId);
-    await assertLockedComplaintAccess(tx,complaintId);
+    if (String(row.complaintId) !== complaintId) throw AppError.conflict('交办归属已变化，请重试');
 
     // 已归档：幂等返回既有记录，不重复写审计
     if (status === 'archived') {

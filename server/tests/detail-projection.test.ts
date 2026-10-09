@@ -18,3 +18,13 @@ test('reporting fields retain normal scalars and count withheld composite/unknow
  const p=api.projectReportingEvent({eventId:'E',payload:{eventType:'TASK_SUBMITTED',eventSequence:2,enterpriseDisposalResult:{result:'已处置',summary:3,disposalContent:null,remark:true,reason:{sourcePayload:'NESTED_SECRET'},sourcePayload:{secret:'NESTED_SECRET'},token:'TOKEN_SECRET',disposalResult:NaN},attachments:[{attachmentId:1,fileName:'材料',size:2,contentType:'text/plain',sha256:'s',token:'TOKEN_SECRET'}]}});
  assert.deepEqual(p.payload.enterpriseDisposalResult,{result:'已处置',summary:3,disposalContent:null,remark:true});assert.equal(p.payload.withheldFieldCount,4);assert.equal(p.payload.eventSequence,2);assert.equal(JSON.stringify(p).includes('SECRET'),false);
 });
+
+test('disposal scalar aliases and historical audit values use the same whitelist',async()=>{
+ const {rowToCorrectionItem}=await import('../src/repositories/correctionRepo');
+ const raw=JSON.stringify({result:'已处置',summary:3,remark:true,reason:{token:'SCALAR_SECRET'},sourcePayload:{token:'SCALAR_SECRET'},token:'SCALAR_SECRET'});
+ const item=rowToCorrectionItem({id:1,correctionId:'COR',complaintId:'C',fieldName:'disposal_result',oldValue:raw,newValue:raw,effectiveValue:raw,status:'pending'} as any,true);
+ assert.equal(JSON.stringify(item).includes('SCALAR_SECRET'),false);assert.equal(item.effectiveValue,JSON.stringify({result:'已处置',summary:3,remark:true}));
+ const projected=api.projectAuditDetail({fieldName:'disposal_result',oldValue:raw,newValue:raw});
+ assert.equal(JSON.stringify(projected).includes('SCALAR_SECRET'),false);assert.equal(projected.oldValue,item.oldValue);assert.equal(projected.newValue,item.newValue);
+ assert.equal(api.projectAuditDetail({fieldName:'address',oldValue:'旧地址',newValue:'新地址'}).oldValue,'旧地址');
+});

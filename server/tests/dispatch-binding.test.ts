@@ -280,3 +280,39 @@ test('v2 missing binding fields is rejected even with a valid signature', async 
   assert.equal(db.events.get('synthetic-event').processedResult, 'rejected');
   assert.deepEqual(db.businessState(), before);
 }));
+
+for (const contractVersion of [1, 2]) {
+  test('v' + contractVersion + ' callback rechecks complaint binding after ordered locks', async () => withDb(async db => {
+    db.orders.push(order());
+    const before = db.businessState();
+    const query = db.query.bind(db);
+    const locks: string[] = [];
+    db.query = async (sql: string, params: any[] = []) => {
+      const result = await query(sql, params);
+      if (sql.includes('for update') && sql.includes('from complaint')) locks.push('complaint');
+      if (sql.includes('for update') && sql.includes('as assignmentId')) {
+        locks.push('dispatch');
+        result[0][0].complaintId = 'C2';
+      }
+      return result;
+    };
+    await assert.rejects(send(event({ contractVersion })), { status: 409 });
+    assert.deepEqual(locks, ['complaint', 'dispatch']);
+    assert.deepEqual(db.businessState(), before);
+    assert.equal(db.events.size, 0);
+  }));
+}
+
+test('callback verifies the current request identity after dispatch lock', async () => withDb(async db => {
+  db.orders.push(order());
+  const before = db.businessState();
+  const query = db.query.bind(db);
+  db.query = async (sql: string, params: any[] = []) => {
+    const result = await query(sql, params);
+    if (sql.includes('for update') && sql.includes('as assignmentId')) result[0][0].requestId = 'R-changed';
+    return result;
+  };
+  assert.equal((await send(event())).status, 400);
+  assert.equal(db.events.get('synthetic-event').processedResult, 'rejected');
+  assert.deepEqual(db.businessState(), before);
+}));
