@@ -95,5 +95,62 @@ test('B3 guarded real SQL component with explicitly declared legacy contract',{s
  await service.save({...input,code:'LEGACY',expectedVersion:0},all);assert.equal((await service.detail('LEGACY',scoped)).enterpriseCode,'E1');assert.equal((await db('service_grid').where('grid_code','LEGACY').first()).grid_name,'原数据');
  await db.raw('alter table grid_enterprise change enterprise_code unsupported varchar(64) not null');await assert.rejects(()=>migration.up(db),/grid_enterprise.enterprise_code/);await db.raw('alter table grid_enterprise change unsupported enterprise_code varchar(64) not null');
  });
+ await t.test('locked community and admin rebind reject coverage committed after their RR snapshot',async race=>{
+  // Two real connections; barriers observe the actual parent-lock query and
+  // server lock wait. No delay guess, service hook, mock persistence or retry.
+  for(const kind of ['community','admin'] as const)await race.test(kind,async()=>{
+   const adminCode='RACE-'+kind;const communityCode='RACE-C';const gridCode='RACE-G-'+kind;
+   await service.saveAdmin({...master,code:adminCode},all);
+   if(kind==='community')await service.saveCommunity({code:communityCode,name:'合成交错小区',adminGridCode:adminCode,expectedVersion:0},all);
+   const writer=await pool.getConnection();const reader=await pool.getConnection();
+   let attempted!:()=>void;const parentAttempted=new Promise<void>(resolve=>attempted=resolve);
+   let pending:Promise<{accepted:boolean;status?:number}>|undefined;
+   try{
+    await writer.query('set transaction isolation level repeatable read');await reader.query('set transaction isolation level repeatable read');await writer.beginTransaction();await reader.beginTransaction();
+    const gridInput={...input,code:gridCode,adminGridCodes:[adminCode],communityCodes:kind==='community'?[communityCode]:[]};
+    if(kind==='community'){
+     // Production validator takes dictionary -> enterprise -> parent/community
+     // locks before the reader starts, preserving the actual writer order.
+     await service.validateInTx(writer,gridInput,all);
+     const observingTx={query:(sql:string,values?:unknown[])=>{const result=reader.query(sql,values);if(sql.includes('from admin_grid where code=?')&&sql.endsWith('for update')&&values?.[0]===adminCode)attempted();return result;},execute:reader.execute.bind(reader)};
+     pending=service.saveCommunityInTx(observingTx as any,{code:communityCode,name:'合成交错小区',adminGridCode:'A2',expectedVersion:1},all).then(()=>({accepted:true}),e=>({accepted:false,status:e.status}));
+     await Promise.race([parentAttempted,pending.then(()=>{throw Error('reader ended before attempting the parent lock');})]);
+     const deadline=Date.now()+5000;let waiting=false;
+     do{const [locks]=await db.raw('select count(*) as n from performance_schema.data_lock_waits w join performance_schema.threads th on th.thread_id=w.requesting_thread_id where th.processlist_id=?',[reader.threadId]);waiting=Number(locks[0].n)>0;if(!waiting)await new Promise<void>(resolve=>setImmediate(resolve));}while(!waiting&&Date.now()<deadline);
+     assert.equal(waiting,true,'reader must actually wait on the writer parent lock');
+    }else {
+     // B4 can already have an RR snapshot before entering the admin validator.
+     const [oldRefs]=await reader.query('select grid_code from service_grid_admin where admin_grid_code=?',[adminCode]);assert.deepEqual(oldRefs,[]);
+    }
+    await service.saveInTx(writer,gridInput,all);await writer.commit();
+    if(kind==='admin')pending=service.saveAdminInTx(reader,{...master,code:adminCode,districtCode:'D2',expectedVersion:1},all).then(()=>({accepted:true}),e=>({accepted:false,status:e.status}));
+    const ref=kind==='community'?await db('service_grid_community').where('community_code',communityCode).count('* as n').first():await db('service_grid_admin').where('admin_grid_code',adminCode).count('* as n').first();assert.equal(Number(ref!.n),1,'coverage commits while reader holds the old RR snapshot');
+    const result=await pending;assert.deepEqual(result,{accepted:false,status:409},kind+' cannot rebind a newly committed historical reference');
+   }finally{await writer.rollback();await pending;await reader.rollback();writer.release();reader.release();}
+   assert.equal((await db('admin_grid').where('code',adminCode).first()).district_code,'D1');
+   if(kind==='community')assert.equal((await db('community').where('code',communityCode).first()).admin_grid_code,adminCode);
+  });
+ });
+ await t.test('incompatible extension nullability rejects before any schema or data mutation',async nullable=>{
+  const tables=['service_grid','grid_enterprise','service_grid_revision','admin_grid','community','service_grid_admin','service_grid_community'];
+  const cases=[['service_grid_revision','valid_to','date not null'],['admin_grid','geometry','json not null'],['admin_grid','coordinate_system','varchar(16) not null'],['admin_grid','geometry_source','varchar(500) not null'],['community','name','varchar(128) null']] as const;
+  for(const [table,column,definition] of cases)await nullable.test(table+'.'+column,async()=>{
+   const saved:string[]=[];
+   try{
+    for(const name of tables){await db.schema.renameTable(name,'b3_fix1_saved_'+name);saved.push(name);}
+    await db.raw('create table service_grid(id bigint auto_increment primary key,grid_code varchar(64) not null unique,grid_name varchar(128) not null,business_type varchar(64),district_code varchar(64) null) engine=InnoDB');
+    await db.raw('create table grid_enterprise(id bigint auto_increment primary key,grid_code varchar(64) not null,enterprise_code varchar(64) not null,unique key uk_pair(grid_code,enterprise_code)) engine=InnoDB');
+    await db('service_grid').insert({grid_code:'NULLABILITY-FIXTURE',grid_name:'合成前置检查行',business_type:'water',district_code:null});
+    await db.raw('create table ?? like ??',[table,'b3_fix1_saved_'+table]);await db.raw('alter table ?? modify column ?? '+definition,[table,column]);
+    const shape=async()=>{const [rows]=await db.raw('select table_name,column_name,column_type,is_nullable,column_default from information_schema.columns where table_schema=database() and table_name in ('+tables.map(()=>'?').join(',')+') order by table_name,ordinal_position',tables);return rows;};
+    const before=await shape();const beforeRows=await db('service_grid').select();let error:unknown;
+    try{await migration.up(db);}catch(e){error=e;}
+    const after=await shape();const afterRows=await db('service_grid').select();
+    assert.ok(error instanceof Error&&error.message.includes(table+'.'+column),'must reject incompatible nullability of '+table+'.'+column);
+    assert.deepEqual(after,before,'rejected preflight must leave every original table/column unchanged');assert.deepEqual(afterRows,beforeRows,'rejected preflight must preserve existing data');
+    assert.equal(await db.schema.hasColumn('service_grid','version'),false,'no initial ALTER may run');
+   }finally{for(const name of saved)await db.schema.dropTableIfExists(name);for(const name of saved)await db.schema.renameTable('b3_fix1_saved_'+name,name);}
+  });
+ });
  }finally{await close?.();await db.destroy();}
 });
