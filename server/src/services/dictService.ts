@@ -12,7 +12,7 @@ import type { DictionaryType, DictionaryItem, DictionaryChange, MasterDataContex
 export const STATE_TYPES = ['status','correction_status','supervision_status','reporting_status','source_event_status','dispatch_type','trigger_type','intake_result'];
 export const FIXED_TYPES = ['business_type','complaint_type','urgency_level'];
 const codeSchema=z.string().regex(/^[a-z][a-z0-9_]{0,63}$/);
-const itemCodeSchema=z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);
+export const itemCodeSchema=z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);
 const versionSchema=z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const saveTypeSchema=z.object({code:codeSchema,name:z.string().trim().min(1).max(128),expectedVersion:versionSchema,status:z.enum(['enabled','disabled']).optional(),published:z.boolean().optional(),cascadeDisable:z.boolean().optional()}).strict();
 export const saveItemSchema=z.object({typeCode:codeSchema,code:itemCodeSchema,label:z.string().trim().min(1).max(128),expectedVersion:versionSchema,expectedTypeVersion:versionSchema.optional(),parentCode:itemCodeSchema.nullable().optional(),sort:z.number().int().min(-1000000).max(1000000).optional(),status:z.enum(['enabled','disabled']).optional(),published:z.boolean().optional(),cascadeDisable:z.boolean().optional()}).strict();

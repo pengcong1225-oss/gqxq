@@ -4,7 +4,7 @@ import { pool } from '../db/pool';
 import { withTransaction, type Tx } from '../db/tx';
 import type { SqlExecutor } from '../repositories/userRepo';
 import type { CategoryRef, MasterDataContext } from '../types/masterData';
-import { readDictionaryType, readDictionaryItems } from './dictService';
+import { readDictionaryType, readDictionaryItems, itemCodeSchema } from './dictService';
 import { assertComplaintAccess, buildComplaintScopeSql } from '../auth/accessScope';
 import { insertFieldVersions } from '../repositories/complaintFieldVersionRepo';
 import { insertAudit } from '../repositories/auditLogRepo';
@@ -12,8 +12,7 @@ import { parseFieldState } from '../domain/effectiveFieldPolicy';
 import { AppError } from '../http/errors';
 
 export const CATEGORY_TYPE='complaint_category';
-const code=z.string().regex(/^[a-z][a-z0-9_]{0,63}$/);
-export const categoryRefSchema=z.object({majorCode:code,minorCode:code.nullable(),dictionaryVersion:z.string().regex(/^[1-9][0-9]*$/)}).strict();
+export const categoryRefSchema=z.object({majorCode:itemCodeSchema,minorCode:itemCodeSchema.nullable(),dictionaryVersion:z.string().regex(/^[1-9][0-9]*$/)}).strict();
 export function parseCategoryRef(input:unknown):CategoryRef {const parsed=categoryRefSchema.safeParse(input);if(!parsed.success)throw AppError.validation('正式分类必须提供大类、小类及字典版本');return parsed.data;}
 export const CATEGORY_COLUMNS=['major_category_code','minor_category_code','category_dictionary_version'] as const;
 export async function validateCategoryInTx(db:SqlExecutor,raw:CategoryRef,options:{forNewSelection:boolean}):Promise<void> {

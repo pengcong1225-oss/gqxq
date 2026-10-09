@@ -209,5 +209,26 @@ test('B1 isolated MySQL dictionary/category component, not canonical baseline or
    await require('../migrations/20261009070000__dictionary_governance_categories.js').up(db);
    assert.equal((await db('complaint_category_revision').where('complaint_id','C1')).length,3);
   });
+  await t.test('published hyphen and numeric item codes work at both category levels through both write routes',async()=>{
+   for(const [code,parentCode] of [['fee-rate',null],['1price','fee-rate'],['2pressure',null],['low-pressure','2pressure']] as const){
+    const created=await save(code,parentCode);assert.equal(created.status,200);
+   }
+   const options=await api('get','/categories');assert.equal(options.status,200);
+   const {dictionaryVersion,items}=options.body.data;
+   for(const [code,parentCode] of [['fee-rate',null],['1price','fee-rate'],['2pressure',null],['low-pressure','2pressure']] as const)
+    assert.ok(items.some((item:any)=>item.code===code&&item.parentCode===parentCode),code+' is selectable');
+   await db('complaint').insert({complaint_id:'CODE-C3',complaint_no:'NO-CODE-C3',title:'虚构编码分类',enterprise_code:'E1',district_code:'G1',deleted:0,edit_version:1,effective_field_state:'{}',complaint_type:'consult'});
+   const direct=await api('post','/complaints/CODE-C3/category','scoped',{category:{majorCode:'fee-rate',minorCode:'1price',dictionaryVersion},expectedVersion:1,basis:'编码契约直接修订'});
+   const afterDirect=await db('complaint').where('complaint_id','CODE-C3').first();
+   await db('correction_item').insert([{correction_id:'CODE-COR3',complaint_id:'CODE-C3',field_name:'formal_category',status:'pending',created_at:stamp},{correction_id:'CODE-GUARD3',complaint_id:'CODE-C3',field_name:'address',status:'pending',created_at:stamp}]);
+   const formal=await api('post','/corrections/CODE-COR3/confirm','scoped',{newValue:JSON.stringify({majorCode:'2pressure',minorCode:'low-pressure',dictionaryVersion}),expectedVersion:afterDirect.edit_version,basis:'编码契约正式纠偏'});
+   assert.deepEqual([direct.status,formal.status],[200,200],'both routes accept published dictionary item codes');
+   assert.equal(afterDirect.major_category_code,'fee-rate');assert.equal(afterDirect.minor_category_code,'1price');assert.equal(afterDirect.edit_version,2);
+   assert.equal(formal.body.data.writtenBack,true);
+   const row=await db('complaint').where('complaint_id','CODE-C3').first();assert.equal(row.major_category_code,'2pressure');assert.equal(row.minor_category_code,'low-pressure');assert.equal(row.edit_version,3);
+   const state=typeof row.effective_field_state==='string'?JSON.parse(row.effective_field_state):row.effective_field_state;assert.equal(state.major_category_code.resolution,'confirmed');assert.equal(state.minor_category_code.resolution,'confirmed');
+   assert.equal((await db('correction_item').where('correction_id','CODE-COR3').first()).status,'confirmed');
+   assert.equal((await db('complaint_category_revision').where('complaint_id','CODE-C3')).length,2);
+  });
  }finally{await closePool?.();await db.destroy();}
 });
