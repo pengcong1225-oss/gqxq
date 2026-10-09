@@ -3,6 +3,8 @@ import { Button, Input, Select, Space, Typography } from 'antd';
 import type { CorrectionItem, EnterpriseListItem } from '../types/api';
 import { correctionEffectiveText } from '../api/corrections';
 
+export interface InlineCorrectionDraft { value: string; basis: string }
+
 export interface InlineCorrectionFieldProps {
   item: CorrectionItem;
   enterpriseOptions: EnterpriseListItem[];
@@ -12,17 +14,21 @@ export interface InlineCorrectionFieldProps {
   saving: boolean;
   onSearchEnterprises: (keyword: string) => void;
   onSave: (value: string, basis: string) => void;
+  draft?: InlineCorrectionDraft;
+  onDraftChange?: (change: Partial<InlineCorrectionDraft>) => void;
 }
 
 /** 待处理字段就地录入；只有点击“保存该项”才交给调用方写入。 */
 const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
   item, enterpriseOptions, enterpriseLoading, enterpriseError, disabled, saving,
-  onSearchEnterprises, onSave,
+  onSearchEnterprises, onSave, draft, onDraftChange,
 }) => {
   const isEnterprise = item.fieldName === 'enterprise_name';
   const label = item.fieldLabel ?? item.fieldName;
-  const [value, setValue] = useState(isEnterprise ? '' : correctionEffectiveText(item));
-  const [basis, setBasis] = useState(item.basis ?? '');
+  const [localValue, setValue] = useState(isEnterprise ? '' : correctionEffectiveText(item));
+  const [localBasis, setBasis] = useState(item.basis ?? '');
+  const value = draft?.value ?? localValue;
+  const basis = draft?.basis ?? localBasis;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,6 +37,16 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
     setError(null);
   // A version-conflict refresh must keep this field's unsent value and basis.
   }, [item.correctionId, isEnterprise]);
+
+  const changeValue = (next: string) => {
+    setValue(next);
+    setError(null);
+    onDraftChange?.({ value: next });
+  };
+  const changeBasis = (next: string) => {
+    setBasis(next);
+    onDraftChange?.({ basis: next });
+  };
 
   const save = () => {
     const trimmed = value.trim();
@@ -60,7 +76,7 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
           placeholder="搜索并选择登记企业"
           onSearch={onSearchEnterprises}
           onOpenChange={(open) => { if (open && enterpriseOptions.length === 0) onSearchEnterprises(''); }}
-          onChange={(next) => { setValue(next ?? ''); setError(null); }}
+          onChange={(next) => changeValue(next ?? '')}
           options={enterpriseOptions.map((enterprise) => ({
             value: enterprise.enterpriseCode,
             label: enterprise.enterpriseName + '（' + enterprise.enterpriseCode + '）',
@@ -71,7 +87,7 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
         <Input.TextArea
           aria-label={'纠偏后取值：' + label}
           value={value}
-          onChange={(event) => { setValue(event.target.value); setError(null); }}
+          onChange={(event) => changeValue(event.target.value)}
           disabled={disabled}
           autoSize={{ minRows: 2, maxRows: 4 }}
           placeholder="在此填写核实后的内容"
@@ -80,7 +96,7 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
         <Input
           aria-label={'纠偏后取值：' + label}
           value={value}
-          onChange={(event) => { setValue(event.target.value); setError(null); }}
+          onChange={(event) => changeValue(event.target.value)}
           disabled={disabled}
           placeholder="在此填写核实后的取值"
         />
@@ -88,7 +104,7 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
       <Input
         aria-label={'核对依据：' + label}
         value={basis}
-        onChange={(event) => setBasis(event.target.value)}
+        onChange={(event) => changeBasis(event.target.value)}
         disabled={disabled}
         placeholder="核对依据（可选）"
       />

@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { JSDOM } from 'jsdom';
 import { createServer, type ViteDevServer } from 'vite';
 import { message } from 'antd';
+import { Simulate } from 'react-dom/test-utils';
 let vite: ViteDevServer;
 before(async () => {
   globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} } as any;
@@ -24,6 +25,78 @@ before(async () => {
   const computedStyle = dom.window.getComputedStyle.bind(dom.window);
   dom.window.getComputedStyle = ((element: Element) => computedStyle(element)) as any;
   Object.defineProperty(globalThis, 'getComputedStyle', { configurable: true, writable: true, value: dom.window.getComputedStyle });
+});
+
+for (const scenario of ['enterprise-verification', 'same-field-conflict'] as const) test(scenario === 'enterprise-verification'
+  ? 'enterprise verification uses no-correction endpoint with a version and basis'
+  : 'same-field conflict refresh shows the winning effective value beside the retained inline draft', async () => {
+  const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
+  const originalAdapter = request.defaults.adapter;
+  const requests: Array<{ url: string; body: any }> = [];
+  const isEnterprise = scenario === 'enterprise-verification';
+  let refreshed = false;
+  request.defaults.adapter = async (config: any) => {
+    if (/\/(confirm|reject)$/.test(config.url)) {
+      requests.push({ url: config.url, body: JSON.parse(config.data) });
+      if (!isEnterprise) {
+        refreshed = true;
+        const error: any = new Error('Synthetic same-field conflict');
+        error.response = { status: 409, data: { code: 'DUPLICATE_CONFLICT', message: 'Synthetic same-field conflict' } };
+        throw error;
+      }
+      return { data: { code: 200, data: { item: { status: 'rejected', editVersion: 2 } } }, status: 200, headers: {}, config };
+    }
+    const data = config.url === '/complaints/synthetic-CPL/corrections' ? [{
+      id: 1, correctionId: 'COR-inline', complaintId: 'synthetic-CPL', assignmentId: null, hasDispatch: false,
+      fieldName: isEnterprise ? 'enterprise_name' : 'summary', fieldLabel: isEnterprise ? '企业名称/归属' : '诉求摘要',
+      oldValue: isEnterprise ? 'Previously verified enterprise name' : 'Initial text',
+      effectiveValue: isEnterprise ? 'SYN-E' : refreshed ? 'Winning window value' : 'Current text',
+      newValue: refreshed ? 'Winning window value' : null, basis: null,
+      status: refreshed ? 'confirmed' : 'pending', editVersion: refreshed ? 2 : 1,
+    }] : config.url === '/complaints/synthetic-CPL'
+      ? { complaintId: 'synthetic-CPL', complaintNo: 'synthetic-CS', title: 'Synthetic', locationClues: [], locationConflict: false }
+      : { content: [], total: 0 };
+    return { data: { code: 200, data }, status: 200, headers: {}, config };
+  };
+  const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
+  const originalUser = useAppStore.getState().userInfo;
+  useAppStore.setState({ userInfo: { id: 1, userId: 'synthetic-user', username: 'synthetic', roles: ['handler'], permissions: [] } });
+  const { default: Page } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
+  const { render, within, fireEvent, cleanup, waitFor, act } = await import('@testing-library/react');
+  const ui = render(<MemoryRouter initialEntries={['/address-correction?complaintId=synthetic-CPL']}><Page /></MemoryRouter>);
+  try {
+    const page = within(document.body);
+    await waitFor(() => assert.ok(page.getByRole('button', { name: /核验无误/ })));
+    if (isEnterprise) {
+      fireEvent.click(page.getByRole('button', { name: /核验无误/ }));
+      const basis = page.getByPlaceholderText('例如：电话核实、现场核对、来源系统原始报文') as HTMLTextAreaElement;
+      await act(async () => { basis.value = 'Synthetic review basis'; Simulate.change(basis); });
+      fireEvent.click(page.getByRole('button', { name: '提交核验' }));
+      await waitFor(() => assert.equal(requests.length, 1));
+      assert.equal(requests[0].url, '/corrections/COR-inline/reject');
+      assert.deepEqual(requests[0].body, { expectedVersion: 1, basis: '核验无误：Synthetic review basis' });
+    } else {
+      const value = page.getByLabelText('纠偏后取值：诉求摘要') as HTMLTextAreaElement;
+      const basis = page.getByLabelText('核对依据：诉求摘要') as HTMLInputElement;
+      await act(async () => {
+        value.value = 'Losing window draft'; Simulate.change(value);
+        basis.value = 'Losing window review basis'; Simulate.change(basis);
+      });
+      fireEvent.click(page.getByRole('button', { name: '保存该项' }));
+      await waitFor(() => assert.equal(requests.length, 1));
+      assert.equal(requests[0].body.newValue, 'Losing window draft');
+      assert.equal(requests[0].body.basis, 'Losing window review basis');
+      await waitFor(() => assert.ok(page.getByRole('button', { name: '刷新核对（保留草稿）' })));
+      fireEvent.click(page.getByRole('button', { name: '刷新核对（保留草稿）' }));
+      await waitFor(() => assert.match(document.body.textContent ?? '', /Winning window value/));
+      assert.match(document.body.textContent ?? '', /Losing window draft/);
+      assert.match(document.body.textContent ?? '', /Losing window review basis/);
+      assert.equal(page.queryByRole('button', { name: '保存该项' }), null, 'a closed field must not offer stale overwrite');
+    }
+  } finally {
+    await act(async () => { message.destroy(); ui.unmount(); cleanup(); });
+    request.defaults.adapter = originalAdapter; useAppStore.setState({ userInfo: originalUser });
+  }
 });
 after(async () => { await vite.close(); });
 for (const conflict of [true, false]) test(conflict ? 'position form retains all drafts on 409 and sends the read version' : 'position group uses each successful response version for the next field', async () => {

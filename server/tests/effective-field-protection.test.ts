@@ -105,6 +105,23 @@ test('responsibility correction increments once and captures master values', asy
   assert.equal(db.complaint.edit_version, 2);
   assert.equal(JSON.parse(db.complaint.effective_field_state).enterprise_name.value, 'Synthetic Enterprise');
 });
+test('no-correction enterprise verification preserves the actual pair when its master name differs', async () => {
+  db.reset();
+  Object.assign(db.complaint, { enterprise_code: 'SYN-E', enterprise_name: 'Previously verified enterprise name' });
+  db.corrections.push({ id: 7, correctionId: 'COR-enterprise', complaintId: 'synthetic-CPL', fieldName: 'enterprise_name', status: 'pending' });
+  const result = await rejectCorrection('COR-enterprise', { expectedVersion: 1, basis: '核验现有企业取值无需纠偏' }, ctx);
+  assert.equal(result.item.status, 'rejected');
+  assert.equal(result.writtenBack, false);
+  assert.equal(db.complaint.enterprise_code, 'SYN-E');
+  assert.equal(db.complaint.enterprise_name, 'Previously verified enterprise name');
+  assert.ok(!db.writes.some(sql => sql.includes('insert into complaint_assignment') || sql.includes('set enterprise_code =')));
+  const states = JSON.parse(db.complaint.effective_field_state);
+  assert.equal(states.enterprise_code.resolution, 'no_correction');
+  assert.equal(states.enterprise_code.value, 'SYN-E');
+  assert.equal(states.enterprise_name.resolution, 'no_correction');
+  assert.equal(states.enterprise_name.value, 'Previously verified enterprise name');
+  assert.equal(db.complaint.edit_version, 2);
+});
 test('rule rescan bumps shared version for sensitivity value changes, but confidence alone does not', async () => {
   db.reset(); Object.assign(db.complaint, { is_sensitive: 0, sensitive_keywords: null });
   const { updateComplaintSensitiveResult } = await import('../src/repositories/sensitiveWordRepo');

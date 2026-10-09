@@ -16,6 +16,7 @@ import {
   Table,
   Tag,
   Tooltip,
+  Typography,
   message,
 } from 'antd';
 import {
@@ -27,6 +28,7 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import {
   confirmCorrection,
+  rejectCorrection,
   generateCorrectionBatch,
   generateCorrections,
   listComplaintCorrections,
@@ -41,7 +43,7 @@ import { getComplaint } from '../api/complaints';
 import type { AddressCandidateView, ComplaintDetail, CorrectionItem, EnterpriseListItem } from '../types/api';
 import TiandituLocationPicker from '../components/TiandituLocationPicker';
 import LocationClues from '../components/LocationClues';
-import InlineCorrectionField from '../components/InlineCorrectionField';
+import InlineCorrectionField, { type InlineCorrectionDraft } from '../components/InlineCorrectionField';
 import { useWriteAccess, WriteGate } from '../stores/roleAccess';
 import { useAdminAccess } from '../stores/roleAccess';
 import { previewAddressBackfill, executeAddressBackfill } from '../api/addressCandidates';
@@ -248,6 +250,7 @@ const AddressCorrection: React.FC = () => {
   const summarySeqRef = useRef(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [items, setItems] = useState<CorrectionItem[]>([]);
+  const [inlineDrafts, setInlineDrafts] = useState<Record<string, InlineCorrectionDraft>>({});
   const [itemsComplaintId, setItemsComplaintId] = useState<string | null>(null);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
@@ -475,6 +478,11 @@ const AddressCorrection: React.FC = () => {
         expectedVersion: item.editVersion,
         basis: basis || undefined,
       });
+      setInlineDrafts((drafts) => {
+        const remaining = { ...drafts };
+        delete remaining[item.correctionId];
+        return remaining;
+      });
       await afterDecision(item.complaintId, res.analysisEntered === true);
     } catch (err) {
       if (isCorrectionVersionConflict(err)) { setVersionConflict(true); message.warning(CORRECTION_CONFLICT_MESSAGE); }
@@ -499,9 +507,8 @@ const AddressCorrection: React.FC = () => {
     }
     setSubmitting(true);
     try {
-      const res = await confirmCorrection(verifyTarget.correctionId, {
+      const res = await rejectCorrection(verifyTarget.correctionId, {
         expectedVersion: verifyTarget.editVersion,
-        newValue: correctionEffectiveText(verifyTarget) || undefined,
         basis: '核验无误：' + values.basis.trim(),
       });
       const complaintId = verifyTarget.complaintId;
@@ -878,6 +885,17 @@ const AddressCorrection: React.FC = () => {
                             <div style={{ marginTop: 8 }}>
                               <InlineCorrectionField
                                 item={r}
+                                draft={inlineDrafts[r.correctionId]}
+                                onDraftChange={(change) => setInlineDrafts((drafts) => ({
+                                  ...drafts,
+                                  [r.correctionId]: {
+                                    ...(drafts[r.correctionId] ?? {
+                                      value: r.fieldName === 'enterprise_name' ? '' : correctionEffectiveText(r),
+                                      basis: r.basis ?? '',
+                                    }),
+                                    ...change,
+                                  },
+                                }))}
                                 enterpriseOptions={enterpriseOptions}
                                 enterpriseLoading={enterpriseLoading}
                                 enterpriseError={enterpriseError}
@@ -886,6 +904,13 @@ const AddressCorrection: React.FC = () => {
                                 onSearchEnterprises={(keyword) => void fetchEnterprises(keyword)}
                                 onSave={(value, basis) => void saveInlineItem(r, value, basis)}
                               />
+                            </div>
+                          ) : null}
+                          {r.status !== 'pending' && inlineDrafts[r.correctionId] ? (
+                            <div style={{ marginTop: 8 }}>
+                              <Typography.Text type="warning">保留的未提交草稿（请与当前有效值核对）</Typography.Text>
+                              <div><b>草稿取值：</b>{inlineDrafts[r.correctionId].value || '—'}</div>
+                              <div><b>草稿依据：</b>{inlineDrafts[r.correctionId].basis || '—'}</div>
                             </div>
                           ) : null}
                         </div>
