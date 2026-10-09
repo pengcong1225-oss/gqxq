@@ -1,4 +1,5 @@
 import ComplaintCategoryEditor from '../components/ComplaintCategoryEditor';
+import SourceProcessTable from '../components/SourceProcessTable';
 import {useWriteAccess,usePermissionAccess} from '../stores/roleAccess';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -674,10 +675,10 @@ const ComplaintDetail: React.FC = () => {
                 <Typography.Text type="secondary">（{detail.addressCandidate.sourceField === 'title' ? '标题' : '正文'} · {detail.addressCandidate.extractorVersion}；证据：{detail.addressCandidate.evidence}）</Typography.Text>
               </Descriptions.Item>}
               <Descriptions.Item label="本次收到的来源地址">
-                {detail.sourceAddress ?? '未留存可核实的结构化来源原值'}
+                {detail.sourceAddress ?? detail.sourceFieldReasons?.sourceAddress ?? '未留存可核实的结构化来源原值'}
                 <Typography.Text type="secondary">（来源顺序未知）</Typography.Text>
               </Descriptions.Item>
-              <Descriptions.Item label="当前有效地址">{detail.address ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="当前有效地址">{detail.effectiveAddress ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="有效值核验状态">
                 {detail.effectiveFieldState ? Object.entries(detail.effectiveFieldState)
                   .filter(([, value]) => (value as { resolution?: string })?.resolution === 'needs_verification')
@@ -687,15 +688,21 @@ const ComplaintDetail: React.FC = () => {
               <Descriptions.Item label="诉求时间">{fmtDateTime(detail.createdAt)}</Descriptions.Item>
               <Descriptions.Item label="系统接收时间">{fmtDateTime(detail.receivedAt)}</Descriptions.Item>
               <Descriptions.Item label="来源上报时间">{fmtDateTime(detail.sourceReportedAt)}</Descriptions.Item>
+              <Descriptions.Item label="业务时间依据">{detail.businessTimeSource==='source_reported_at'?'来源上报业务时间':detail.businessTimeSource==='platform_received_at'?'来源时间缺失，业务时间回落系统接收时间':'业务时间不可确认'}</Descriptions.Item>
+              <Descriptions.Item label="来源快照接收时间">{detail.sourceSnapshotAt?fmtDateTime(detail.sourceSnapshotAt):detail.sourceFieldReasons?.sourceSnapshotAt??'—'}</Descriptions.Item>
+              <Descriptions.Item label="来源办理期限">{detail.sourceDeadlineAt?fmtDateTime(detail.sourceDeadlineAt):detail.sourceFieldReasons?.sourceDeadlineAt??'—'}</Descriptions.Item>
+              <Descriptions.Item label="来源办结时间">{detail.sourceCompletedAt?fmtDateTime(detail.sourceCompletedAt):detail.sourceFieldReasons?.sourceCompletedAt??'—'}</Descriptions.Item>
+              <Descriptions.Item label="本系统办结时间">{fmtDateTime(detail.closedAt)}</Descriptions.Item>
               <Descriptions.Item label="最后更新">{fmtDateTime(detail.updatedAt)}</Descriptions.Item>
               <Descriptions.Item label="诉求内容" span={2}>
-                {detail.content ?? '—'}
+                <span style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{detail.content ?? '—'}</span>
               </Descriptions.Item>
             </Descriptions>
             <LocationClues clues={detail.locationClues} conflict={detail.locationConflict} />
           </Card>
 
-          <Card title="处理记录" style={{ marginTop: 16 }}>
+          <SourceProcessTable complaintId={detail.complaintId}/>
+          <Card title="本平台处理记录" style={{ marginTop: 16 }}>
             {timelineError && (
               <Alert
                 type="warning"

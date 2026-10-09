@@ -47,6 +47,7 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
+  {method:'GET',path:/^\/complaints\/[^/]+\/source-processes$/,roles:R,permissionCode:'complaint.read',desc:'C1 来源全过程（当前诉求范围与安全字段）'},
   {method:'GET',path:/^\/master-data\/import-templates\/[^/]+$/,roles:A,permissionCode:'masterdata.import',desc:'B4 模板（另核目标维护权限）'},
   {method:'POST',path:/^\/master-data\/imports\/preview$/,roles:A,permissionCode:'masterdata.import',desc:'B4 上传校验预览'},
   {method:'GET',path:/^\/master-data\/imports(?:\/[^/]+(?:\/errors)?)?$/,roles:A,permissionCode:'masterdata.import',desc:'B4 本人批次与当前对象范围'},

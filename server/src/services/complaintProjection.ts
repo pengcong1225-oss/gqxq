@@ -1,5 +1,5 @@
 import type { AccessContext } from '../auth/accessScope';
-import { rowToDetail, type ComplaintRow } from '../repositories/complaintMapper';
+import { rowToDetail, toIso, type ComplaintRow } from '../repositories/complaintMapper';
 import type { ComplaintDetail } from '../types/api';
 import { EFFECTIVE_COLUMNS } from '../domain/effectiveFieldPolicy';
 /** Explicit mapper whitelist; documents are exclusively served by source-document. */
@@ -8,7 +8,15 @@ export function projectComplaintDetail(row:ComplaintRow,_ctx:AccessContext):Comp
  const fields=_fields ?? _payload;
  const effectiveFieldState=detail.effectiveFieldState===null?null:Object.fromEntries(
   Object.entries(detail.effectiveFieldState).filter(([field])=>[...EFFECTIVE_COLUMNS,'enterprise_code','enterprise_name','major_category_code','minor_category_code','category_dictionary_version'].includes(field as typeof EFFECTIVE_COLUMNS[number])).map(([field,state])=>[field,pick(state,['resolution','value','version','reason','correctionId'])]));
- return {...detail,effectiveFieldState,sourceAddress:typeof fields?.address==='string'?fields.address:null,addressCandidate:null,locationClues:[],locationConflict:false};
+ const sourceAddress=typeof fields?.address==='string'?fields.address:null;
+ const sourceSnapshotAt=typeof _fields?._receivedAt==='string'?toIso(_fields._receivedAt):null;
+ return {...detail,effectiveFieldState,sourceAddress,effectiveAddress:detail.address,
+  sourceDeadlineAt:null,sourceCompletedAt:null,sourceSnapshotAt,
+  businessTimeSource:detail.sourceReportedAt?'source_reported_at':detail.receivedAt?'platform_received_at':'unavailable',
+  sourceFieldReasons:{sourceAddress:sourceAddress===null?'未留存可核实的结构化来源原地址':null,
+   sourceDeadlineAt:'来源期限字段契约未就绪',sourceCompletedAt:'来源办结日期字段契约未就绪',
+   sourceSnapshotAt:sourceSnapshotAt===null?'未留存可核实的快照接收时间':null},
+  addressCandidate:null,locationClues:[],locationConflict:false};
 }
 function pick(value:unknown,keys:string[]):Record<string,unknown>{
  let v=value;if(typeof v==='string'){try{v=JSON.parse(v);}catch{v={};}}

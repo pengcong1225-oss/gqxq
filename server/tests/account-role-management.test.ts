@@ -29,8 +29,14 @@ test('password validation measures UTF-8 bytes and service exists',async()=>{
  assert.doesNotThrow(()=>validate('密'.repeat(24)));
 });
 test('complete registered endpoint matrix preserves builtins and verifies each capability on a custom role',()=>{
+ const groupedPaths=['/master-data/imports','/master-data/imports/sample','/master-data/imports/sample/errors',
+  '/enterprises/sample/households','/enterprises/sample/department-mappings',
+  '/grids/sample','/grids/sample/history','/grids/sample/boundary','/grids','/admin-grids','/communities'];
  for(const rule of ROLE_POLICY) {
-  const path=rule.path.source.replace(/^\^|\$$/g,'').replace(/\[\^\/\]\+/g,'sample').replace(/\\\//g,'/');
+  const paths=rule.path.source.includes('(')?groupedPaths.filter(path=>rule.path.test(path)):[rule.path.source.replace(/^\^|\$$/g,'').replace(/\[\^\/\]\+/g,'sample').replace(/\\\//g,'/')];
+  assert.ok(paths.length>0,'Add concrete URL fixtures for '+rule.desc);
+  for(const path of paths){
+  assert.ok(rule.path.test(path),'Fixture is a concrete registered URL: '+path);
   assert.ok(rule.selfService||rule.permissionCode,'Every endpoint declares a capability or identity exception');
   for(const role of ['admin','handler','readonly']) {
    const user={id:'u',username:'u',roles:[role],permissionCodes:role==='admin'?PERMISSION_CATALOG.map(([code])=>code):builtinPermissionCodes(role)};
@@ -41,6 +47,7 @@ test('complete registered endpoint matrix preserves builtins and verifies each c
   const protectedCode=rule.permissionCode==='system.users.manage'||rule.permissionCode==='system.roles.manage';
   assert.equal(isAllowed(user,rule.method,path).allowed,!protectedCode,rule.desc+' custom');
   assert.equal(isAllowed({...user,permissionCodes:[]},rule.method,path).allowed,Boolean(rule.selfService),rule.desc+' denied');
+  }
  }
 });
 test('forced-change restricts even administrator to identity service and unknown endpoints always deny effective grants',()=>{

@@ -771,7 +771,7 @@ const ComplaintList: React.FC = () => {
       <Card>
         <Space style={{ marginBottom: 16 }} wrap>
           <Input.Search
-            placeholder="搜索编号/标题/内容/地址"
+            placeholder="搜索编号/来源公文号/标题/内容/地址"
             prefix={<SearchOutlined />}
             value={keywordInput}
             allowClear

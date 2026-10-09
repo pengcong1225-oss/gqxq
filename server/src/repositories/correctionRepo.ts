@@ -133,7 +133,7 @@ export function rowToCorrectionItem(r: CorrectionRow, hasDispatch: boolean): Cor
 const SELECT_COLUMNS =
   "(select case correction_item.field_name when 'formal_category' then case when c.major_category_code is null then null else json_object('majorCode',c.major_category_code,'minorCode',c.minor_category_code,'dictionaryVersion',c.category_dictionary_version) end " + CORRECTION_FIELD_DEFS.filter(def => def.column).map(def =>
     "when '" + def.code + "' then cast(c." + (def.pairedCodeColumn ?? def.column) + ' as char)'
-  ).join(' ') + ' else correction_item.old_value end from complaint c where c.complaint_id = correction_item.complaint_id) as effectiveValue,' +
+  ).join(' ') + " when 'disposal_result' then case when correction_item.status = 'confirmed' then correction_item.new_value else correction_item.old_value end else correction_item.old_value end from complaint c where c.complaint_id = correction_item.complaint_id) as effectiveValue," +
   '(select c.edit_version from complaint c where c.complaint_id = correction_item.complaint_id) as editVersion,' +
   ' id, correction_id as correctionId, complaint_id as complaintId, assignment_id as assignmentId,' +
   ' field_name as fieldName, field_label as fieldLabel, old_value as oldValue, new_value as newValue,' +

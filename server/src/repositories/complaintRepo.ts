@@ -91,9 +91,10 @@ export function buildWhere(filter: ComplaintFilter): WhereClause {
       '(c.complaint_no like ? escape ' + "'" + LIKE_ESCAPE + "'" +
         ' or c.title like ? escape ' + "'" + LIKE_ESCAPE + "'" +
         ' or c.content like ? escape ' + "'" + LIKE_ESCAPE + "'" +
-        ' or c.address like ? escape ' + "'" + LIKE_ESCAPE + "'" + ')'
+        ' or c.address like ? escape ' + "'" + LIKE_ESCAPE + "'" +
+        ' or c.source_id like ? escape ' + "'" + LIKE_ESCAPE + "'" + ')'
     );
-    params.push(like, like, like, like);
+    params.push(like, like, like, like, like);
   }
 
   const multi: Array<[string, string[] | undefined]> = [

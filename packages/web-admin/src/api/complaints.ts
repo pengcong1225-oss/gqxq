@@ -81,3 +81,5 @@ export async function getComplaintTimeline(idOrNo: ComplaintIdOrNo): Promise<Tim
 
 /** Dedicated audited source access; never prefetch as part of ordinary detail. */
 export function getComplaintSourceDocument(idOrNo:ComplaintIdOrNo){return request.get<never,import('../types/api').ComplaintSourceDocument>('/complaints/'+encodeURIComponent(String(idOrNo))+'/source-document');}
+
+export function getComplaintSourceProcesses(idOrNo:ComplaintIdOrNo){return request.get<never,import('../types/api').SourceProcessResult>('/complaints/'+encodeURIComponent(String(idOrNo))+'/source-processes');}

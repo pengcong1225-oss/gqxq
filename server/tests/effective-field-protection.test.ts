@@ -32,7 +32,7 @@ class MemoryTx {
     }
     if (sql.includes('from complaint_field_version')) return [this.versions.map(v => ({ fieldName: v[2], newValue: v[4], changeSource: v[5] })), []];
     if (sql.includes('from dispatch_order') || sql.includes('from dict_item') || sql.includes('from complaint_address_candidate') || sql.includes('from complaint_location_clue')) return [[], []];
-    if (sql.includes('from enterprise e')) return [[{ id: 1, enterprise_code: 'SYN-E', enterprise_name: 'Synthetic Enterprise', business_type: 'water' }], []];
+    if (sql.includes('from enterprise e')) return [[{ id: 1, enterprise_code: 'SYN-E', enterprise_name: 'Synthetic Enterprise', business_type: 'water', status: 'enabled' }], []];
     throw new Error('unexpected query: ' + sql);
   }
   async execute(sql: string, values: any[] = []): Promise<any> {

@@ -16,6 +16,8 @@ export interface Paged<T> {
   totalPages: number;
 }
 
+export type {SourceProcessNode,SourceProcessRevision,SourceProcessResult} from '../domain/sourceProcess';
+
 export interface ComplaintListItem {
   id: number;
   complaintId: string;
@@ -101,6 +103,12 @@ export interface ComplaintDetail extends ComplaintListItem {
   category?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
   sourceCategory?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
   sourceAddress: string | null;
+  effectiveAddress: string | null;
+  sourceDeadlineAt: string | null;
+  sourceCompletedAt: string | null;
+  sourceSnapshotAt: string | null;
+  businessTimeSource: 'source_reported_at' | 'platform_received_at' | 'unavailable';
+  sourceFieldReasons: {sourceAddress:string|null;sourceDeadlineAt:string|null;sourceCompletedAt:string|null;sourceSnapshotAt:string|null};
   effectiveFieldState: Record<string, unknown> | null;
   editVersion: number;
   content: string | null;

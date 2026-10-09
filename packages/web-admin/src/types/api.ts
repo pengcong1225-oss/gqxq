@@ -212,6 +212,12 @@ export interface ComplaintDetail extends ComplaintListItem {
   category?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
   sourceCategory?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
   sourceAddress: string | null;
+  effectiveAddress: string | null;
+  sourceDeadlineAt: string | null;
+  sourceCompletedAt: string | null;
+  sourceSnapshotAt: string | null;
+  businessTimeSource: 'source_reported_at' | 'platform_received_at' | 'unavailable';
+  sourceFieldReasons: {sourceAddress:string|null;sourceDeadlineAt:string|null;sourceCompletedAt:string|null;sourceSnapshotAt:string|null};
   effectiveFieldState: Record<string, unknown> | null;
   editVersion: number;
   content: string | null;
@@ -888,3 +894,13 @@ export interface EnterpriseOption { enterpriseCode:string; enterpriseName:string
 export interface HouseholdVersion { enterpriseCode:string; households:number|null; validFrom:string; validTo:string|null; version:string }
 export interface EnterpriseWriteInput {enterpriseCode:string;enterpriseName:string;businessType:string;status:'enabled'|'disabled';expectedVersion?:number;districtCode?:string|null;uscc?:string|null;legalPerson?:string|null;contactPerson?:string|null;contactPhone?:string|null;serviceArea?:string|null;address?:string|null;disableReason?:string}
 export interface DepartmentMapping {sourceSystem:string;sourceDepartmentCode:string;sourceDepartmentName:string;enterpriseCode:string;entityType:'enterprise';aliases:string[];verified:boolean|number;version:number}
+
+export interface SourceProcessNode {
+  sourceSystem:string; sourceId:string; nodeId:string; sourceSequence:number|null; sourceVersion:string|null;
+  occurredAt:string|null; stage:string; department:string|null; contactName:string|null; opinion:string|null;
+}
+export interface SourceProcessRevision extends SourceProcessNode {revision:number; observedAt:string|null}
+export interface SourceProcessResult {
+  complaintId:string; nodes:SourceProcessRevision[]; revisions:SourceProcessRevision[]; complete:boolean;
+  cutoffAt:string|null; state:'unavailable'|'partial'|'complete'|'error'; syncError:string|null; missingTimeNodeIds:string[];
+}
