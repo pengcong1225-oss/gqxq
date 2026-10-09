@@ -70,6 +70,20 @@ export interface SerializedBody {
   bodySha256: string;
 }
 
+/** Configuration continuity, never proof of unchanged deployment behind the same URL. */
+export function currentTransportIdentity():string {
+  assertPuCredentials();
+  const base=new URL(env.pu.baseUrl);
+  return JSON.stringify({origin:base.origin,path:base.pathname.replace(/\/+$/,'')+integrationTaskPath(env.pu.appCode),app:env.pu.appCode,mode:env.pu.recoveryMode,contractVersion:env.pu.recoveryContractVersion});
+}
+export type RequestLookup = {kind:'unsupported'} | {kind:'unknown'} | {kind:'missing'} | {kind:'found';taskId:string;requestId:string;assignmentId:string;sourceBusinessId:string;sourceAppCode:string;payloadHash:string};
+export interface RecoveryTransport {
+  sendExact:(body:SerializedBody)=>Promise<PuTransportOutcome>;
+  queryByRequestId:(requestId:string)=>Promise<RequestLookup>;
+}
+/** No confirmed remote lookup route. Do not synthesize a URL from local state APIs. */
+export const dispatchRecoveryTransport:RecoveryTransport={sendExact:body=>postIntegrationTask(buildAttempt(body)),queryByRequestId:async()=>({kind:'unsupported'})};
+
 /**
  * **只序列化一次**：返回的 bodyBytes 就是要发出去的字节，其 sha256 已算好。
  * 超过对方 1 MiB 上限时直接拒绝（对方会回 413，本地先拦掉能省一次往返，也让错误更清楚）。

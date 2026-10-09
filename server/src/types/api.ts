@@ -515,10 +515,13 @@ export interface AnalysisDrilldown {
 /* ==================== G3 出站：创建填报任务 ==================== */
 
 export type PushResultKind =
+  | 'queued' | 'unknown'
   | 'success' | 'replay' | 'conflict' | 'auth_failed'
   | 'payload_too_large' | 'validation_failed' | 'timeout' | 'network_error';
 
 export interface PushDispatchResult {
+  deliveryState: DeliveryState;
+  nextAttemptAt: string | null;
   assignmentId: string;
   requestId: string;
   /** 本次推送被对方接受（HTTP 200）。**不表示是否首次创建** */
@@ -540,6 +543,9 @@ export interface PushDispatchResult {
   /** 是否建议自动重试（replay/timeout/network_error 为 true；conflict/auth_failed 为 false） */
   retryable: boolean;
 }
+
+export type DeliveryState = 'pending'|'sending'|'unknown'|'succeeded'|'failed';
+export interface DispatchOutboxItem {requestId:string;assignmentId:string;payloadHash:string;state:DeliveryState;attempts:number;nextAttemptAt:string|null}
 
 export interface DispatchRequestLogItem {
   id: number;
@@ -616,6 +622,10 @@ export interface EnterpriseFilter {
 }
 
 export interface DispatchOrderListItem {
+  deliveryState?: DeliveryState;
+  deliveryAttempts?: number;
+  deliveryNextAttemptAt?: string | null;
+  deliveryRetryAllowed?: boolean;
   id: number;
   assignmentId: string;
   orderNo: string;

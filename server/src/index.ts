@@ -3,6 +3,7 @@ import { createApp } from './app';
 import { env } from './config/env';
 import { reconcilePendingEvents } from './services/callbackService';
 import { reconcileOpenReporting } from './services/reportingEvidenceService';
+import {recoverPendingDispatches} from './services/dispatchRecoveryService';
 import { assertDbReachable, closePool } from './db/pool';
 import {pruneExpiredImports} from './services/masterDataImportService';
 
@@ -27,6 +28,9 @@ async function main(): Promise<void> {
   let reconciling=false;
   const reconcile=async()=>{if(reconciling)return;reconciling=true;try{await runAsTrustedSystem(async()=>{await reconcilePendingEvents();await reconcileOpenReporting();});}catch{console.error('[integration] pending event reconciliation failed; retained for retry');}finally{reconciling=false;}};
   const replayTimer=setInterval(()=>void reconcile(),Math.max(30_000,env.pu.reconciliationIntervalMs));replayTimer.unref();void reconcile();
+  let delivering=false;
+  const deliver=async()=>{if(delivering)return;delivering=true;try{await recoverPendingDispatches();}catch{console.error('[delivery] durable jobs retained for recovery');}finally{delivering=false;}};
+  const deliveryTimer=setInterval(()=>void deliver(),5_000);deliveryTimer.unref();void deliver();
   const app = createApp();
   let pruning=false;
   const prune=async()=>{if(pruning)return;pruning=true;try{await pruneExpiredImports();}catch{console.error('[master-import] expired resource cleanup failed; retained for retry');}finally{pruning=false;}};
@@ -50,6 +54,7 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     clearInterval(replayTimer);
+    clearInterval(deliveryTimer);
     clearInterval(importRetentionTimer);
     console.log('[Server] 收到 ' + signal + '，正在关闭…');
     server.close(() => {

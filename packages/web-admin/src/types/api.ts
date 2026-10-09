@@ -697,10 +697,13 @@ export interface AnalysisDrilldown {
 /* ==================== G3/G4（与 server/src/types/api.ts 对齐） ==================== */
 
 export type PushResultKind =
+  | 'queued' | 'unknown'
   | 'success' | 'replay' | 'conflict' | 'auth_failed'
   | 'payload_too_large' | 'validation_failed' | 'timeout' | 'network_error';
 
 export interface PushDispatchResult {
+  deliveryState: DeliveryState;
+  nextAttemptAt: string | null;
   assignmentId: string;
   requestId: string;
   /** 本次推送被对方接受（HTTP 200）。**不表示是否首次创建** */
@@ -782,6 +785,10 @@ export interface EnterpriseParams {
 }
 
 export interface DispatchOrderListItem {
+  deliveryState?: DeliveryState;
+  deliveryAttempts?: number;
+  deliveryNextAttemptAt?: string | null;
+  deliveryRetryAllowed?: boolean;
   id: number;
   assignmentId: string;
   orderNo: string;
@@ -922,3 +929,5 @@ export interface SourceEvaluationView {state:'available'|'unavailable'|'withheld
 export interface ComplaintFollowupsView {complaintId:string;records:FollowupView[];history:FollowupView[];sourceEvaluation:SourceEvaluationView;formalEvaluation:{state:'unavailable';reason:string}}
 export interface FollowupRevisionInput extends FollowupFacts {requestId:string;expectedVersion:number;reason:string}
 export interface FollowupConclusionInput {requestId:string;expectedVersion:number;conclusion:string;reason:string}
+
+export type DeliveryState = 'pending'|'sending'|'unknown'|'succeeded'|'failed';

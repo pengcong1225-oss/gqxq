@@ -84,7 +84,7 @@ function safeDetail(row:AuditRow):Record<string,unknown> {
   }):[];
   return out;
  }
- const out=pick(data,['assignmentId','complaintId','correctionId','eventId','eventType','taskId','approvalConclusion','statusBefore','statusAfter','dispatchStatusBefore','dispatchStatusAfter','fromStatus','toStatus','reportingStatus','supervisionStatus','supervisionStatusBefore','supervisionStatusAfter','scopeVersion','editVersion','itemCount','writtenBack','analysisEntered','analysisId','disposition','beforeCode','beforeName','afterCode','afterName','unchanged']);
+ const out=pick(data,['assignmentId','complaintId','correctionId','eventId','eventType','taskId','approvalConclusion','statusBefore','statusAfter','dispatchStatusBefore','dispatchStatusAfter','fromStatus','toStatus','reportingStatus','supervisionStatus','supervisionStatusBefore','supervisionStatusAfter','stage','deliveryState','attempts','authorizationVersion','scopeVersion','editVersion','itemCount','writtenBack','analysisEntered','analysisId','disposition','beforeCode','beforeName','afterCode','afterName','unchanged']);
  if(typeof data.fieldName==='string'&&valueFields.has(data.fieldName))Object.assign(out,projectAuditDetail({fieldName:data.fieldName,oldValue:data.oldValue,newValue:data.newValue}));
  // basis/reason/message and effectiveValues may embed source prose or a transport body.
  return out;

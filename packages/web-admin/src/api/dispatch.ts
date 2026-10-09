@@ -88,18 +88,7 @@ export async function cancelDispatch(
   );
 }
 
-/**
- * 推送交办：向 public-utility 创建填报任务（批次 G3）。
- *
- * 幂等与重试语义（落地计划 §3.1，由后端保证）：
- *  - requestId = 交办唯一请求号。超时/网络错误后重试必须**复用同一 requestId 与同一报文**、只换新 nonce，
- *    绝不新建交办；后端已用 uk_dispatch_request 与 uk_active_dispatch 兜住。
- *  - 返回体里的 result 是错误码处置表的分类，retryable 指示是否建议自动重试：
- *      replay / timeout / network_error                            -> 可重试（换新 nonce 或同请求号重推）
- *      conflict / auth_failed / payload_too_large / validation_failed -> **不可自动重试**
- *
- * POST /dispatch/orders/:assignmentId/push
- */
+/** Persist explicit intent; deliveryState is durable state, queued is not provider acceptance. */
 export async function pushDispatch(assignmentId: string): Promise<PushDispatchResult> {
   return request.post<never, PushDispatchResult>(
     '/dispatch/orders/' + encode(assignmentId) + '/push'
@@ -108,7 +97,7 @@ export async function pushDispatch(assignmentId: string): Promise<PushDispatchRe
 
 /**
  * 重推交办：同一 requestId、同一报文、**新 nonce + 新时间戳**。
- * 适用于 result 为 timeout / network_error / replay，或状态为 pushed / returned 的场景。
+ * 仅在服务端允许的原请求恢复或旧记录首次纳入时使用；默认unknown须人工核验。
  *
  * POST /dispatch/orders/:assignmentId/repush
  */

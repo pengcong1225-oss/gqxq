@@ -111,6 +111,8 @@ const TERMINAL_DISPATCH_STATUSES = new Set<string>([
 
 /** 推送日志里 result 的配色（分类来自后端错误码处置表） */
 const PUSH_RESULT_COLOR: Record<string, string> = {
+  queued: 'processing',
+  unknown: 'warning',
   success: 'success',
   replay: 'warning',
   conflict: 'error',
@@ -157,71 +159,12 @@ interface PushFeedback {
  * 是否给「重推」按钮由后端返回的 retryable 决定（不在这里自己判断），
  * 因为"能不能重试"是对方的语义，前端不该猜。
  */
-function pushFeedback(r: PushDispatchResult): PushFeedback {
-  switch (r.result) {
-    case 'success':
-      // 注意 created 的语义：它描述的是**场景**，不是「本次是否新建」。
-      //   契约（落地计划 §3.1）：sceneCode=GQXQ_SENSITIVE_DISPATCH -> created=true 且返回 task；
-      //                            sceneCode=GQXQ_ORDINARY_ARCHIVE  -> created=false 且没有 task。
-      //   gqxq 只会发敏感交办场景，所以正常路径恒为 created=true。
-      //   「是否幂等命中」不能从这里判断——要看任务号是否与既有相同、以及日志里的 attempt。
-      return r.created
-        ? {
-            level: 'success',
-            title: r.attempt > 1 ? '重推成功（第 ' + r.attempt + ' 次尝试）' : '推送成功',
-            description: '对方已受理为敏感交办任务，任务号已回填。同一请求号重复推送不会新建任务。',
-          }
-        : {
-            level: 'warning',
-            title: '对方按「仅归档」处理，未创建任务',
-            description:
-              '返回 created=false。按契约这表示对方把该场景判为普通归档（sceneCode 非敏感交办）；gqxq 只发送敏感交办场景，出现该结果说明场景编码或对方登记有误，请核对。',
-          };
-    case 'replay':
-      return {
-        level: 'warning',
-        title: '对方检测到 nonce 重放（409 REPLAY）',
-        description: '已换新 nonce 与时间戳重试。若仍失败可重推——请求号与报文保持不变。',
-      };
-    case 'conflict':
-      return {
-        level: 'error',
-        title: '同请求号但报文不同（409 CONFLICT）',
-        description:
-          '不可自动重试。需人工核对该请求号下两系统的报文差异，确认后再决定；盲目重试只会继续冲突。',
-      };
-    case 'auth_failed':
-      return {
-        level: 'error',
-        title: '鉴权失败（401）',
-        description:
-          '凭证、路径或时钟不符（时间戳容差 ±300 秒）。请检查 keyId/secret 与本机时钟，勿盲目重试。',
-      };
-    case 'payload_too_large':
-      return {
-        level: 'error',
-        title: '报文超过 1 MiB（413）',
-        description: '请精简 prefilledData / metadata 后重推，请求号不变。',
-      };
-    case 'validation_failed':
-      return {
-        level: 'error',
-        title: '对方校验失败（422）',
-        description:
-          '请按下方字段错误修正后重推。注意：不要发送 organizationCode——它在对方验签白名单之外，发了必被 422。',
-      };
-    case 'timeout':
-    case 'network_error':
-      return {
-        level: 'warning',
-        title: '结果未知（超时 / 网络错误）',
-        description: '将用同一请求号、同一报文重试，换新 nonce，不会新建交办。',
-      };
-    default:
-      return { level: 'error', title: '推送失败：' + r.result, description: r.message ?? '' };
-  }
+const DELIVERY_LABEL:Record<string,string>={pending:'已排队',sending:'发送中',unknown:'结果未知 · 需人工核验',succeeded:'已确认创建',failed:'失败／已停止'};
+const DELIVERY_COLOR:Record<string,string>={pending:'processing',sending:'processing',unknown:'warning',succeeded:'success',failed:'error'};
+function pushFeedback(r:PushDispatchResult):PushFeedback {
+ const state=r.deliveryState;
+ return {level:state==='succeeded'?'success':state==='failed'?'error':state==='unknown'?'warning':'info',title:DELIVERY_LABEL[state]??'推送状态待核对',description:state==='succeeded'?'对方任务号已核验并关联。创建填报任务不代表诉求已办结。':state==='unknown'?'外部可能已创建任务。原请求号与报文已冻结；没有确认的恢复契约时，请联系管理员人工核验，勿另建交办或换号重发。':state==='failed'?'对方明确拒绝或交办已取消；核对配置与原请求，不可修改冻结报文后沿用原号重发。':'已保存推送意图，请刷新查看外发状态。排队或发送中均未证明对方已创建任务。'};
 }
-
 const DASH = <span style={{ color: '#bfbfbf' }}>—</span>;
 
 function fmtDateTime(iso: string | null | undefined): string {
@@ -798,7 +741,7 @@ const DispatchOrders: React.FC = () => {
           : await pushDispatch(order.assignmentId);
         setPushOutcome({ kind: 'result', order, result: res });
         if (res.result === 'success') {
-          message.success(res.created ? '推送成功' : '对方按仅归档处理，未创建任务');
+          message.success('已确认创建填报任务');
         }
       } catch (err) {
         const e = err as ApiError;
@@ -878,6 +821,10 @@ const DispatchOrders: React.FC = () => {
         ),
       },
       {
+        title:'外发状态',dataIndex:'deliveryState',width:190,
+        render:(value:string|undefined)=><Tag color={DELIVERY_COLOR[value??'']??'default'}>{DELIVERY_LABEL[value??'']??'尚未排队'}</Tag>,
+      },
+      {
         title: '截止时间',
         dataIndex: 'deadline',
         width: 150,
@@ -926,8 +873,9 @@ const DispatchOrders: React.FC = () => {
               >
                 详情
               </Button>
-              {r.status === 'pending' ? (
+              {r.status === 'pending' && !r.deliveryState ? (
                 <Button
+                  data-testid={'dispatch-push-'+r.assignmentId}
                   type="link"
                   size="small"
                   icon={<SendOutlined />}
@@ -938,16 +886,16 @@ const DispatchOrders: React.FC = () => {
                 </Button>
               ) : (
                 <Tooltip
-                  title={'当前状态为「' + r.statusName + '」，不能首次推送；如需重试请用「重推」'}
+                  title={'当前交办或外发状态为「' + r.statusName + '」，不能首次推送；如需重试请用「重推」'}
                 >
                   <span>
-                    <Button type="link" size="small" disabled icon={<SendOutlined />}>
+                    <Button data-testid={'dispatch-push-'+r.assignmentId} type="link" size="small" disabled icon={<SendOutlined />}>
                       推送
                     </Button>
                   </span>
                 </Tooltip>
               )}
-              {r.status === 'pushed' || r.status === 'returned' ? (
+              {r.deliveryRetryAllowed || (!r.deliveryState && ['pushed','accepted','processing','returned'].includes(r.status)) ? (
                 <Button
                   type="link"
                   size="small"
@@ -958,7 +906,7 @@ const DispatchOrders: React.FC = () => {
                   重推
                 </Button>
               ) : (
-                <Tooltip title="仅「已推送」或「退回补正」可重推；重推使用同一请求号、同一报文、新 nonce，不会新建交办">
+                <Tooltip title="仅已确认恢复契约的未知结果可核验并恢复；其它结果需人工核验">
                   <span>
                     <Button type="link" size="small" disabled icon={<RedoOutlined />}>
                       重推
@@ -1315,6 +1263,9 @@ const DispatchOrders: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="推送状态">{detail.syncStatus ?? DASH}</Descriptions.Item>
             <Descriptions.Item label="推送时间">{fmtDateTime(detail.pushedAt)}</Descriptions.Item>
+            <Descriptions.Item label="外发状态"><Tag color={DELIVERY_COLOR[detail.deliveryState??'']??'default'}>{DELIVERY_LABEL[detail.deliveryState??'']??'尚未排队'}</Tag></Descriptions.Item>
+            <Descriptions.Item label="恢复处理次数">{detail.deliveryAttempts??0}</Descriptions.Item>
+            {detail.deliveryState==='unknown'&&<Descriptions.Item label="核验提示" span={2}>原请求号与报文已冻结。请联系管理员核验外部任务；勿另建交办或换号重发。</Descriptions.Item>}
             <Descriptions.Item label="完成时间">{fmtDateTime(detail.completedAt)}</Descriptions.Item>
             <Descriptions.Item label="归档时间">{fmtDateTime(detail.archivedAt)}</Descriptions.Item>
             <Descriptions.Item label="模板">
@@ -1367,7 +1318,7 @@ const DispatchOrders: React.FC = () => {
                 columns={pushLogColumns}
                 pagination={false}
                 scroll={{ x: 1040 }}
-                locale={{ emptyText: <Empty description="尚未推送" /> }}
+                locale={{ emptyText: <Empty description="尚无外发尝试记录" /> }}
               />
             )}
 
@@ -1462,7 +1413,7 @@ const DispatchOrders: React.FC = () => {
             <Descriptions bordered size="small" column={1} style={{ marginTop: 12 }}>
               <Descriptions.Item label="交办单号">{pushOutcome.order.orderNo}</Descriptions.Item>
               <Descriptions.Item label="请求号">{pushOutcome.result.requestId}</Descriptions.Item>
-              <Descriptions.Item label="尝试次数">{pushOutcome.result.attempt}</Descriptions.Item>
+              <Descriptions.Item label="处理次数">{pushOutcome.result.attempt}</Descriptions.Item>
               <Descriptions.Item label="结果分类">
                 <Tag color={PUSH_RESULT_COLOR[pushOutcome.result.result] ?? 'default'}>
                   {pushOutcome.result.result}
@@ -1490,7 +1441,7 @@ const DispatchOrders: React.FC = () => {
                 type="warning"
                 showIcon
                 message="该结果不可自动重试"
-                description="请先人工核对（凭证与时钟、同请求号的报文差异、或字段错误），确认后再手动重推。"
+                description="请先人工核对（凭证与时钟、同请求号的报文差异、或字段错误），确认后按原请求关联核验；不可改报文或换号重发。"
               />
             )}
           </>

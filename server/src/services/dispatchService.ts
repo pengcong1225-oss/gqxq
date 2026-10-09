@@ -1,4 +1,5 @@
 import {env} from '../config/env';
+import {deliveryViews} from '../repositories/dispatchOutboxRepo';
 import { assertLockedComplaintAccess } from '../auth/accessScope';
 // G2 敏感交办服务：列表 / 详情 / 创建（幂等）/ 受控撤销。
 //
@@ -199,8 +200,9 @@ export async function listDispatchOrders(
 ): Promise<Paged<DispatchOrderListItem>> {
   const { filter, page, size } = parseDispatchListQuery(query);
   const { rows, total } = await findOrderPage(filter, page, size);
+  const deliveries=await deliveryViews(rows.map(r=>String(r.assignment_id)));
   return {
-    content: rows.map(rowToDispatchListItem),
+    content: rows.map(r=>({...rowToDispatchListItem(r),...deliveries.get(String(r.assignment_id))})),
     total,
     page,
     size,
@@ -211,7 +213,7 @@ export async function listDispatchOrders(
 export async function getDispatchOrder(assignmentId: string): Promise<DispatchOrderDetail> {
   const row = await findOrderByAssignmentId(pool, assignmentId);
   if (!row) throw AppError.notFound('交办单不存在');
-  return rowToDispatchDetail(row);
+  return {...rowToDispatchDetail(row),...(await deliveryViews([assignmentId])).get(assignmentId)};
 }
 
 /* ---------------- 创建（幂等） ---------------- */
@@ -589,6 +591,12 @@ export async function markDispatchPushed(
   const updated = await findOrderByAssignmentId(pool, assignmentId);
   if (!updated) throw AppError.internal('推送成功后回读失败');
   return rowToDispatchDetail(updated);
+}
+
+/** Caller owns complaint -> dispatch locks and the exact association check. */
+export async function applyPushSuccessInTx(tx:Tx,assignmentId:string,complaintId:string,currentStatus:string,taskId:string,at:Date):Promise<void>{
+  await updatePushSuccess(tx,assignmentId,taskId,at);
+  if(currentStatus==='pending')await updateComplaintReportingStatus(tx,complaintId,'pushed',at);
 }
 
 /**

@@ -20,40 +20,15 @@ test('concurrent duplicate of rejected event stays rejected in both insert branc
   assert.equal(audits.length,1,'concurrent duplicate must persist its audit');assert.equal(audits[0][4],'CALLBACK_DUPLICATE');assert.equal(audits[0][6],'C');assert.equal(audits[0][7],'rejected','rejected event remains rejected in its duplicate audit');
  }}finally{Object.assign(pool,original);}
 });
-test('unknown create recovers original bytes without rerunning current readiness; fresh snapshot still preflights',async()=>{
- const {pushDispatch}=await import('../src/services/dispatchPushService');
- const {serializeOnce}=await import('../src/clients/publicUtilityClient');
- const {pool}=await import('../src/db/pool');const {env}=await import('../src/config/env');
- Object.assign(env.pu,{baseUrl:'https://example.invalid',appCode:'gqxq',keyId:'test',keyVersion:'v1',secret:'local-test-secret'});
- const original={query:pool.query,execute:pool.execute,getConnection:pool.getConnection,fetch:globalThis.fetch};
- const payload={sourceAppCode:'gqxq',sourceBusinessId:'C',requestId:'R',metadata:{contractVersion:2,assignmentId:'A'}};
- const serialized=serializeOnce(payload);let snapshot=serialized;let digest=serialized.bodySha256;let attempted=true;let stored=true;const paths:string[]=[];
- const query=async(sql:string)=>{
-  if(sql.includes('dispatch_push_snapshot'))return [stored?[{body:snapshot.bodyText,sha256:digest}]:[],[]];
-  if(sql.includes('next_attempt'))return [[{next_attempt:2}],[]];
-  if(sql.includes('dispatch_request_log'))return [attempted?[{body:serialized.bodyText}]:[],[]];
-  if(sql.includes('from complaint '))return [[{complaint_id:'C',enterprise_code:'E',deleted:0}],[]];
-  return [[{assignment_id:'A',complaint_id:'C',request_id:'R',status:'pending',target_enterprise_code:'E',target_enterprise_name:'Enterprise',deadline:stored?null:new Date(),complaint_title:'changed title'}],[]];
- };
- const execute=async()=>[{affectedRows:1},[]];
- Object.assign(pool,{query,execute,getConnection:async()=>({query,execute,beginTransaction:async()=>{},commit:async()=>{},rollback:async()=>{},release:()=>{}})});
- globalThis.fetch=async(url:any,init:any)=>{
-  paths.push(String(url));
-  if(String(url).endsWith('/preflight'))return new Response(JSON.stringify({ready:false,issues:[{code:'TEMPLATE_UNAVAILABLE',subjectCode:null,message:'disabled'}]}),{status:200});
-  assert.equal(Buffer.from(init.body).toString(),serialized.bodyText);
-  return new Response(JSON.stringify({code:'CONFLICT',message:'probe'}),{status:409});
- };
- try{
-  const result=await pushDispatch('A',{userId:null,clientIp:null});assert.equal(result.result,'conflict');assert.equal(paths.length,1);assert.ok(!paths[0].endsWith('/preflight'));
-  attempted=false;paths.length=0;
-  await pushDispatch('A',{userId:null,clientIp:null});assert.ok(!paths[0].endsWith('/preflight'));
-  paths.length=0;digest='corrupted';
-  await assert.rejects(()=>pushDispatch('A',{userId:null,clientIp:null}),/digest mismatch/);assert.equal(paths.length,0);
-  snapshot=serializeOnce({...payload,requestId:'OTHER'});digest=snapshot.bodySha256;
-  await assert.rejects(()=>pushDispatch('A',{userId:null,clientIp:null}),/identity mismatch/);assert.equal(paths.length,0);
-  snapshot=serialized;digest=serialized.bodySha256;stored=false;paths.length=0;
-  // Model a capacity-one pool: the transaction owns the only connection.
-  Object.assign(pool,{query:async()=>{throw new Error('pool unavailable while transaction owns only connection');}});
-  await assert.rejects(()=>pushDispatch('A',{userId:null,clientIp:null}),(e:any)=>e.errorCode==='VALIDATION_FAILED');assert.ok(paths[0].endsWith('/preflight'));
- }finally{Object.assign(pool,{query:original.query,execute:original.execute,getConnection:original.getConnection});globalThis.fetch=original.fetch;}
+test('immutable recovery restores exact original bytes and refuses digest or identity tampering',async()=>{
+ const {restoreSnapshot,validatePushIdentity}=await import('../src/services/dispatchPushService');
+ const {serializeOnce}=await import('../src/clients/publicUtilityClient');const {env}=await import('../src/config/env');
+ Object.assign(env.pu,{appCode:'gqxq'});
+ const payload={sourceAppCode:'gqxq',sourceBusinessId:'C',requestId:'R',enterpriseSubjects:[{subjectCode:'E'}],metadata:{contractVersion:2,assignmentId:'A'}};
+ const serialized=serializeOnce(payload);const restored=restoreSnapshot(serialized.bodyText,serialized.bodySha256);
+ assert.equal(restored.bodyText,serialized.bodyText);assert.deepEqual(restored.bodyBytes,serialized.bodyBytes);validatePushIdentity(restored,'A','C','R','E');
+ assert.throws(()=>restoreSnapshot(serialized.bodyText,'corrupted'),/digest mismatch/);
+ for(const [assignmentId,complaintId,requestId,enterprise] of [['OTHER','C','R','E'],['A','OTHER','R','E'],['A','C','OTHER','E'],['A','C','R','OTHER']])assert.throws(()=>validatePushIdentity(restored,assignmentId,complaintId,requestId,enterprise),/identity mismatch/);
+ // Fresh readiness, legacy recovery and byte-preserving worker behavior now have actual SQL
+ // coverage in push-job-mysql-component.test.ts; this pure test cannot authorize anonymous pushes.
 });

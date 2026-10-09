@@ -10,7 +10,7 @@ import { buildComplaintScopeSql, type AccessContext } from '../auth/accessScope'
 import type { SqlExecutor } from './userRepo';
 import type { AuditLogFilter, Paged } from '../types/api';
 
-export type AuditResult = 'success' | 'duplicate' | 'rejected' | 'failed';
+export type AuditResult = 'success' | 'duplicate' | 'rejected' | 'failed' | 'pending' | 'unknown';
 
 export interface AuditEntry {
   /** 外部系统投递没有平台用户，可为 null */
