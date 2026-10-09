@@ -436,7 +436,7 @@ export async function updatePushSuccess(
   pushedAt: Date
 ): Promise<number> {
   const [result] = await tx.execute(
-    "update dispatch_order set status = 'pushed', reporting_task_id = ?, pushed_at = ?," +
+    "update dispatch_order set status = case when status = 'pending' then 'pushed' else status end, reporting_task_id = ?, pushed_at = ?," +
       " sync_status = 'success', updated_at = ? where assignment_id = ?",
     [taskId, pushedAt, pushedAt, assignmentId]
   );

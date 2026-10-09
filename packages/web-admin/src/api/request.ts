@@ -48,6 +48,7 @@ request.interceptors.request.use((config) => {
 request.interceptors.response.use(
   // 成功分支：保持既有封套语义不变 —— code !== 200 视为失败，成功时返回 data.data
   (response) => {
+    if (response.config.responseType === 'blob') return response.data;
     const { data } = response;
     if (data?.code !== 200) {
       console.error('API Error:', data?.message);

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 // G4 入站：接收 public-utility 的结果事件回传。
 //
 // 职责：独立验签（算法与入站不同）-> 按 event_id 幂等 -> 推进交办/诉求状态 -> 写审批轨迹与审计
@@ -7,10 +8,9 @@
 //   1) 签名要对**原始 body 字节**求 sha256（见 clients/callbackSignature.ts 头部说明）。
 //   2) ACK：ackMode=BODY 时响应体必须逐字节等于 ackValue，且**不可重试**的 CALLBACK_ACK_INVALID
 //      意味着 ACK 配错等于事件被永久丢弃 —— 所以这里绝不 res.json。
-//   3) 非法状态转换**不能丢事件**：事件仍要留痕，processed_result 记为 ignored 并写明原因。
+//   3) 乱序事实写 pending，明确越权拒绝，终态之后的旧事实留 ignored。
 //
-// 已知契约缺口（落地计划 §3.2 明确标注）：这 4 个事件类型**无法表达"企业签收"**，
-// 因此 dispatch_order.status='accepted' 不经由回调到达。这里不自行造事件类型。
+// v2 增加签收与中间节点进度；事务内入库后 ACK，缺关联/缺前序保留 pending 并补偿。
 import { env } from '../config/env';
 import { withTransaction } from '../db/tx';
 import { generateCorrectionsInTx } from './correctionService';
@@ -35,8 +35,8 @@ import { verifyCallbackSignature, CALLBACK_TIMESTAMP_TOLERANCE_SECONDS } from '.
  *   * 严格符合契约（大写才算合法，大小写混用一律按不合规处理）
  *   * 业务代码里不出现大写枚举字面量，与全仓"枚举一律小写"的口径一致
  */
-const EVENT_TYPES = ['task_submitted', 'task_approved', 'task_rejected', 'task_returned'] as const;
-const CONCLUSIONS = ['agreed', 'disagreed', 'returned'] as const;
+const EVENT_TYPES = ['task_accepted', 'task_progress', 'task_submitted', 'task_approved', 'task_rejected', 'task_returned'] as const;
+const CONCLUSIONS = ['agreed', 'disagreed', 'returned', 'pending'] as const;
 
 type EventType = (typeof EVENT_TYPES)[number];
 type Conclusion = (typeof CONCLUSIONS)[number];
@@ -49,7 +49,12 @@ function normalizeWireEnum(raw: string, allowed: readonly string[]): string | nu
 
 /* ==================== 事件载荷校验 ==================== */
 
-interface ParsedEvent {
+export interface ParsedEvent {
+  contractVersion: number;
+  assignmentId: string | null;
+  requestId: string | null;
+  reportingItemId: string | null;
+  eventSequence: number | null;
   eventId: string;
   eventType: EventType;
   sourceAppCode: string;
@@ -114,7 +119,7 @@ function capReportedErrors(errors: FieldError[]): FieldError[] {
  * 回调是对方推给我们的，对方一旦新增字段就静默丢事件，代价远大于宽容；
  * 事件原文整包落 business_event.payload，仍然可审计。
  */
-function validateEvent(body: unknown): { ok: true; event: ParsedEvent } | { ok: false; errors: FieldError[] } {
+export function validateEvent(body: unknown): { ok: true; event: ParsedEvent } | { ok: false; errors: FieldError[] } {
   const errors: FieldError[] = [];
   if (!isPlainObject(body)) {
     return { ok: false, errors: [{ field: 'body', message: '请求体必须是单个 JSON 对象' }] };
@@ -235,10 +240,21 @@ function validateEvent(body: unknown): { ok: true; event: ParsedEvent } | { ok: 
     if (approvedAt === null) errors.push({ field: 'approvedAt', message: '必须是带时区偏移的 ISO-8601' });
   }
 
+  const contractVersion = body.contractVersion ?? 1;
+  if (contractVersion !== 1 && contractVersion !== 2) errors.push({field:'contractVersion',message:'only 1/2 supported'});
+  const assignmentId = str('assignmentId',128,contractVersion === 2);
+  const requestId = str('requestId',128,contractVersion === 2);
+  const reportingItemId = str('reportingItemId',128,contractVersion === 2);
+  const eventSequence = body.eventSequence ?? null;
+  if (contractVersion === 2 && (!Number.isSafeInteger(eventSequence) || Number(eventSequence) < 1)) errors.push({field:'eventSequence',message:'positive safe integer required'});
+  if (eventType === 'task_approved' && conclusion !== 'agreed' || eventType === 'task_rejected' && conclusion !== 'disagreed' || eventType === 'task_returned' && conclusion !== 'returned') errors.push({field:'approvalConclusion',message:'conclusion must match event type'});
+  if (contractVersion===2 && eventType!=='task_accepted' && submissionVersion===null) errors.push({field:'submissionVersion',message:'v2 progress and result require immutable submission version'});
+  if (contractVersion===2 && ['task_accepted','task_submitted','task_progress'].includes(eventType ?? '') && conclusion!=='pending') errors.push({field:'approvalConclusion',message:'progress must use PENDING conclusion'});
   if (errors.length > 0) return { ok: false, errors: capReportedErrors(errors) };
   return {
     ok: true,
     event: {
+      contractVersion: contractVersion as number, assignmentId, requestId, reportingItemId, eventSequence: eventSequence as number | null,
       eventId: eventId as string,
       eventType: eventType as EventType,
       sourceAppCode: sourceAppCode as string,
@@ -255,6 +271,12 @@ function validateEvent(body: unknown): { ok: true; event: ParsedEvent } | { ok: 
     },
   };
 }
+
+export function payloadDigest(value: unknown): string {
+ const canonical=(v:unknown):unknown=>Array.isArray(v)?v.map(canonical):isPlainObject(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+ return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
+}
+function storedPayload(value:unknown):unknown {return typeof value==='string'?JSON.parse(value):value;}
 
 /* ==================== ACK ==================== */
 
@@ -293,6 +315,12 @@ export function resolveAckBody(): AckResolution {
 /* ==================== 状态推进 ==================== */
 
 interface DispatchRef {
+  pushPayload?: unknown;
+  requestId: string;
+  subjectCode: string;
+  taskId: string | null;
+  lastEventSequence: number;
+  reportingItemId: string | null;
   assignmentId: string;
   complaintId: string;
   status: string;
@@ -309,15 +337,18 @@ interface TransitionPlan {
 
 /** 各事件允许的**当前**交办状态。与 domain/enums.ts 的监督状态枚举一致（小写）。 */
 const ALLOWED_FROM: Record<EventType, readonly string[]> = {
-  task_submitted: ['pushed', 'accepted', 'returned'],
+  task_accepted: ['pending','pushed'],
+  task_progress: ['processing'],
+  task_submitted: ['pending', 'pushed', 'accepted', 'returned'],
   task_returned: ['processing'],
   task_approved: ['processing', 'returned'],
   task_rejected: ['processing', 'returned'],
 };
 
-function planTransition(event: ParsedEvent, current: string): TransitionPlan {
+export function planTransition(event: ParsedEvent, current: string): TransitionPlan {
   const allowed = ALLOWED_FROM[event.eventType];
-  if (!allowed.includes(current)) {
+  const legacyFinal = event.contractVersion !== 2 && ['task_approved','task_rejected'].includes(event.eventType) && ['pushed','accepted'].includes(current);
+  if (!allowed.includes(current) && !legacyFinal) {
     return {
       kind: 'ignored',
       summary: '事件未推进状态',
@@ -342,6 +373,10 @@ function planTransition(event: ParsedEvent, current: string): TransitionPlan {
 
   const versionText = event.submissionVersion === null ? '' : '（第 ' + event.submissionVersion + ' 版）';
   switch (event.eventType) {
+    case 'task_accepted':
+      return {kind:'applied',summary:'企业已签收',reason:null,toDispatchStatus:'accepted',toReportingStatus:'accepted',toSupervisionStatus:'accepted'};
+    case 'task_progress':
+      return {kind:'applied',summary:'审批节点推进',reason:null,toDispatchStatus:'processing',toReportingStatus:'submitted',toSupervisionStatus:'processing'};
     case 'task_submitted':
       return {
         kind: 'applied',
@@ -398,24 +433,175 @@ function isDuplicateKey(err: unknown): boolean {
 }
 
 /** 先按 task_id（G3 推送成功后回填的 reporting_task_id）找，再退回按 source_business_id 找 */
-async function findDispatchRef(
-  tx: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
-  taskId: string,
-  sourceBusinessId: string
-): Promise<DispatchRef | null> {
-  const [byTask] = (await tx.query(
-    'select assignment_id as assignmentId, complaint_id as complaintId, status' +
-      ' from dispatch_order where reporting_task_id = ? order by id desc limit 1 for update',
-    [taskId]
-  )) as [DispatchRef[], unknown];
-  if (byTask.length > 0) return byTask[0];
+async function findDispatchRef(tx: { query: (sql:string, params?:unknown[]) => Promise<unknown> }, event: ParsedEvent): Promise<DispatchRef | null> {
+  const predicate = event.contractVersion === 2 ? 'assignment_id = ?' : 'reporting_task_id = ?';
+  const [rows] = await tx.query('select d.assignment_id as assignmentId, d.complaint_id as complaintId,d.status,d.request_id as requestId,d.target_enterprise_code as subjectCode,d.reporting_task_id as taskId,d.last_event_sequence as lastEventSequence,d.reporting_item_id as reportingItemId,ps.body as pushPayload from dispatch_order d left join dispatch_push_snapshot ps on ps.assignment_id=d.assignment_id where d.'+predicate+' for update',[event.contractVersion === 2 ? event.assignmentId : event.taskId]) as [DispatchRef[],unknown];
+  return rows.length === 1 ? rows[0] : null;
+}
 
-  const [byComplaint] = (await tx.query(
-    'select assignment_id as assignmentId, complaint_id as complaintId, status' +
-      ' from dispatch_order where complaint_id = ? order by id desc limit 1 for update',
-    [sourceBusinessId]
-  )) as [DispatchRef[], unknown];
-  return byComplaint.length > 0 ? byComplaint[0] : null;
+export function relationError(event: ParsedEvent, ref: DispatchRef): string | null {
+  if (event.sourceAppCode !== env.pu.appCode || event.sourceBusinessId !== ref.complaintId || event.subjectCode !== ref.subjectCode || ref.taskId !== null && event.taskId !== ref.taskId) return 'invalid task/business/enterprise relation';
+  if(ref.pushPayload){const snapshot=storedPayload(ref.pushPayload) as Record<string,unknown>;if(event.sceneCode!==snapshot.sceneCode||event.templateVersion!==snapshot.templateVersion||event.sourceAppCode!==snapshot.sourceAppCode)return 'invalid scene/template application snapshot relation';}
+  if (event.contractVersion === 2 && (event.requestId !== ref.requestId || event.assignmentId !== ref.assignmentId || ref.reportingItemId !== null && event.reportingItemId !== ref.reportingItemId)) return 'invalid assignment/request/item relation';
+  return null;
+}
+
+async function applyStoredEvent(tx: import('../db/tx').Tx,event:ParsedEvent,parsedBody:unknown,eventId:string,now:Date,remoteIp:string|null) {
+      // 9b) 匹配交办
+      const ref = await findDispatchRef(tx, event);
+      if (ref === null) {
+        const message = '等待精确交办/任务关联；不会按最新诉求交办猜测关联';
+        await updateEventProcessing(tx, eventId, 'pending', message);
+        await insertAudit(tx, {
+          userId: null,
+          appCode: 'public-utility',
+          resourceCode: null,
+          action: 'CALLBACK_IGNORED',
+          bizType: 'business_event',
+          bizId: event.sourceBusinessId,
+          result: 'success',
+          clientIp: remoteIp,
+          detail: { eventId, eventType: event.eventType, taskId: event.taskId, reason: 'dispatch_not_found' },
+          createdAt: now,
+        });
+        return {
+          processedResult: 'pending' as ProcessedResult,
+          message,
+          eventType: event.eventType as BusinessEventType,
+        };
+      }
+
+      const invalid = relationError(event, ref);
+      if (invalid !== null) {
+        await updateEventProcessing(tx,eventId,'rejected',invalid);
+        return {processedResult:'rejected' as ProcessedResult,message:invalid,eventType:event.eventType as BusinessEventType};
+      }
+      if (event.contractVersion === 2 && event.eventSequence !== Number(ref.lastEventSequence)+1) {
+        const stale = Number(event.eventSequence) <= Number(ref.lastEventSequence);
+        const message = stale ? 'superseded sequence' : 'waiting for preceding event';
+        await updateEventProcessing(tx,eventId,stale ? 'ignored' : 'pending',message);
+        return {processedResult:(stale ? 'ignored' : 'pending') as ProcessedResult,message,eventType:event.eventType as BusinessEventType};
+      }
+      // 9c) 计算并推进状态
+      const plan = planTransition(event, ref.status);
+      let processedResult: ProcessedResult = ['completed','rejected','cancelled','archived'].includes(ref.status) ? 'ignored' : 'pending';
+      if (plan.kind === 'applied' && plan.toDispatchStatus !== null) {
+        await tx.execute(
+          'update dispatch_order set status = ?, updated_at = ?, last_event_sequence = ?, reporting_item_id = coalesce(reporting_item_id,?), reporting_task_id = coalesce(reporting_task_id,?) where assignment_id = ?',
+          [plan.toDispatchStatus, now, event.eventSequence ?? ref.lastEventSequence, event.reportingItemId, event.taskId, ref.assignmentId]
+        );
+        await tx.execute(
+          'update complaint set reporting_status = ?, supervision_status = ?, updated_at = ? where complaint_id = ?',
+          [plan.toReportingStatus, plan.toSupervisionStatus, now, ref.complaintId]
+        );
+        processedResult = 'applied';
+
+        // ---------- G5：审批通过后顺手补挂/刷新一次纠偏待办 ----------
+        // 注意（2026-09-20 裁定）：这**不再是纠偏的唯一入口**——纠偏是覆盖全部诉求的数据质量轴，
+        // 与是否交办、是否审批通过无关，另有单条手工与批量补挂两个入口。
+        // 这里保留调用的意义：把这次交办记进清单（assignmentId 由 ref 显式传入），
+        // 让"走过督办链路的诉求"其纠偏项能回查到触发它的那个任务。
+        // 放在**同一事务内**的理由：要么"审批通过 + 纠偏清单已生成"一起成立，
+        // 要么一起回滚、由对方按同一 eventId 重投。若放到事务外，
+        // 就会留下"已批准却没有纠偏待办"的中间态。
+        // generateCorrectionsInTx 内部幂等：重复触发只返回既有清单，不会重复插入。
+        if (plan.toDispatchStatus === 'completed') {
+          await generateCorrectionsInTx(tx, {
+            complaintId: ref.complaintId,
+            assignmentId: ref.assignmentId,
+            operatorId: null,
+            operatorName: null,
+            now,
+          });
+        }
+      }
+      await updateEventProcessing(tx, eventId, processedResult, plan.reason ?? plan.summary);
+      if (processedResult === 'pending') return {processedResult,message:plan.reason ?? plan.summary,eventType:event.eventType as BusinessEventType};
+
+      // 9d) 审批轨迹（匹配到交办才写）
+      await insertApprovalTrace(tx, {
+        complaintId: ref.complaintId,
+        assignmentId: ref.assignmentId,
+        taskId: event.taskId,
+        eventId,
+        eventType: event.eventType,
+        approvalConclusion: event.approvalConclusion,
+        submissionVersion: event.submissionVersion,
+        actorName: event.subjectName,
+        occurredAt: event.occurredAt,
+        summary: plan.summary,
+        detail: {
+          dispatchStatusBefore: ref.status,
+          dispatchStatusAfter: plan.toDispatchStatus,
+          reportingStatusAfter: plan.toReportingStatus,
+          reason: plan.reason,
+          approvalHistory: isPlainObject(parsedBody) ? parsedBody.approvalHistory ?? null : null,
+          attachmentCount: isPlainObject(parsedBody) && Array.isArray(parsedBody.attachments) ? parsedBody.attachments.length : 0,
+        },
+        createdAt: now,
+      });
+
+      // 9e) 审计
+      const auditBase = {
+        userId: null,
+        appCode: 'public-utility',
+        resourceCode: ref.assignmentId,
+        bizType: 'dispatch_order',
+        bizId: ref.complaintId,
+        clientIp: remoteIp,
+        detail: {
+          eventId,
+          eventType: event.eventType,
+          approvalConclusion: event.approvalConclusion,
+          dispatchStatusBefore: ref.status,
+          dispatchStatusAfter: plan.toDispatchStatus,
+          taskId: event.taskId,
+          reason: plan.reason,
+        },
+        createdAt: now,
+      };
+      if (processedResult === 'applied') {
+        await insertAudit(tx, { ...auditBase, action: 'CALLBACK_APPLIED', result: 'success' });
+      } else {
+        await insertAudit(tx, { ...auditBase, action: 'CALLBACK_IGNORED', result: 'rejected' });
+      }
+
+      return {
+        processedResult,
+        message: plan.reason ?? plan.summary,
+        eventType: event.eventType as BusinessEventType,
+      };
+}
+
+/** Each replay locks the assignment; database rows retain pending facts across restarts. */
+type PendingRow={id:string;eventId:string;payload:unknown};
+export async function claimPendingReplayPage(taskId?:string): Promise<PendingRow[]> {
+  return taskId ? (await pool.query("select CAST(id AS CHAR) AS id,event_id as eventId,payload from business_event where processed_result='pending' and task_id=? order by COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.eventSequence')) AS UNSIGNED),0),business_event.id limit 500",[taskId]) as [PendingRow[],unknown])[0] : await withTransaction(async tx=>{
+    await tx.execute("insert ignore into integration_replay_cursor(scope,last_event_id) values('pending-global',0)");
+    const [cursorRows]=await tx.query("select CAST(last_event_id AS CHAR) as lastEventId from integration_replay_cursor where scope='pending-global' for update") as [Array<{lastEventId:string}>,unknown];
+    const cursor=cursorRows[0]?.lastEventId??'0';
+    const query="select CAST(id AS CHAR) AS id,event_id as eventId,payload from business_event where processed_result='pending' and business_event.id>? order by business_event.id limit 500";
+    let [selected]=await tx.query(query,[cursor]) as [PendingRow[],unknown];
+    if(selected.length===0&&cursor!=='0')[selected]=await tx.query(query,['0']) as [PendingRow[],unknown];
+    await tx.execute("update integration_replay_cursor set last_event_id=? where scope='pending-global'",[selected.length?String(selected[selected.length-1].id):'0']);
+    return selected;
+  });
+}
+export async function reconcilePendingEvents(taskId?:string): Promise<number> {
+  const rows=await claimPendingReplayPage(taskId);
+  let applied=0;
+  for (const row of rows) {
+    const payload=typeof row.payload==='string' ? JSON.parse(row.payload) : row.payload;
+    const validated=validateEvent(payload);
+    if (!validated.ok) continue;
+    await withTransaction(async tx => {
+      const [current]=await tx.query("select processed_result as state from business_event where event_id=? for update",[row.eventId]) as [Array<{state:string}>,unknown];
+      if (current[0]?.state !== 'pending') return;
+      const result=await applyStoredEvent(tx,validated.event,payload,row.eventId,new Date(),null);
+      if (result.processedResult==='applied') applied++;
+    });
+  }
+  return applied;
 }
 
 /* ==================== 对外入口 ==================== */
@@ -607,10 +793,11 @@ export async function handleCallback(input: CallbackRequestInput): Promise<Callb
     return rejected(400, '事件缺少 eventId', [{ field: 'eventId', message: '必填' }], ack.ackBody);
   }
   const headerMismatch = input.headerEventId !== eventId;
+  if (headerMismatch) return rejected(400,'header eventId differs from payload',null,ack.ackBody);
 
-  // ---------- 6) 幂等：已处理过就直接返回同一 ACK，不改任何业务状态 ----------
-  const existing = await findEventById(pool, eventId);
-  if (existing !== null) {
+  async function duplicateResponse(existing: NonNullable<Awaited<ReturnType<typeof findEventById>>>): Promise<CallbackOutcome> {
+    const eventId=existing.eventId;
+    if (payloadDigest(storedPayload(existing.payload)) !== payloadDigest(parsedBody)) return rejected(409,'event identity payload conflict',null,ack.ackBody);
     const storedAck = existing.ackBody !== null && existing.ackBody !== '' ? existing.ackBody : ack.ackBody;
     const drift = storedAck !== ack.ackBody;
 
@@ -665,6 +852,13 @@ export async function handleCallback(input: CallbackRequestInput): Promise<Callb
       message: 'duplicate',
       fieldErrors: null,
     };
+  }
+
+  // ---------- 6) 幂等：已处理过就直接返回同一 ACK，不改任何业务状态 ----------
+  const existing = await findEventById(pool, eventId);
+  if (existing !== null) {
+    return duplicateResponse(existing);
+
   }
 
   // ---------- 7) 时间戳窗口：签名有效但过旧 -> 503（可重试），绝不 401 ----------
@@ -737,14 +931,7 @@ export async function handleCallback(input: CallbackRequestInput): Promise<Callb
       // 并发下另一路已经写了这一事件：按重复投递处理
       const raced = await findEventById(pool, eventId);
       if (raced !== null) {
-        return {
-          status: 200,
-          ackBody: raced.ackBody !== null && raced.ackBody !== '' ? raced.ackBody : ack.ackBody,
-          retryAfterSeconds: null,
-          result: { eventId, accepted: true, duplicate: true, processedResult: 'duplicate', eventType: null, message: '并发重复投递' },
-          message: 'duplicate',
-          fieldErrors: null,
-        };
+        return duplicateResponse(raced);
       }
     }
     return rejected(400, '回传事件校验失败', validated.errors, ack.ackBody);
@@ -779,120 +966,11 @@ export async function handleCallback(input: CallbackRequestInput): Promise<Callb
         receivedAt: now,
       });
 
-      // 9b) 匹配交办
-      const ref = await findDispatchRef(tx, event.taskId, event.sourceBusinessId);
-      if (ref === null) {
-        const message = '未匹配到交办：reporting_task_id 与 complaint_id 都没有命中';
-        await updateEventProcessing(tx, eventId, 'ignored', message);
-        await insertAudit(tx, {
-          userId: null,
-          appCode: 'public-utility',
-          resourceCode: null,
-          action: 'CALLBACK_IGNORED',
-          bizType: 'business_event',
-          bizId: event.sourceBusinessId,
-          result: 'success',
-          clientIp: input.remoteIp,
-          detail: { eventId, eventType: event.eventType, taskId: event.taskId, reason: 'dispatch_not_found' },
-          createdAt: now,
-        });
-        return {
-          processedResult: 'ignored' as ProcessedResult,
-          message,
-          eventType: event.eventType as BusinessEventType,
-        };
-      }
-
-      // 9c) 计算并推进状态
-      const plan = planTransition(event, ref.status);
-      let processedResult: ProcessedResult = 'ignored';
-      if (plan.kind === 'applied' && plan.toDispatchStatus !== null) {
-        await tx.execute(
-          'update dispatch_order set status = ?, updated_at = ? where assignment_id = ?',
-          [plan.toDispatchStatus, now, ref.assignmentId]
-        );
-        await tx.execute(
-          'update complaint set reporting_status = ?, supervision_status = ?, updated_at = ? where complaint_id = ?',
-          [plan.toReportingStatus, plan.toSupervisionStatus, now, ref.complaintId]
-        );
-        processedResult = 'applied';
-
-        // ---------- G5：审批通过后顺手补挂/刷新一次纠偏待办 ----------
-        // 注意（2026-09-20 裁定）：这**不再是纠偏的唯一入口**——纠偏是覆盖全部诉求的数据质量轴，
-        // 与是否交办、是否审批通过无关，另有单条手工与批量补挂两个入口。
-        // 这里保留调用的意义：把这次交办记进清单（assignmentId 由 ref 显式传入），
-        // 让"走过督办链路的诉求"其纠偏项能回查到触发它的那个任务。
-        // 放在**同一事务内**的理由：要么"审批通过 + 纠偏清单已生成"一起成立，
-        // 要么一起回滚、由对方按同一 eventId 重投。若放到事务外，
-        // 就会留下"已批准却没有纠偏待办"的中间态。
-        // generateCorrectionsInTx 内部幂等：重复触发只返回既有清单，不会重复插入。
-        if (plan.toDispatchStatus === 'completed') {
-          await generateCorrectionsInTx(tx, {
-            complaintId: ref.complaintId,
-            assignmentId: ref.assignmentId,
-            operatorId: null,
-            operatorName: null,
-            now,
-          });
-        }
-      }
-      await updateEventProcessing(tx, eventId, processedResult, plan.reason ?? plan.summary);
-
-      // 9d) 审批轨迹（匹配到交办才写）
-      await insertApprovalTrace(tx, {
-        complaintId: ref.complaintId,
-        assignmentId: ref.assignmentId,
-        taskId: event.taskId,
-        eventId,
-        eventType: event.eventType,
-        approvalConclusion: event.approvalConclusion,
-        submissionVersion: event.submissionVersion,
-        actorName: event.subjectName,
-        occurredAt: event.occurredAt,
-        summary: plan.summary,
-        detail: {
-          dispatchStatusBefore: ref.status,
-          dispatchStatusAfter: plan.toDispatchStatus,
-          reportingStatusAfter: plan.toReportingStatus,
-          reason: plan.reason,
-          approvalHistory: isPlainObject(parsedBody) ? parsedBody.approvalHistory ?? null : null,
-          attachmentCount: isPlainObject(parsedBody) && Array.isArray(parsedBody.attachments) ? parsedBody.attachments.length : 0,
-        },
-        createdAt: now,
-      });
-
-      // 9e) 审计
-      const auditBase = {
-        userId: null,
-        appCode: 'public-utility',
-        resourceCode: ref.assignmentId,
-        bizType: 'dispatch_order',
-        bizId: ref.complaintId,
-        clientIp: input.remoteIp,
-        detail: {
-          eventId,
-          eventType: event.eventType,
-          approvalConclusion: event.approvalConclusion,
-          dispatchStatusBefore: ref.status,
-          dispatchStatusAfter: plan.toDispatchStatus,
-          taskId: event.taskId,
-          reason: plan.reason,
-        },
-        createdAt: now,
-      };
-      if (processedResult === 'applied') {
-        await insertAudit(tx, { ...auditBase, action: 'CALLBACK_APPLIED', result: 'success' });
-      } else {
-        await insertAudit(tx, { ...auditBase, action: 'CALLBACK_IGNORED', result: 'rejected' });
-      }
-
-      return {
-        processedResult,
-        message: plan.reason ?? plan.summary,
-        eventType: event.eventType as BusinessEventType,
-      };
+      return applyStoredEvent(tx,event,parsedBody,eventId,now,input.remoteIp);
     });
 
+    if (outcome.processedResult === 'rejected') return rejected(400,outcome.message,null,ack.ackBody);
+    await reconcilePendingEvents(event.taskId).catch(()=>undefined);
     const notice = headerMismatch ? '（注意：请求头 eventId 与报文 eventId 不一致）' : '';
     return {
       status: 200,
@@ -914,21 +992,7 @@ export async function handleCallback(input: CallbackRequestInput): Promise<Callb
     if (isDuplicateKey(err)) {
       const raced = await findEventById(pool, eventId);
       if (raced !== null) {
-        return {
-          status: 200,
-          ackBody: raced.ackBody !== null && raced.ackBody !== '' ? raced.ackBody : ack.ackBody,
-          retryAfterSeconds: null,
-          result: {
-            eventId,
-            accepted: true,
-            duplicate: true,
-            processedResult: 'duplicate',
-            eventType: raced.eventType as BusinessEventType,
-            message: '并发重复投递，返回首次的 ACK',
-          },
-          message: 'duplicate',
-          fieldErrors: null,
-        };
+        return duplicateResponse(raced);
       }
     }
     throw err;

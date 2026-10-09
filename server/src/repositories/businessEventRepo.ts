@@ -4,7 +4,7 @@
 import { cut, type Queryable } from './complaintSourceLogRepo';
 
 /** 与 types/api.ts 的 CallbackAcceptedResult.processedResult 对齐 */
-export type ProcessedResult = 'applied' | 'ignored' | 'rejected' | 'duplicate';
+export type ProcessedResult = 'applied' | 'ignored' | 'rejected' | 'duplicate' | 'pending';
 
 export interface InsertBusinessEventInput {
   eventId: string;
@@ -38,6 +38,7 @@ export interface InsertBusinessEventInput {
 }
 
 export interface ExistingBusinessEvent {
+  payload: unknown;
   eventId: string;
   eventType: string;
   processedResult: string;
@@ -55,7 +56,7 @@ export async function findEventById(
   const [rows] = await db.query(
     'select event_id as eventId, event_type as eventType, processed_result as processedResult,' +
       ' processed_message as processedMessage, ack_body as ackBody,' +
-      ' source_business_id as sourceBusinessId, task_id as taskId' +
+      ' source_business_id as sourceBusinessId, task_id as taskId, payload' +
       ' from business_event where event_id = ? limit 1',
     [eventId]
   );

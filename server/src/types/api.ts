@@ -539,16 +539,16 @@ export interface DispatchRequestLogItem {
 /* ==================== G4 入站：结果事件回传 ==================== */
 
 export type BusinessEventType =
-  | 'task_submitted' | 'task_approved' | 'task_rejected' | 'task_returned';
+  | 'task_submitted' | 'task_approved' | 'task_rejected' | 'task_returned' | 'task_accepted' | 'task_progress';
 
-export type ApprovalConclusion = 'agreed' | 'disagreed' | 'returned';
+export type ApprovalConclusion = 'agreed' | 'disagreed' | 'returned' | 'pending';
 
 export interface CallbackAcceptedResult {
   eventId: string;
   accepted: boolean;
   /** 同一 eventId 重复投递时为 true，且必须返回同一个 ACK */
   duplicate: boolean;
-  processedResult: 'applied' | 'ignored' | 'rejected' | 'duplicate';
+  processedResult: 'applied' | 'ignored' | 'rejected' | 'duplicate' | 'pending';
   eventType: BusinessEventType | null;
   message: string | null;
 }

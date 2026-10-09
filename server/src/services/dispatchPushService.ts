@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { TERMINAL_SUPERVISION_STATUSES } from '../domain/enums';
 // G3 出站：把敏感交办推送为 public-utility 的填报任务。
 //
 // 幂等与重试语义（摘自落地计划 §3.1，逐条落实）：
@@ -12,6 +14,9 @@ import { AppError } from '../http/errors';
 import type { DispatchRequestLogItem, PushDispatchResult, PushResultKind } from '../types/api';
 import { env } from '../config/env';
 import { pool } from '../db/pool';
+import { withTransaction } from '../db/tx';
+import { reconcilePendingEvents } from './callbackService';
+import { lowercaseHexSha256 } from '../clients/publicUtilityClient';
 import { cut } from '../repositories/complaintSourceLogRepo';
 import {
   assertPuCredentials,
@@ -31,7 +36,7 @@ import {
   type PushPreparation,
 } from './dispatchService';
 
-/** 对方 IntegrationSignatureFilter.TASK_FIELDS —— 顶层只接受这 15 个字段，多一个即 422 */
+/** 对方 IntegrationSignatureFilter.TASK_FIELDS —— 顶层只接受这 16 个字段，多一个即 422 */
 export const PU_TASK_FIELDS = [
   'sourceAppCode',
   'sourceBusinessId',
@@ -48,14 +53,8 @@ export const PU_TASK_FIELDS = [
   'approvalDefinitionVersion',
   'callbackPolicy',
   'metadata',
+  'organizationCode',
 ] as const;
-
-const SCENE_SENSITIVE_DISPATCH = 'GQXQ_SENSITIVE_DISPATCH';
-const TEMPLATE_CODE = 'GQXQ_SENSITIVE_DISPATCH';
-const TEMPLATE_VERSION = 1;
-const APPROVAL_DEFINITION_CODE = 'GQXQ_SUPERVISION_APPROVAL';
-const APPROVAL_DEFINITION_VERSION = 1;
-const CALLBACK_SUBSCRIPTION_CODE = 'GQXQ_TASK_RESULT';
 
 /**
  * 单次调用的最大尝试次数。
@@ -74,18 +73,17 @@ export function toOffsetIso(date: Date): string {
 }
 
 /**
- * 构造 15 字段载荷。
- * 刻意**不发送 organizationCode**：它在对方 DTO（IntegrationTaskRequest）里存在，
- * 但不在验签过滤器的白名单里，发出去会被 422。这是对方的 DTO 与白名单漂移，gqxq 侧规避。
+ * 构造与本站白名单同步的载荷，organizationCode 显式来自场景配置。
+ * metadata 固定契约、交办关联、配置版本和只读来源证据。
  */
 export function buildTaskPayload(prep: PushPreparation): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     sourceAppCode: env.pu.appCode,
     sourceBusinessId: prep.complaintId,
     requestId: prep.requestId,
-    sceneCode: SCENE_SENSITIVE_DISPATCH,
-    templateCode: TEMPLATE_CODE,
-    templateVersion: TEMPLATE_VERSION,
+    sceneCode: env.pu.sceneCode,
+    templateCode: env.pu.templateCode,
+    templateVersion: env.pu.templateVersion,
     title: cut(prep.complaintTitle, 200),
     deadline: toOffsetIso(prep.deadline),
     focusFlag: true,
@@ -100,10 +98,16 @@ export function buildTaskPayload(prep: PushPreparation): Record<string, unknown>
       sourceEventNo: prep.sourceEventNo ?? undefined,
       dispatchRequirement: prep.requirement ?? '',
     },
-    approvalDefinitionCode: APPROVAL_DEFINITION_CODE,
-    approvalDefinitionVersion: APPROVAL_DEFINITION_VERSION,
-    callbackPolicy: { subscriptionCode: CALLBACK_SUBSCRIPTION_CODE, deliveryRequired: true },
+    organizationCode: env.pu.organizationCode || undefined,
+    approvalDefinitionCode: env.pu.approvalCode,
+    approvalDefinitionVersion: env.pu.approvalVersion,
+    callbackPolicy: { subscriptionCode: env.pu.callbackSubscription, deliveryRequired: true },
     metadata: {
+      contractVersion: 2,
+      configurationVersion: env.pu.configurationVersion,
+      assignmentId: prep.assignmentId,
+      sourceContext: prep.sourceContext ?? {},
+      sourceAttachments: prep.sourceAttachments ?? [],
       reason: prep.reason ?? undefined,
       dispatchType: prep.dispatchType ?? undefined,
       triggerType: prep.triggerType ?? undefined,
@@ -119,6 +123,14 @@ export function buildTaskPayload(prep: PushPreparation): Record<string, unknown>
     throw AppError.internal('构造出的任务载荷含对方白名单外字段：' + unexpected.join(', '));
   }
   return payload;
+}
+
+/** Original bytes remain authoritative even after the complaint or configuration changes. */
+export function restoreSnapshot(bodyText:string, expectedSha256?:string): import('../clients/publicUtilityClient').SerializedBody {
+ const bodyBytes=Buffer.from(bodyText,'utf8');
+ const bodySha256=lowercaseHexSha256(bodyBytes);
+ if (expectedSha256 && bodySha256!==expectedSha256) throw AppError.internal('immutable push snapshot digest mismatch');
+ return {bodyText,bodyBytes,bodySha256};
 }
 
 export interface ClassifiedOutcome {
@@ -173,10 +185,10 @@ export function classifyOutcome(outcome: PuTransportOutcome): ClassifiedOutcome 
         : null;
     const taskId =
       task !== null && task.id !== null && task.id !== undefined ? String(task.id) : null;
-    if (created && taskId !== null) {
+    if (taskId !== null && taskId.trim() !== '') {
       return {
         result: 'success', httpStatus: status, errorCode: null, message: null,
-        taskId, created: true, retryable: false,
+        taskId, created, retryable: false,
       };
     }
     // 200 却没给出可用 task.id：对方接受了任务但拿不到任务号。
@@ -236,7 +248,7 @@ export function classifyOutcome(outcome: PuTransportOutcome): ClassifiedOutcome 
  * 推送（push 与 repush 共用这一条代码路径）。
  *
  * 为什么 repush 不需要单独实现：重推的规定语义就是"同 requestId、同 body、新 nonce、新时间戳"，
- * 而这正是本函数每次调用都在做的事——body 由交办单当前内容重新构造，requestId 取自 dispatch_order.request_id
+ * 而这正是本函数每次调用都在做的事——body 从首次持久化快照读取，requestId 取自 dispatch_order.request_id
  * 且永不改变。所以让两个端点走同一实现，反而更能保证语义一致。
  *
  * 返回约定：前置校验失败（交办不存在 / 已终态 / 缺责任企业或截止时间）抛 AppError；
@@ -248,11 +260,34 @@ export async function pushDispatch(
   ctx: OperatorContext
 ): Promise<PushDispatchResult> {
   assertPuCredentials();
-  const prep = await preparePush(assignmentId);
-  const payload = buildTaskPayload(prep);
-  // 唯一一次序列化；下面所有尝试复用这一份字节
-  const serialized = serializeOnce(payload);
-  const endpoint = integrationTaskPath(env.pu.appCode);
+  const {serialized,prep}=await withTransaction(async tx => {
+    const [orders]=await tx.query('select assignment_id,complaint_id,request_id,status from dispatch_order where assignment_id=? for update',[assignmentId]) as [Array<{assignment_id:string;complaint_id:string;request_id:string;status:string}>,unknown];
+    const order=orders[0];
+    if(!order)throw AppError.notFound('交办单不存在');
+    if((TERMINAL_SUPERVISION_STATUSES as readonly string[]).includes(order.status))throw new AppError('INVALID_STATE_TRANSITION','终态交办不允许推送');
+    const identity={complaintId:String(order.complaint_id),requestId:String(order.request_id)};
+    const [stored] = await tx.query('select body,sha256 from dispatch_push_snapshot where assignment_id=?',[assignmentId]) as [Array<{body:string;sha256:string}>,unknown];
+    const [legacy] = await tx.query('select request_body as body from dispatch_request_log where assignment_id=? and request_body is not null order by attempt,id limit 1',[assignmentId]) as [Array<{body:string}>,unknown];
+    let body;
+    if(stored.length>0)body=restoreSnapshot(stored[0].body,stored[0].sha256);
+    else if(legacy[0])body=restoreSnapshot(legacy[0].body);
+    else {
+      // Only a genuinely new request depends on current local fields and remote readiness.
+      body=serializeOnce(buildTaskPayload(await preparePush(assignmentId,tx)));
+    }
+    const payload=JSON.parse(body.bodyText) as Record<string,unknown>;
+    const metadata=payload.metadata as Record<string,unknown>|undefined;
+    if(payload.requestId!==identity.requestId || payload.sourceAppCode!==env.pu.appCode || payload.sourceBusinessId!==identity.complaintId || (metadata?.contractVersion===2 && metadata.assignmentId!==assignmentId))throw AppError.internal('immutable push snapshot identity mismatch');
+    if(stored.length===0 && legacy.length===0 && metadata?.contractVersion===2){
+      const readiness=await preflightPayload(payload);
+      if(!readiness.ready)throw AppError.validation('本站填报配置或账号授权未就绪',readiness.issues.map(issue=>({field:issue.subjectCode ?? issue.code,message:issue.message})));
+    }
+    // Persist only after successful readiness. Any existing durable bytes can therefore recover
+    // an unknown create, including a process crash before the first request log was committed.
+    if(stored.length===0)await tx.execute('insert into dispatch_push_snapshot(assignment_id,request_id,body,sha256,created_at) values(?,?,?,?,?)',[assignmentId,identity.requestId,body.bodyText,body.bodySha256,new Date()]);
+    return {serialized:body,prep:identity};
+  });
+  const endpoint = new URL(env.pu.baseUrl).pathname.replace(/\/+$/,'')+integrationTaskPath(env.pu.appCode);
 
   let finalOutcome: ClassifiedOutcome | null = null;
   let lastAttempt = 0;
@@ -292,6 +327,7 @@ export async function pushDispatch(
 
   if (finalOutcome.result === 'success' && finalOutcome.taskId !== null) {
     await markDispatchPushed(assignmentId, finalOutcome.taskId, ctx);
+    await reconcilePendingEvents(finalOutcome.taskId).catch(()=>undefined);
     return {
       assignmentId,
       requestId: prep.requestId,
@@ -334,6 +370,17 @@ export async function pushDispatch(
     retryable: finalOutcome.retryable,
   };
 }
+
+export interface PreflightResult {ready:boolean;issues:Array<{code:string;subjectCode:string|null;message:string}>}
+async function preflightPayload(payload:Record<string,unknown>):Promise<PreflightResult> {
+ const probe={...payload,requestId:'preflight:'+randomUUID()};
+ const outcome=await postIntegrationTask(buildAttempt(serializeOnce(probe),{endpointPath:integrationTaskPath(env.pu.appCode)+'/preflight'}));
+ if(outcome.kind!=='response'||outcome.httpStatus!==200) throw AppError.internal('preflight transport failed; task was not sent');
+ const result=JSON.parse(outcome.bodyText) as PreflightResult;
+ if(typeof result.ready!=='boolean'||!Array.isArray(result.issues))throw AppError.internal('invalid preflight response');
+ return result;
+}
+export async function preflightDispatch(assignmentId:string):Promise<PreflightResult>{assertPuCredentials();return preflightPayload(buildTaskPayload(await preparePush(assignmentId)));}
 
 /** 推送尝试日志（按 attempt 升序），交办不存在时 404 */
 export async function listPushLogs(

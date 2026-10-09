@@ -34,6 +34,7 @@ export const env = {
    * 否则容器内回环不通、发布端口连不上（这是配置事实，不是代码兜底）。
    */
   host: opt('GQXQ_HOST', '127.0.0.1'),
+  publicBaseUrl: opt('GQXQ_PUBLIC_BASE_URL',''),
   /**
    * M3（防护方案 §4.1）：套网关**必须**同时声明哪些对端可信，否则 req.ip 与
    * complaint_source_log.remote_ip 一律退化成网关 IP —— 白名单与事后追溯同时失效。
@@ -55,6 +56,16 @@ export const env = {
   bootstrapAdminPassword: optRaw('GQXQ_BOOTSTRAP_ADMIN_PASSWORD'),
   /** G3 出站：向 public-utility 创建填报任务时的凭证与地址 */
   pu: {
+    reconciliationEnabled: opt('GQXQ_PU_RECONCILIATION_ENABLED','false')==='true',
+    reconciliationIntervalMs: Number(opt('GQXQ_PU_RECONCILIATION_INTERVAL_MS','60000')),
+    sceneCode: opt('GQXQ_PU_SCENE_CODE','GQXQ_SENSITIVE_DISPATCH'),
+    templateCode: opt('GQXQ_PU_TEMPLATE_CODE','GQXQ_SENSITIVE_DISPATCH'),
+    templateVersion: Number(opt('GQXQ_PU_TEMPLATE_VERSION','1')),
+    approvalCode: opt('GQXQ_PU_APPROVAL_CODE','GQXQ_SUPERVISION_APPROVAL'),
+    approvalVersion: Number(opt('GQXQ_PU_APPROVAL_VERSION','1')),
+    callbackSubscription: opt('GQXQ_PU_CALLBACK_SUBSCRIPTION','GQXQ_TASK_RESULT'),
+    organizationCode: opt('GQXQ_PU_ORGANIZATION_CODE',''),
+    configurationVersion: opt('GQXQ_PU_CONFIGURATION_VERSION','1'),
     baseUrl: opt('GQXQ_PU_BASE_URL', 'http://localhost:8080'),
     appCode: opt('GQXQ_PU_APP_CODE', 'gqxq'),
     keyId: optRaw('GQXQ_PU_KEY_ID'),

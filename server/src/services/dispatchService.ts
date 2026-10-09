@@ -1,3 +1,4 @@
+import {env} from '../config/env';
 // G2 敏感交办服务：列表 / 详情 / 创建（幂等）/ 受控撤销。
 //
 // 唯一性口径（务必保持）：一个诉求同一轮只能有一条**进行中**交办。
@@ -17,6 +18,7 @@ import type {
 } from '../types/api';
 import { labelOf, TERMINAL_SUPERVISION_STATUSES } from '../domain/enums';
 import { pool } from '../db/pool';
+import type { Tx } from '../db/tx';
 import { withTransaction } from '../db/tx';
 import { allocateBizNo, shanghaiDate } from '../db/sequence';
 import { insertAudit } from '../repositories/auditLogRepo';
@@ -452,6 +454,8 @@ export async function cancelDispatch(
 
 /** 一次推送所需的全部素材；由 preparePush 在发起 HTTP **之前**就把校验做完 */
 export interface PushPreparation {
+  sourceContext?: Record<string,unknown>;
+  sourceAttachments?: Array<Record<string,unknown>>;
   assignmentId: string;
   requestId: string;
   complaintId: string;
@@ -479,8 +483,8 @@ function textOf(value: unknown): string {
  * 这里刻意把"能不能推"的判断放在 HTTP 之前：对方要求 deadline 必填、enterpriseSubjects 至少 1 项，
  * 本地缺这些字段时应当直接给出可修的 400，而不是发出去换一个语义模糊的 422。
  */
-export async function preparePush(assignmentId: string): Promise<PushPreparation> {
-  const row = await findOrderByAssignmentId(pool, assignmentId);
+export async function preparePush(assignmentId: string, db: Tx | typeof pool = pool): Promise<PushPreparation> {
+  const row = await findOrderByAssignmentId(db, assignmentId);
   if (!row) throw AppError.notFound('交办单不存在');
 
   const status = String(row.status);
@@ -509,7 +513,18 @@ export async function preparePush(assignmentId: string): Promise<PushPreparation
     throw AppError.validation('交办单信息不完整，无法创建填报任务', fieldErrors);
   }
 
+  const [sourceRows] = await db.query('select title,content,source_system,source_id,source_payload from complaint where complaint_id=?',[String(row.complaint_id)]) as [Array<Record<string,unknown>>,unknown];
+  const source=sourceRows[0] ?? {};
+  let raw:Record<string,unknown>={};try{raw=typeof source.source_payload==='string'?JSON.parse(source.source_payload):source.source_payload as Record<string,unknown> ?? {};}catch{}
+  const candidates=Array.isArray(raw.attachments)?raw.attachments:Array.isArray(raw.files)?raw.files:[];
+  const sourceAttachments=candidates.slice(0,100).map((entry:unknown,index:number)=>{
+    const a=entry && typeof entry==='object'?entry as Record<string,unknown>:{};
+    return {sourceAttachmentId:String(a.attachmentId ?? a.id ?? index),fileName:String(a.fileName ?? a.name ?? '来源附件线索').slice(0,255),availability:'PENDING_SOURCE_FETCH',reason:'原诉求附件尚无授权字节仓；需来源系统授权取件',sourceSystem:String(source.source_system ?? ''),sourceBusinessId:String(source.source_id ?? '')}; // gate-g1-allow: versioned source evidence wire availability
+
+  });
   return {
+    sourceContext:{sourceUrl:env.publicBaseUrl ? env.publicBaseUrl.replace(/\/+$/,'')+'/dispatch?assignmentId='+encodeURIComponent(assignmentId) : null,title:String(source.title ?? '').slice(0,200),content:String(source.content ?? '').slice(0,20000),sourceSystem:String(source.source_system ?? ''),sourceBusinessId:String(source.source_id ?? ''),complaintId:String(row.complaint_id),assignmentId,readOnly:true},
+    sourceAttachments,
     assignmentId,
     requestId: String(row.request_id),
     complaintId: String(row.complaint_id),
@@ -546,18 +561,14 @@ export async function markDispatchPushed(
   await withTransaction(async (tx) => {
     const currentStatus = await lockOrderStatus(tx, assignmentId);
     if (currentStatus === null) throw AppError.notFound('交办单不存在');
-    if (isTerminal(currentStatus)) {
-      throw new AppError(
-        'INVALID_STATE_TRANSITION',
-        '交办单当前状态为「' + labelOf('supervision_status', currentStatus) + '」，已是终态，不允许推送'
-      );
-    }
+    const existingOrder = await findOrderByAssignmentId(tx, assignmentId);
+    if (existingOrder?.reporting_task_id && String(existingOrder.reporting_task_id) !== taskId) throw AppError.internal('reporting task association mismatch');
 
     await updatePushSuccess(tx, assignmentId, taskId, pushedAt);
 
     const order = await findOrderByAssignmentId(tx, assignmentId);
     const complaintId = order === null ? null : String(order.complaint_id);
-    if (complaintId !== null) {
+    if (complaintId !== null && currentStatus === 'pending') {
       await updateComplaintReportingStatus(tx, complaintId, 'pushed', pushedAt);
     }
 
@@ -591,6 +602,7 @@ export async function recordPushFailure(
   ctx: OperatorContext
 ): Promise<void> {
   const at = new Date();
+  await pool.execute("update dispatch_order set sync_status='failed',updated_at=? where assignment_id=?",[at,assignmentId]);
   await insertAudit(pool, {
     userId: ctx.userId,
     appCode: GQXQ_APP_CODE,

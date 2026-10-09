@@ -1,3 +1,4 @@
+import ReportingResultPanel from '../components/ReportingResultPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -1262,6 +1263,7 @@ const DispatchOrders: React.FC = () => {
 
         {!detailLoading && !detailError && detail && (
           <>
+            <ReportingResultPanel assignmentId={detail.assignmentId}/>
             <Descriptions bordered size="small" column={2}>
             <Descriptions.Item label="交办单号">{detail.orderNo}</Descriptions.Item>
             <Descriptions.Item label="状态">

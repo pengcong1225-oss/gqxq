@@ -96,6 +96,10 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   { method: 'POST', path: new RegExp('^/dispatch/orders/' + param + '/repush$'), roles: W, desc: 'W12 重推交办' },
   { method: 'POST', path: new RegExp('^/dispatch/orders/' + param + '/archive$'), roles: W, desc: 'W13 交办归档' },
 
+  {method:'POST',path:new RegExp('^/dispatch/orders/'+param+'/preflight$'),roles:W,desc:'integration readiness'},
+  {method:'GET',path:new RegExp('^/dispatch/orders/'+param+'/reporting-result$'),roles:R,desc:'authorized reporting result'},
+  {method:'GET',path:new RegExp('^/dispatch/orders/'+param+'/reporting-attachments/'+param+'$'),roles:R,desc:'authorized reporting attachment'},
+  {method:'POST',path:new RegExp('^/dispatch/orders/'+param+'/reconcile$'),roles:W,desc:'integration reconciliation'},
   // ---------- U / X：admin 独占 ----------
   { method: 'GET', path: new RegExp('^/users$'), roles: A, desc: 'U1 用户列表（原 501 桩已摘除）' },
   { method: 'POST', path: new RegExp('^/users$'), roles: A, desc: 'U2 建号（bcrypt 入库，口令不回显）' },

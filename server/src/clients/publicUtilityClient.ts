@@ -102,11 +102,12 @@ export interface SignedAttempt {
  */
 export function buildAttempt(
   serialized: SerializedBody,
-  options: { nowMs?: number; nonce?: string } = {}
+  options: { nowMs?: number; nonce?: string; endpointPath?: string } = {}
 ): SignedAttempt {
   const timestamp = String(Math.floor((options.nowMs ?? Date.now()) / 1000));
   const nonce = options.nonce ?? randomUUID();
-  const path = integrationTaskPath(env.pu.appCode);
+  const base=new URL(env.pu.baseUrl || 'http://localhost');
+  const path = base.pathname.replace(/\/+$/, '') + (options.endpointPath ?? integrationTaskPath(env.pu.appCode));
   const signature = signIntegrationRequest({
     secret: env.pu.secret,
     method: 'POST',
@@ -128,6 +129,10 @@ export function assertPuCredentials(): void {
   if (env.pu.keyId === '') missingKeys.push('GQXQ_PU_KEY_ID');
   if (env.pu.secret === '') missingKeys.push('GQXQ_PU_SECRET');
   if (env.pu.baseUrl === '') missingKeys.push('GQXQ_PU_BASE_URL');
+  if (env.pu.baseUrl !== '') {
+    let target:URL;try{target=new URL(env.pu.baseUrl);}catch{throw AppError.internal('invalid integration base URL');}
+    if (!['http:','https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash) throw AppError.internal('integration URL must have a safe HTTP origin and context path');
+  }
   if (missingKeys.length > 0) {
     throw AppError.internal(
       '未配置集成凭证 ' + missingKeys.join(' / ') + '，拒绝以空凭证发起调用（对方必然 401）'
@@ -140,8 +145,9 @@ export type PuTransportOutcome =
   | { kind: 'timeout'; message: string }
   | { kind: 'network_error'; message: string };
 
-export async function postIntegrationTask(attempt: SignedAttempt): Promise<PuTransportOutcome> {
-  const url = env.pu.baseUrl.replace(/\/+$/, '') + attempt.path;
+export async function postIntegrationTask(attempt: SignedAttempt, maxResponseBytes=MAX_PAYLOAD_BYTES): Promise<PuTransportOutcome> {
+  if(!Number.isInteger(maxResponseBytes)||maxResponseBytes<1||maxResponseBytes>2*1024*1024)throw new Error('invalid integration response bound');
+  const url = new URL(env.pu.baseUrl).origin + attempt.path;
   const controller = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -151,6 +157,7 @@ export async function postIntegrationTask(attempt: SignedAttempt): Promise<PuTra
   try {
     const res = await fetch(url, {
       method: 'POST',
+      redirect: 'error',
       headers: {
         'Content-Type': 'application/json',
         [PU_HEADERS.keyId]: env.pu.keyId,
@@ -162,7 +169,9 @@ export async function postIntegrationTask(attempt: SignedAttempt): Promise<PuTra
       body: attempt.bodyBytes,
       signal: controller.signal,
     });
-    const bodyText = await res.text();
+    const reader=res.body?.getReader();const chunks:Uint8Array[]=[];let received=0;
+    if(reader){try{while(true){const part=await reader.read();if(part.done)break;received+=part.value.byteLength;if(received>maxResponseBytes)throw new Error('integration response too large');chunks.push(part.value);}}finally{await reader.cancel();}}
+    const bodyText=Buffer.concat(chunks).toString('utf8');
     return { kind: 'response', httpStatus: res.status, bodyText };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
