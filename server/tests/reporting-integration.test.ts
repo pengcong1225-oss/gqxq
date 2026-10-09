@@ -29,7 +29,7 @@ test('durable callback inbox replays missing association and reversed order, rej
  const {handleCallback,reconcilePendingEvents}=await import('../src/services/callbackService');
  const {signCallback}=await import('../src/clients/callbackSignature');const {pool}=await import('../src/db/pool');const {env}=await import('../src/config/env');
  Object.assign(env.callback,{keyId:'test-key',keyVersion:'v1',secret:'local-test-callback-secret',ackMode:'BODY',ackValue:'ACCEPTED\n'});
- const entries=new Map<string,any>();let replayCursor=0;let associated=false;let supervisionStatus='pending';
+ const entries=new Map<string,any>();const audits:any[][]=[];let replayCursor=0;let associated=false;let supervisionStatus='pending';
  const ref:any={assignmentId:'A1',complaintId:'C1',status:'pending',requestId:'R1',subjectCode:'E1',taskId:null,lastEventSequence:0,reportingItemId:null};
  const query=async(sql:string,p:any[]=[])=>{
   if(sql.includes('from complaint '))return [[{complaint_id:'C1',enterprise_code:'E1',deleted:0}],[]];
@@ -41,6 +41,7 @@ test('durable callback inbox replays missing association and reversed order, rej
   throw new Error('unexpected query '+sql);
  };
  const execute=async(sql:string,p:any[]=[])=>{
+  if(sql.startsWith('insert into operation_audit_log'))audits.push(p);
   if(sql.startsWith('insert into business_event')){entries.set(p[0],{id:entries.size+1,eventId:p[0],eventType:p[1],sourceBusinessId:p[3],taskId:p[4],payload:JSON.parse(p[13]),processedResult:p[16],processedMessage:p[17],ackBody:p[18]});}
   else if(sql.includes('integration_replay_cursor')){if(sql.startsWith('update'))replayCursor=Number(p[0]);}
   else if(sql.startsWith('update business_event')){const e=entries.get(p[2]);e.processedResult=p[0];e.processedMessage=p[1];}
@@ -60,9 +61,10 @@ test('durable callback inbox replays missing association and reversed order, rej
   associated=true;await reconcilePendingEvents();assert.equal(ref.status,'pending');
   const accepted={...base,eventId:'accepted',eventType:'TASK_ACCEPTED',approvalConclusion:'PENDING',eventSequence:1};
   await send(accepted);assert.equal(ref.status,'processing');assert.equal(ref.lastEventSequence,2);assert.equal(entries.get('submitted').processedResult,'applied');
-  const queuedProgress={...base,eventId:'progress',eventType:'TASK_PROGRESS',approvalConclusion:'PENDING',submissionVersion:1,eventSequence:3};entries.set('progress',{id:entries.size+1,eventId:'progress',taskId:'T1',payload:queuedProgress,processedResult:'pending',ackBody:'ACCEPTED\n'});
+  const queuedProgress={...base,eventId:'progress',eventType:'TASK_PROGRESS',approvalConclusion:'PENDING',submissionVersion:1,eventSequence:3};entries.set('progress',{id:entries.size+1,eventId:'progress',eventType:'task_progress',sourceBusinessId:'C1',taskId:'T1',payload:queuedProgress,processedResult:'pending',ackBody:'ACCEPTED\n'});
   await reconcilePendingEvents();assert.equal(ref.lastEventSequence,3);assert.equal(replayCursor,503);
   await send({...base,eventId:'progress',eventType:'TASK_PROGRESS',approvalConclusion:'PENDING',submissionVersion:1,eventSequence:3});assert.equal(ref.status,'processing');assert.equal(supervisionStatus,'processing');
+  assert.ok(audits.some(p=>p[4]==='CALLBACK_DUPLICATE'&&p[6]==='C1'&&JSON.parse(p[9]).eventId==='progress'),'queued event duplicate must persist source identity in audit');
   await send({...base,eventId:'returned',eventType:'TASK_RETURNED',approvalConclusion:'RETURNED',submissionVersion:1,eventSequence:4});assert.equal(ref.status,'returned');
   await send({...base,eventId:'rejected',eventType:'TASK_REJECTED',approvalConclusion:'DISAGREED',submissionVersion:1,eventSequence:5});assert.equal(ref.status,'rejected');
   const duplicate=await send(submit);assert.equal(duplicate.ackBody,'ACCEPTED\n');assert.equal(entries.size,505);

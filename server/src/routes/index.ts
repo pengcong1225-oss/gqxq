@@ -17,6 +17,7 @@ import { sourceRouter } from './source';
 import { complaintActionsRouter } from './complaintActions';
 import { enterprisesRouter } from './enterprises';
 import { rolesRouter } from './roles';
+import { auditLogsRouter } from './auditLogs';
 import { usersRouter } from './users';
 import { addressCandidatesRouter } from './addressCandidates';
 import { requireAuth } from '../middleware/requireAuth';
@@ -63,6 +64,7 @@ export function buildRouter(): Router {
   root.use(sourceRouter);
   root.use(usersRouter);
   root.use(rolesRouter);
+  root.use(auditLogsRouter);
   root.use(legacyRouter);
 
   return root;

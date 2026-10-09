@@ -868,3 +868,13 @@ export type ScopeRule = {kind:'all'} | {kind:'restricted';enterpriseCodes:string
 export interface UserScope {scopeVersion:number;rules:ScopeRule[]}
 
 export interface ComplaintSourceDocument {complaintId:string;sourcePayload:Record<string,unknown>|null;sourceFields:Record<string,unknown>|null;sourcePayloadHash:string|null}
+
+export interface AuditLogFilter {
+ category?:'login'|'operation';from?:string;to?:string;actor?:string;module?:string;action?:string;
+ result?:'success'|'failed'|'rejected'|'duplicate'|'unknown';businessNo?:string;
+}
+export interface AuditLogView {
+ auditId:string;userId:string|null;category:'login'|'operation';appCode:string|null;module:string;action:string;
+ bizType:string|null;bizId:string|null;businessNo:string|null;result:'success'|'failed'|'rejected'|'duplicate'|'unknown';originalResult:string;
+ clientIp:string|null;createdAt:string|null;detail:Record<string,unknown>;
+}

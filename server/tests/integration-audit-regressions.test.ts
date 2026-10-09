@@ -10,13 +10,14 @@ test('concurrent duplicate of rejected event stays rejected in both insert branc
  Object.assign(env.callback,{keyId:'test',keyVersion:'v1',secret:'local-test-secret',ackMode:'BODY',ackValue:'OK'});
  try{for(const valid of [false,true]){
   const payload:any=valid?{eventId:'valid-race',eventType:'TASK_ACCEPTED',sourceAppCode:'gqxq',sourceBusinessId:'C',taskId:'T',sceneCode:'GQXQ_SENSITIVE_DISPATCH',enterpriseSubject:{subjectCode:'E',subjectName:'Enterprise'},enterpriseDisposalResult:{},approvalConclusion:'PENDING',templateVersion:1,attachments:[],occurredAt:new Date().toISOString()}:{eventId:'bad-race',eventType:'BAD'};
-  let reads=0;
-  const query=async()=>[reads++===0?[]:[{eventId:payload.eventId,eventType:'task_accepted',processedResult:'rejected',processedMessage:'invalid relation',ackBody:'OK',payload}],[]];
-  const execute=async(sql:string)=>{if(sql.startsWith('insert into business_event'))throw Object.assign(new Error('raced'),{code:'ER_DUP_ENTRY'});return [{affectedRows:1},[]];};
+  let reads=0;const audits:any[][]=[];
+  const query=async()=>[reads++===0?[]:[{eventId:payload.eventId,eventType:'task_accepted',sourceBusinessId:'C',taskId:'T',processedResult:'rejected',processedMessage:'invalid relation',ackBody:'OK',payload}],[]];
+  const execute=async(sql:string,p:any[]=[])=>{if(sql.startsWith('insert into business_event'))throw Object.assign(new Error('raced'),{code:'ER_DUP_ENTRY'});if(sql.startsWith('insert into operation_audit_log'))audits.push(p);return [{affectedRows:1},[]];};
   Object.assign(pool,{query,execute,getConnection:async()=>({query,execute,beginTransaction:async()=>{},commit:async()=>{},rollback:async()=>{},release:()=>{}})});
   const rawBody=Buffer.from(JSON.stringify(payload));const timestamp=String(Math.floor(Date.now()/1000));
   const result=await handleCallback({rawBody,keyId:'test',keyVersion:'v1',timestamp,headerEventId:payload.eventId,signature:signCallback(env.callback.secret,Number(timestamp),rawBody),remoteIp:null});
   assert.equal(result.status,400,'branch valid='+valid);assert.notEqual(result.result?.accepted,true);
+  assert.equal(audits.length,1,'concurrent duplicate must persist its audit');assert.equal(audits[0][4],'CALLBACK_DUPLICATE');assert.equal(audits[0][6],'C');assert.equal(audits[0][7],'rejected','rejected event remains rejected in its duplicate audit');
  }}finally{Object.assign(pool,original);}
 });
 test('unknown create recovers original bytes without rerunning current readiness; fresh snapshot still preflights',async()=>{

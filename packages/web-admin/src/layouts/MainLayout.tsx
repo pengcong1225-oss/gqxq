@@ -43,6 +43,7 @@ const menuEntries: MenuEntry[] = [
 ];
 
 menuEntries.push({key:'/system/roles',icon:<SettingOutlined/>,label:'角色权限',permission:'system.roles.manage'});
+menuEntries.push({key:'/system/audit-logs',icon:<AuditOutlined/>,label:'登录与操作日志',permission:'system.audit.read'});
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);

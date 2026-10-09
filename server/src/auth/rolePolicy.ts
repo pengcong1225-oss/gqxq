@@ -47,6 +47,8 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
+  {method:'GET',path:/^\/audit-logs$/,roles:A,permissionCode:'system.audit.read',desc:'A6 登录与操作日志列表'},
+  {method:'GET',path:/^\/audit-logs\/[^/]+$/,roles:A,permissionCode:'system.audit.read',desc:'A6 安全审计详情与当前对象范围'},
   {method:'GET',path:/^\/users\/[^/]+\/scopes$/,roles:A,permissionCode:'system.users.manage',desc:'U4 读取用户数据范围'},
   {method:'PUT',path:/^\/users\/[^/]+\/scopes$/,roles:A,permissionCode:'system.users.manage',desc:'U5 配置用户数据范围'},
   {method:'GET',path:/^\/complaints\/[^/]+\/source-document$/,roles:A,permissionCode:'source_document.read',desc:'R24 来源原件（显式能力与对象范围）'},
