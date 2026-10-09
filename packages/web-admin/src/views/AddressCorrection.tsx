@@ -38,9 +38,9 @@ import {
 } from '../api/corrections';
 import { listPendingCorrectionComplaints } from '../api/corrections';
 import type { DispatchedFilter, PendingComplaintSummary } from '../api/corrections';
-import { listEnterprises } from '../api/enterprises';
+import { listEnterpriseOptions } from '../api/enterprises';
 import { getComplaint } from '../api/complaints';
-import type { AddressCandidateView, ComplaintDetail, CorrectionItem, EnterpriseListItem } from '../types/api';
+import type { AddressCandidateView, ComplaintDetail, CorrectionItem, EnterpriseOption } from '../types/api';
 import TiandituLocationPicker from '../components/TiandituLocationPicker';
 import LocationClues from '../components/LocationClues';
 import InlineCorrectionField, { type InlineCorrectionDraft } from '../components/InlineCorrectionField';
@@ -235,7 +235,7 @@ const AddressCorrection: React.FC = () => {
 
   // ---- 企业主数据：确认责任单位时的下拉（值=enterprise_code） ----
   // 不做本地兜底清单：手抄的编码与登记值不一致时，后端会直接拒绝写入，页面不该假装能填。
-  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseOption[]>([]);
   const [enterpriseLoading, setEnterpriseLoading] = useState(false);
   const [enterpriseError, setEnterpriseError] = useState<string | null>(null);
   const enterpriseSeqRef = useRef(0);
@@ -278,7 +278,7 @@ const AddressCorrection: React.FC = () => {
     const seq = ++enterpriseSeqRef.current;
     setEnterpriseLoading(true);
     try {
-      const res = await listEnterprises({
+      const res = await listEnterpriseOptions({
         keyword: keyword && keyword.trim() !== '' ? keyword.trim() : undefined,
         size: 100,
       });

@@ -42,7 +42,7 @@ import {
 } from '../api/dispatch';
 import { listComplaints } from '../api/complaints';
 import { createDispatch } from '../api/dispatch';
-import { listEnterprises } from '../api/enterprises';
+import { listEnterpriseOptions } from '../api/enterprises';
 import { getDictItems } from '../api/dicts';
 import type { Dayjs } from 'dayjs';
 import { useWriteAccess, WriteGate } from '../stores/roleAccess';
@@ -61,7 +61,7 @@ import type {
   FieldError,
   Paged,
   PushDispatchResult,
-  EnterpriseListItem,
+  EnterpriseOption,
 } from '../types/api';
 
 /**
@@ -269,7 +269,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
   const seqRef = useRef(0);
   const [dispatchTarget, setDispatchTarget] = useState<ComplaintListItem | null>(null);
   const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
-  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseOption[]>([]);
   const [enterpriseLoading, setEnterpriseLoading] = useState(false);
   const [dispatchForm] = Form.useForm<{
     targetEnterpriseCode: string;
@@ -304,7 +304,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
   const fetchEnterpriseOptions = useCallback(async (keyword?: string) => {
     setEnterpriseLoading(true);
     try {
-      const result = await listEnterprises({ keyword: keyword?.trim() || undefined, size: 100 });
+      const result = await listEnterpriseOptions({ keyword: keyword?.trim() || undefined, size: 100 });
       setEnterpriseOptions(result.content);
     } catch (cause) {
       message.error('企业主数据加载失败：' + ((cause as ApiError)?.message ?? '未知错误'));

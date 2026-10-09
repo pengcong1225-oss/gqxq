@@ -1,51 +1,20 @@
-import { Router } from 'express';
-import { AppError } from '../http/errors';
-import { ok } from '../http/respond';
-import { findEnterpriseByCode, findEnterprises } from '../repositories/enterpriseRepo';
-
-// 企业主数据（数据源是既有的 enterprise 表）。
-// 总账的「匹配单位」与「发起交办」必须从真实企业列表里选，
-// 手抄 enterprise_code 一旦与登记值不一致，后续交办就匹配不到同一主体。
-export const enterprisesRouter = Router();
-
-function readStr(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed === '' ? undefined : trimmed;
-}
-
-enterprisesRouter.get('/enterprises', async (req, res, next) => {
-  try {
-    const page = req.query.page === undefined ? 1 : Number(req.query.page);
-    const size = req.query.size === undefined ? 20 : Number(req.query.size);
-    if (!Number.isInteger(page) || page < 1) {
-      throw AppError.validation('page 必须是 >=1 的整数', [{ field: 'page', message: '必须 >= 1' }]);
-    }
-    if (!Number.isInteger(size) || size < 1 || size > 100) {
-      throw AppError.validation('size 必须在 1..100', [{ field: 'size', message: '必须在 1..100' }]);
-    }
-    const keyword = readStr(req.query.keyword);
-    const result = await findEnterprises(
-      {
-        keyword: keyword === undefined ? undefined : keyword.slice(0, 100),
-        businessType: readStr(req.query.businessType),
-        status: readStr(req.query.status),
-      },
-      page,
-      size
-    );
-    ok(res, result);
-  } catch (err) {
-    next(err);
-  }
-});
-
-enterprisesRouter.get('/enterprises/:enterpriseCode', async (req, res, next) => {
-  try {
-    const detail = await findEnterpriseByCode(req.params.enterpriseCode);
-    if (!detail) throw AppError.notFound('企业不存在');
-    ok(res, detail);
-  } catch (err) {
-    next(err);
-  }
-});
+import {Router,type Request} from 'express';
+import {AppError} from '../http/errors';
+import {ok} from '../http/respond';
+import {currentAccessContext} from '../auth/accessScope';
+import {findEnterprises,findEnterpriseOptions} from '../repositories/enterpriseRepo';
+import {enterpriseService} from '../services/enterpriseService';
+import type {MasterDataContext} from '../types/masterData';
+export const enterprisesRouter=Router();
+function context(req:Request):MasterDataContext{return {userId:req.user!.id,userName:req.user!.username,clientIp:req.ip??null,permissionCodes:req.user?.permissionCodes??[],access:req.accessContext??currentAccessContext()};}
+function str(v:unknown):string|undefined{return typeof v==='string'&&v.trim()?v.trim():undefined;}
+enterprisesRouter.get('/enterprise-reference-options',async(req,res,next)=>{try{ok(res,await enterpriseService.referenceOptions());}catch(e){next(e);}});
+enterprisesRouter.get('/enterprise-options',async(req,res,next)=>{try{ok(res,await findEnterpriseOptions(str(req.query.keyword)?.slice(0,100)));}catch(e){next(e);}});
+enterprisesRouter.get('/enterprises',async(req,res,next)=>{try{const page=Number(req.query.page??1),size=Number(req.query.size??20);if(!Number.isInteger(page)||page<1||!Number.isInteger(size)||size<1||size>100||!Number.isSafeInteger((page-1)*size))throw AppError.validation('分页参数无效');ok(res,await findEnterprises({keyword:str(req.query.keyword)?.slice(0,100),businessType:str(req.query.businessType),status:str(req.query.status)},page,size));}catch(e){next(e);}});
+enterprisesRouter.post('/enterprises',async(req,res,next)=>{try{if(req.body.expectedVersion!==undefined&&req.body.expectedVersion!==0)throw AppError.validation('新增版本必须为0');ok(res,await enterpriseService.save({...req.body,expectedVersion:0},context(req)));}catch(e){next(e);}});
+enterprisesRouter.patch('/enterprises/:enterpriseCode',async(req,res,next)=>{try{if(req.body.enterpriseCode&&req.body.enterpriseCode!==req.params.enterpriseCode)throw AppError.validation('企业稳定编码不能修改');ok(res,await enterpriseService.save({...req.body,enterpriseCode:req.params.enterpriseCode},context(req)));}catch(e){next(e);}});
+enterprisesRouter.get('/enterprises/:enterpriseCode',async(req,res,next)=>{try{ok(res,await enterpriseService.detail(req.params.enterpriseCode,context(req)));}catch(e){next(e);}});
+enterprisesRouter.get('/enterprises/:enterpriseCode/households',async(req,res,next)=>{try{ok(res,await enterpriseService.householdHistory(req.params.enterpriseCode,context(req)));}catch(e){next(e);}});
+enterprisesRouter.post('/enterprises/:enterpriseCode/households',async(req,res,next)=>{try{ok(res,await enterpriseService.saveHouseholds({...req.body,enterpriseCode:req.params.enterpriseCode},context(req)));}catch(e){next(e);}});
+enterprisesRouter.get('/enterprises/:enterpriseCode/department-mappings',async(req,res,next)=>{try{ok(res,await enterpriseService.mappings(req.params.enterpriseCode,context(req)));}catch(e){next(e);}});
+enterprisesRouter.post('/enterprises/:enterpriseCode/department-mappings',async(req,res,next)=>{try{ok(res,await enterpriseService.saveMapping({...req.body,enterpriseCode:req.params.enterpriseCode},context(req)));}catch(e){next(e);}});

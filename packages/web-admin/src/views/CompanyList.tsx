@@ -1,146 +1,71 @@
-import React, { useState } from 'react';
-import { Table, Tag, Space, Input, Select, Button, Card, Row, Col, Statistic, Modal, Descriptions, Badge, Form, Tooltip } from 'antd';
-import { SearchOutlined, TeamOutlined, SafetyCertificateOutlined, StarOutlined, PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import DemoDataNotice from '../components/DemoDataNotice';
-
-const qualifications = [
-  { certName: '城市供水经营许可证', certNo: 'GS-2022-001', issueDate: '2022-06-15', expiryDate: '2027-06-14' },
-  { certName: '燃气经营许可证', certNo: 'RQ-2023-008', issueDate: '2023-03-20', expiryDate: '2028-03-19' },
-  { certName: '安全生产许可证', certNo: 'AQ-2021-035', issueDate: '2021-09-01', expiryDate: '2026-08-31' },
-];
-
-const initialCompanies = [
-  { key: 1, name: '宜昌市供水总公司', shortName: '市供水公司', businessType: 'water', uscc: '91420500MA12345678', legalPerson: '张建国', contactPerson: '王经理', contactPhone: '0717-6230001', address: '宜昌市西陵区沿江大道189号', serviceArea: '西陵区、伍家岗区', status: 1, annualScore: 92.5, certCount: 5 },
-  { key: 2, name: '点军区供水有限公司', shortName: '点军供水', businessType: 'water', uscc: '91420500MA12345679', legalPerson: '李明华', contactPerson: '赵主管', contactPhone: '0717-6671000', address: '宜昌市点军区江南大道55号', serviceArea: '点军区', status: 1, annualScore: 88.0, certCount: 3 },
-  { key: 3, name: '夷陵区水务公司', shortName: '夷陵水务', businessType: 'water', uscc: '91420500MA12345680', legalPerson: '陈志远', contactPerson: '孙主任', contactPhone: '0717-7820000', address: '宜昌市夷陵区发展大道120号', serviceArea: '夷陵区', status: 1, annualScore: 85.5, certCount: 4 },
-  { key: 4, name: '宜昌中燃城市燃气有限公司', shortName: '宜昌中燃', businessType: 'gas', uscc: '91420500MA12345681', legalPerson: '刘宏', contactPerson: '周经理', contactPhone: '0717-6350001', address: '宜昌市西陵区城东大道22号', serviceArea: '全市', status: 1, annualScore: 90.0, certCount: 6 },
-  { key: 5, name: '宜昌华润燃气有限公司', shortName: '华润燃气', businessType: 'gas', uscc: '91420500MA12345682', legalPerson: '黄伟', contactPerson: '吴主管', contactPhone: '0717-6360002', address: '宜昌市伍家岗区中南路88号', serviceArea: '西陵区、伍家岗区', status: 1, annualScore: 91.2, certCount: 5 },
-  { key: 6, name: '夷陵区燃气有限公司', shortName: '夷陵燃气', businessType: 'gas', uscc: '91420500MA12345683', legalPerson: '郑国强', contactPerson: '钱主任', contactPhone: '0717-7830001', address: '宜昌市夷陵区平湖大道33号', serviceArea: '夷陵区', status: 1, annualScore: 83.0, certCount: 3 },
-  { key: 7, name: '宜昌蓝天气体有限公司', shortName: '蓝天气体', businessType: 'lpg', uscc: '91420500MA12345684', legalPerson: '冯涛', contactPerson: '马经理', contactPhone: '0717-6440003', address: '宜昌市猇亭区先锋路16号', serviceArea: '全市', status: 1, annualScore: 86.8, certCount: 4 },
-];
-
-const CompanyList: React.FC = () => {
-  const [companies, setCompanies] = useState(initialCompanies);
-  const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState<string | undefined>();
-  const [detailVisible, setDetailVisible] = useState(false);
-  const [certVisible, setCertVisible] = useState(false);
-  const [formVisible, setFormVisible] = useState(false);
-  const [selectedCompany, setSelectedCompany] = useState<any>(null);
-  const [editingCompany, setEditingCompany] = useState<any>(null);
-  const [form] = Form.useForm();
-
-  const filtered = companies.filter(c => {
-    if (search && !c.name.includes(search) && !c.shortName.includes(search)) return false;
-    if (filterType && c.businessType !== filterType) return false;
-    return true;
-  });
-
-  const scoreColor = (s: number) => s >= 90 ? '#52c41a' : s >= 85 ? '#faad14' : '#ff4d4f';
-
-  const handleSave = () => {
-    form.validateFields().then(vals => {
-      if (editingCompany) {
-        setCompanies(companies.map(c => c.key === editingCompany.key ? { ...c, ...vals } : c));
-      } else {
-        const newKey = Math.max(...companies.map(c => c.key), 0) + 1;
-        setCompanies([...companies, { key: newKey, ...vals, status: 1, annualScore: 80, certCount: 0 }]);
-      }
-      setFormVisible(false); setEditingCompany(null); form.resetFields();
-    });
-  };
-
-  const columns = [
-    { title: '企业名称', dataIndex: 'name', width: 200, render: (n: string, r: any) => <a onClick={() => { setSelectedCompany(r); setDetailVisible(true); }}>{n}</a> },
-    { title: '简称', dataIndex: 'shortName', width: 120 },
-    { title: '业务类型', dataIndex: 'businessType', width: 80, render: (t: string) => <Tag color={t === 'water' ? 'blue' : t === 'gas' ? 'orange' : 'purple'}>{t === 'water' ? '供水' : t === 'gas' ? '燃气' : '液化气'}</Tag> },
-    { title: '法人', dataIndex: 'legalPerson', width: 80 },
-    { title: '联系人', dataIndex: 'contactPerson', width: 80 },
-    { title: '联系电话', dataIndex: 'contactPhone', width: 120 },
-    { title: '服务范围', dataIndex: 'serviceArea', width: 150, ellipsis: true },
-    { title: '状态', dataIndex: 'status', width: 70, render: (s: number) => <Badge status={s === 1 ? 'success' : 'error'} text={s === 1 ? '正常' : '停用'} /> },
-    { title: '年度评分', dataIndex: 'annualScore', width: 90, sorter: (a: any, b: any) => a.annualScore - b.annualScore, render: (s: number) => <span style={{color: scoreColor(s), fontWeight: 600}}>{s}</span> },
-    { title: '资质数', dataIndex: 'certCount', width: 70 },
-    { title: '操作', width: 180, fixed: 'right' as const,
-      render: (_: any, r: any) => <Space>
-        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => { setSelectedCompany(r); setDetailVisible(true); }}>详情</Button>
-        <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="link" size="small" icon={<EditOutlined />} disabled>编辑</Button></span></Tooltip>
-        <Button type="link" size="small" icon={<SafetyCertificateOutlined />} onClick={() => { setSelectedCompany(r); setCertVisible(true); }}>资质</Button>
-        <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
-      </Space> },
-  ];
-
-  return (
-    <div>
-      <DemoDataNotice batch="G2 之后" />
-      <h2 style={{ marginBottom: 16 }}>企业管理</h2>
-      <Row gutter={12} style={{ marginBottom: 16 }}>
-        <Col span={4}><Card size="small"><Statistic title="企业总数" value={companies.length} prefix={<TeamOutlined />} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="供水企业" value={companies.filter(c=>c.businessType==='water').length} valueStyle={{color:'#1677ff'}} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="燃气企业" value={companies.filter(c=>c.businessType==='gas').length} valueStyle={{color:'#fa8c16'}} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="液化气企业" value={companies.filter(c=>c.businessType==='lpg').length} valueStyle={{color:'#722ed1'}} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="平均评分" value={(companies.reduce((a,c)=>a+c.annualScore,0)/companies.length).toFixed(1)} prefix={<StarOutlined />} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="资质临期" value={2} valueStyle={{color:'#faad14'}} prefix={<Badge status="warning" />} /></Card></Col>
-      </Row>
-      <Card>
-        <Space style={{ marginBottom: 16 }} wrap>
-          <Input placeholder="搜索企业名称" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 240 }} allowClear />
-          <Select placeholder="业务类型" allowClear style={{ width: 120 }} onChange={setFilterType} options={[{value:'water',label:'供水'},{value:'gas',label:'燃气'},{value:'lpg',label:'液化气'}]} />
-          <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="primary" icon={<PlusOutlined />} disabled>新增企业</Button></span></Tooltip>
-        </Space>
-        <Table columns={columns} dataSource={filtered} size="middle" scroll={{ x: 1500 }} pagination={false} />
-      </Card>
-
-      {/* Detail Modal */}
-      <Modal title="企业详情" open={detailVisible} onCancel={() => setDetailVisible(false)} footer={null} width={700}>
-        {selectedCompany && <Descriptions bordered size="small" column={2}>
-          <Descriptions.Item label="企业名称" span={2}>{selectedCompany.name}</Descriptions.Item>
-          <Descriptions.Item label="简称">{selectedCompany.shortName}</Descriptions.Item>
-          <Descriptions.Item label="业务类型"><Tag>{selectedCompany.businessType === 'water' ? '供水' : selectedCompany.businessType === 'gas' ? '燃气' : '液化气'}</Tag></Descriptions.Item>
-          <Descriptions.Item label="信用代码" span={2}>{selectedCompany.uscc}</Descriptions.Item>
-          <Descriptions.Item label="法人代表">{selectedCompany.legalPerson}</Descriptions.Item>
-          <Descriptions.Item label="联系人">{selectedCompany.contactPerson}</Descriptions.Item>
-          <Descriptions.Item label="联系电话">{selectedCompany.contactPhone}</Descriptions.Item>
-          <Descriptions.Item label="状态"><Badge status="success" text="正常" /></Descriptions.Item>
-          <Descriptions.Item label="注册地址" span={2}>{selectedCompany.address}</Descriptions.Item>
-          <Descriptions.Item label="服务范围" span={2}>{selectedCompany.serviceArea}</Descriptions.Item>
-          <Descriptions.Item label="年度评分"><span style={{color: scoreColor(selectedCompany.annualScore), fontWeight: 600}}>{selectedCompany.annualScore}</span></Descriptions.Item>
-          <Descriptions.Item label="资质数量">{selectedCompany.certCount}</Descriptions.Item>
-        </Descriptions>}
-      </Modal>
-
-      {/* Cert Modal */}
-      <Modal title={selectedCompany?.name + ' - 资质证书'} open={certVisible} onCancel={() => setCertVisible(false)} footer={null} width={650}>
-        <Table dataSource={qualifications} size="small" pagination={false} columns={[
-          { title: '资质名称', dataIndex: 'certName' }, { title: '证书编号', dataIndex: 'certNo' },
-          { title: '发证日期', dataIndex: 'issueDate' },
-          { title: '有效期至', dataIndex: 'expiryDate', render: (d: string) => <span style={{color: new Date(d) < new Date(Date.now() + 90*86400000) ? '#faad14' : '#52c41a'}}>{d} {new Date(d) < new Date(Date.now() + 90*86400000) && <Tag color="warning" style={{marginLeft:4}}>临期</Tag>}</span> },
-          { title: '状态', render: () => <Tag color="success">有效</Tag> },
-        ]} />
-      </Modal>
-
-      {/* Add/Edit Form Modal */}
-      <Modal title={editingCompany ? '编辑企业' : '新增企业'} open={formVisible} onOk={handleSave} onCancel={() => { setFormVisible(false); setEditingCompany(null); form.resetFields(); }} width={600}>
-        <Form form={form} layout="vertical">
-          <Row gutter={16}>
-            <Col span={12}><Form.Item name="name" label="企业全称" rules={[{required:true}]}><Input placeholder="如：宜昌市供水总公司" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="shortName" label="简称" rules={[{required:true}]}><Input placeholder="如：市供水公司" /></Form.Item></Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}><Form.Item name="businessType" label="业务类型" rules={[{required:true}]}><Select options={[{value:'water',label:'供水'},{value:'gas',label:'燃气'},{value:'lpg',label:'液化气'}]} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="uscc" label="统一社会信用代码"><Input placeholder="18位信用代码" /></Form.Item></Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}><Form.Item name="legalPerson" label="法定代表人"><Input placeholder="法人姓名" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="contactPerson" label="联系人"><Input placeholder="联系人姓名" /></Form.Item></Col>
-          </Row>
-          <Form.Item name="contactPhone" label="联系电话"><Input placeholder="联系电话" /></Form.Item>
-          <Form.Item name="address" label="注册地址"><Input placeholder="企业注册地址" /></Form.Item>
-          <Form.Item name="serviceArea" label="服务范围"><Input.TextArea rows={2} placeholder="服务范围描述" /></Form.Item>
-        </Form>
-      </Modal>
-    </div>
-  );
+import React,{useCallback,useEffect,useState} from 'react';
+import {Alert,Button,Card,Descriptions,Drawer,Form,Input,InputNumber,Modal,Result,Select,Space,Switch,Table,Tabs,Tag} from 'antd';
+import {listEnterprises,getEnterprise,saveEnterprise,listHouseholds,saveHouseholds,listDepartmentMappings,saveDepartmentMapping,getEnterpriseReferenceOptions} from '../api/enterprises';
+import {usePermissionAccess,useWriteAccess} from '../stores/roleAccess';
+import type {EnterpriseDetail,EnterpriseListItem,EnterpriseWriteInput,HouseholdVersion,DepartmentMapping,DictItem} from '../types/api';
+const errorText=(e:unknown)=>e&&typeof e==='object'&&'message' in e?String(e.message):'请求失败，请重试';
+const CompanyList:React.FC=()=>{
+ const read=usePermissionAccess('enterprise.read'),write=useWriteAccess('enterprise.manage');
+ const [items,setItems]=useState<EnterpriseListItem[]>([]),[total,setTotal]=useState(0),[page,setPage]=useState(1),[keyword,setKeyword]=useState(''),[search,setSearch]=useState('');
+ const [loading,setLoading]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState<string|null>(null),[reload,setReload]=useState(0);
+ const [editing,setEditing]=useState<EnterpriseDetail|null>(null),[editorOpen,setEditorOpen]=useState(false),[selected,setSelected]=useState<EnterpriseDetail|null>(null);
+ const [households,setHouseholds]=useState<HouseholdVersion[]>([]),[mappings,setMappings]=useState<DepartmentMapping[]>([]),[businessTypes,setBusinessTypes]=useState<DictItem[]>([]),[districts,setDistricts]=useState<DictItem[]>([]);
+ const [form]=Form.useForm<EnterpriseWriteInput>(),[houseForm]=Form.useForm(),[mappingForm]=Form.useForm();
+ useEffect(()=>{
+  if(!read.can){setItems([]);setSelected(null);return;}
+  let cancelled=false;setLoading(true);setError(null);
+  void listEnterprises({page,size:20,keyword}).then(v=>{if(!cancelled){setItems(v.content);setTotal(v.total);}}).catch(e=>{if(!cancelled){setItems([]);setTotal(0);setError(errorText(e));}}).finally(()=>{if(!cancelled)setLoading(false);});
+  return ()=>{cancelled=true;};
+ },[read.can,page,keyword,reload]);
+ useEffect(()=>{if(!write.can){setEditorOpen(false);return;}let cancelled=false;
+  void getEnterpriseReferenceOptions().then(v=>{if(!cancelled){setBusinessTypes(v.businessTypes);setDistricts(v.districts);}}).catch(e=>{if(!cancelled)setError(errorText(e));});return ()=>{cancelled=true;};
+ },[write.can,form]);
+ const refreshDetail=useCallback(async(code:string)=>{const [detail,h,m]=await Promise.all([getEnterprise(code),listHouseholds(code),listDepartmentMappings(code)]);setSelected(detail);setHouseholds(h);setMappings(m);return detail;},[]);
+ const openDetail=async(code:string)=>{setSelected(null);setError(null);setLoading(true);try{await refreshDetail(code);}catch(e){setError(errorText(e));}finally{setLoading(false);}};
+ const edit=async(code?:string)=>{if(!write.can)return;setError(null);try{const detail=code?await getEnterprise(code):null;setEditing(detail);form.resetFields();form.setFieldsValue(detail?{...detail,status:detail.status==='disabled'?'disabled':'enabled',expectedVersion:detail.version}:{status:'enabled',expectedVersion:0,districtCode:null});setEditorOpen(true);}catch(e){setError(errorText(e));}};
+ const save=async()=>{if(!write.can)return;try{const values=await form.validateFields();setSaving(true);await saveEnterprise({...values,expectedVersion:editing?.version??0,districtCode:values.districtCode??null,uscc:values.uscc||null});setEditorOpen(false);setReload(v=>v+1);}catch(e){if(!(e&&typeof e==='object'&&'errorFields' in e))setError(errorText(e));}finally{setSaving(false);}};
+ const addHousehold=async()=>{if(!selected||!write.can)return;try{const values=await houseForm.validateFields();setSaving(true);await saveHouseholds(selected.enterpriseCode,{households:values.households??null,validFrom:values.validFrom,validTo:values.validTo||null,expectedVersion:selected.version!});await refreshDetail(selected.enterpriseCode);houseForm.resetFields();}catch(e){setError(errorText(e));}finally{setSaving(false);}};
+ const addMapping=async()=>{if(!selected||!write.can)return;try{const values=await mappingForm.validateFields();const existing=mappings.find(m=>m.sourceSystem===values.sourceSystem&&m.sourceDepartmentCode===values.sourceDepartmentCode);setSaving(true);await saveDepartmentMapping(selected.enterpriseCode,{...values,entityType:'enterprise',aliases:(values.aliases??'').split(/[\n,，]/).map((v:string)=>v.trim()).filter(Boolean),verified:Boolean(values.verified),expectedVersion:existing?.version??0,expectedEnterpriseVersion:selected.version!});await refreshDetail(selected.enterpriseCode);mappingForm.resetFields();}catch(e){setError(errorText(e));}finally{setSaving(false);}};
+ if(!read.can)return <Result status="403" title="无权限，请联系管理员"/>;
+ return <Card title="企业档案" extra={write.can&&<Button type="primary" onClick={()=>void edit()}>新增企业</Button>}>
+  <Alert type="info" showIcon message="管理归属区县须按真实区划明确登记，不表示服务覆盖或户数区县分配。户数为全企业口径；区县局部诉求不能直接配全企业户数计算比率。" style={{marginBottom:16}}/>
+  {error&&<Alert type="error" showIcon message={error} style={{marginBottom:16}}/>}
+  <Space style={{marginBottom:16}}><Input aria-label="企业搜索" value={search} onChange={e=>setSearch(e.target.value)} placeholder="登记编码或名称"/><Button onClick={()=>{setPage(1);setKeyword(search);}}>查询</Button><Button onClick={()=>setReload(v=>v+1)}>刷新</Button></Space>
+  <Table<EnterpriseListItem> rowKey="enterpriseCode" dataSource={items} loading={loading} pagination={{current:page,pageSize:20,total,onChange:setPage}} locale={{emptyText:error?'查询失败':'当前范围暂无企业'}} columns={[
+   {title:'登记编码',dataIndex:'enterpriseCode'},{title:'企业名称',dataIndex:'enterpriseName'},{title:'业务类型',dataIndex:'businessTypeName'},{title:'联系人',dataIndex:'contactPerson',render:v=>v??'—'},{title:'电话',dataIndex:'contactPhone',render:v=>v??'—'},
+   {title:'状态',dataIndex:'status',render:v=><Tag color={v==='enabled'?'green':'default'}>{v==='enabled'?'启用':'停用'}</Tag>},
+   {title:'操作',render:(_,r)=><Space><Button onClick={()=>void openDetail(r.enterpriseCode)}>详情与历史</Button>{write.can&&<Button onClick={()=>void edit(r.enterpriseCode)}>编辑企业</Button>}</Space>}
+  ]}/>
+  <Modal title={editing?'编辑企业':'新增企业'} open={editorOpen&&write.can} onCancel={()=>setEditorOpen(false)} onOk={()=>void save()} okText="保存企业" confirmLoading={saving} forceRender>
+   {error&&<Alert type="error" message={error}/>}
+   <Form form={form} layout="vertical">
+    <Form.Item name="enterpriseCode" label="登记编码" rules={[{required:true}]}><Input maxLength={64} disabled={Boolean(editing)}/></Form.Item>
+    <Form.Item name="enterpriseName" label="企业全称" rules={[{required:true}]}><Input maxLength={128}/></Form.Item>
+    <Form.Item name="businessType" label="业务类型" rules={[{required:true}]}><Select options={businessTypes.map(v=>({value:v.value,label:v.label}))}/></Form.Item>
+    <Form.Item name="districtCode" label="档案管理归属区县"><Select allowClear options={districts.map(v=>({value:v.value,label:v.label}))}/></Form.Item>
+    <Form.Item name="uscc" label="统一社会信用代码"><Input maxLength={18}/></Form.Item>
+    <Form.Item name="legalPerson" label="法定代表人"><Input maxLength={64}/></Form.Item>
+    <Form.Item name="contactPerson" label="联系人"><Input maxLength={64}/></Form.Item>
+    <Form.Item name="contactPhone" label="联系电话"><Input maxLength={64}/></Form.Item>
+    <Form.Item name="address" label="注册地址"><Input maxLength={500}/></Form.Item>
+    <Form.Item name="serviceArea" label="服务范围说明"><Input.TextArea maxLength={500}/></Form.Item>
+    <Form.Item name="status" label="状态" rules={[{required:true}]}><Select options={[{value:'enabled',label:'启用'},{value:'disabled',label:'停用'}]}/></Form.Item>
+    <Form.Item name="disableReason" label="停用依据（停用时必填，历史引用保留）"><Input maxLength={500}/></Form.Item>
+   </Form>
+  </Modal>
+  <Drawer title={selected?.enterpriseName} open={Boolean(selected)} width={760} onClose={()=>setSelected(null)}>
+   {error&&<Alert type="error" message={error}/>}
+   {selected&&<><Descriptions column={2} items={[{key:'code',label:'登记编码',children:selected.enterpriseCode},{key:'version',label:'档案版本',children:selected.version},{key:'district',label:'管理归属区县',children:selected.districtCode??'未登记'},{key:'score',label:'年度评分',children:selected.annualScore??'未知'},{key:'contact',label:'联系人',children:selected.contactPerson??'—'},{key:'phone',label:'联系电话',children:selected.contactPhone??'—'},{key:'address',label:'注册地址',children:selected.address??'—'},{key:'area',label:'服务范围说明',children:selected.serviceArea??'—'}]}/>
+   <Tabs items={[{key:'households',label:'服务户数历史',children:<>
+    <Alert type="info" message="有效期为开始日含、结束日不含；新增较晚版本会结束上一开放区间。空户数表示未知，0表示已核实为0。历史户数不会覆盖。"/>
+    <Table<HouseholdVersion> rowKey="version" dataSource={households} pagination={false} columns={[{title:'户数',dataIndex:'households',render:v=>v??'未知'},{title:'生效日',dataIndex:'validFrom'},{title:'截止日（不含）',dataIndex:'validTo',render:v=>v??'持续有效'},{title:'版本',dataIndex:'version'}]}/>
+    {write.can&&<Form form={houseForm} layout="vertical" onFinish={()=>void addHousehold()}><Form.Item name="households" label="服务户数（留空为未知）"><InputNumber min={0} precision={0}/></Form.Item><Form.Item name="validFrom" label="生效日" rules={[{required:true}]}><Input type="date"/></Form.Item><Form.Item name="validTo" label="截止日（可空）"><Input type="date"/></Form.Item><Button htmlType="submit" loading={saving}>新增户数版本</Button></Form>}
+   </>},{key:'mapping',label:'来源部门映射',children:<>
+    <Alert type="info" message="仅来源系统和部门码决定映射；别名只供人工核验展示，未核验不会自动关联。政府机构不得登记为企业主体。"/>
+    <Table<DepartmentMapping> rowKey={m=>m.sourceSystem+':'+m.sourceDepartmentCode} dataSource={mappings} pagination={false} columns={[{title:'来源系统',dataIndex:'sourceSystem'},{title:'部门码',dataIndex:'sourceDepartmentCode'},{title:'名称',dataIndex:'sourceDepartmentName'},{title:'别名',dataIndex:'aliases',render:v=>Array.isArray(v)?v.join('、'):'—'},{title:'核验',dataIndex:'verified',render:v=>v?'已核验':'待核验'},{title:'操作',render:(_,m)=>write.can&&<Button onClick={()=>mappingForm.setFieldsValue({...m,verified:Boolean(m.verified),aliases:m.aliases.join('\n')})}>核验或编辑</Button>}]}/>
+    {write.can&&<Form form={mappingForm} layout="vertical" onFinish={()=>void addMapping()}><Form.Item name="sourceSystem" label="来源系统" rules={[{required:true}]}><Input maxLength={64}/></Form.Item><Form.Item name="sourceDepartmentCode" label="来源部门码" rules={[{required:true}]}><Input maxLength={64}/></Form.Item><Form.Item name="sourceDepartmentName" label="来源部门名称" rules={[{required:true}]}><Input maxLength={128}/></Form.Item><Form.Item name="aliases" label="人工核验别名（每行一个）"><Input.TextArea/></Form.Item><Form.Item name="verified" label="已人工核验" valuePropName="checked"><Switch/></Form.Item><Button htmlType="submit" loading={saving}>保存部门映射</Button></Form>}
+   </>} ]}/></>}
+  </Drawer>
+ </Card>;
 };
-
 export default CompanyList;

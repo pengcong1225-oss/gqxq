@@ -1,3 +1,5 @@
+import { currentAccessContext } from '../auth/accessScope';
+import { buildEnterpriseScopeSql } from '../auth/enterpriseScope';
 // 企业主数据读取。数据源是既有的 enterprise 表（已有 4 家真实企业），不是新建字典。
 // 两个用途（业主 2026-09-20 裁定后）：
 //   1) 纠偏页选责任单位、总账页发起交办时，企业清单从这里取——手抄 enterprise_code 一旦与登记值不一致，
@@ -48,8 +50,9 @@ function rowToItem(r: EntRow): EnterpriseListItem {
 }
 
 function buildWhere(filter: EnterpriseFilter): { text: string; params: unknown[] } {
-  const parts: string[] = [];
-  const params: unknown[] = [];
+  const scope = buildEnterpriseScopeSql(currentAccessContext());
+  const parts: string[] = [scope.sql];
+  const params: unknown[] = [...scope.params];
   if (filter.keyword) {
     // 与 complaintRepo 一致：用 escape '!' 而不是反斜杠（反斜杠在本机 MySQL 上会报语法错误）
     const kw = '%' + filter.keyword.replace(/[!%_]/g, (m) => '!' + m) + '%';
@@ -114,5 +117,21 @@ export async function findEnterpriseByCodeIn(db: Queryable, code: string): Promi
  * 否则"校验通过后再被人换掉登记值"这段窗口无法避免。
  */
 export async function findEnterpriseByCode(code: string): Promise<EnterpriseDetail | null> {
-  return findEnterpriseByCodeIn(pool, code);
+  const scope = buildEnterpriseScopeSql(currentAccessContext());
+  const [rows] = await pool.query<Row[]>('select '+ENTERPRISE_COLUMNS+' from enterprise e where e.enterprise_code=? and '+scope.sql,[code,...scope.params]);
+  const row=(rows as unknown as EntRow[])[0];
+  return row ? {...rowToItem(row),legalPerson:toStr(row.legal_person),annualScore:toNum(row.annual_score)} : null;
+}
+
+/** Public registered target directory, intentionally excludes all operating/contact data. */
+export async function findEnterpriseOptions(keyword?:string) {
+ const kw='%'+(keyword??'').replace(/[!%_]/g,m=>'!'+m)+'%';
+ const [rows]=await pool.query<Row[]>("select enterprise_code as enterpriseCode,enterprise_name as enterpriseName,business_type as businessType,status from enterprise where status='enabled' and (enterprise_code like ? escape '!' or enterprise_name like ? escape '!') order by enterprise_code limit 100",[kw,kw]);
+ return rows;
+}
+
+/** A3 internal writer validation: a target directory grants no operating-data access. */
+export async function findEnterpriseTargetIn(db:Queryable,code:string):Promise<{enterpriseCode:string;enterpriseName:string;status:string}|null> {
+ const [rows]=await db.query<Row[]>('select e.enterprise_code,e.enterprise_name,e.status from enterprise e where e.enterprise_code=? for update',[code]);
+ const row=(rows as unknown as EntRow[])[0];return row?{enterpriseCode:String(row.enterprise_code),enterpriseName:String(row.enterprise_name),status:String(row.status??'')}:null;
 }

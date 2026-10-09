@@ -37,13 +37,13 @@ import LocationClues from '../components/LocationClues';
 import type { Dayjs } from 'dayjs';
 import { getComplaint, getComplaintTimeline, getComplaintSourceDocument } from '../api/complaints';
 import { createDispatch, getDispatchOrder } from '../api/dispatch';
-import { listEnterprises } from '../api/enterprises';
+import { listEnterpriseOptions } from '../api/enterprises';
 import { getSourceAdapterState, syncSource } from '../api/source';
 import type {
   ApiError,
   ComplaintDetail as ComplaintDetailModel,
   DispatchOrderDetail,
-  EnterpriseListItem,
+  EnterpriseOption,
   SourceAdapterState,
   TimelineCategory,
   TimelineItem,
@@ -147,7 +147,7 @@ const ComplaintDetail: React.FC = () => {
 
   /* ---------- 企业主数据：追加交办时的企业选择 ---------- */
   // 清单来自服务端 GET /enterprises，不做本地兜底：手抄编码与登记值不一致会导致交办匹配不到同一主体。
-  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseOption[]>([]);
   const [enterpriseLoading, setEnterpriseLoading] = useState(false);
   const [enterpriseError, setEnterpriseError] = useState<string | null>(null);
   const enterpriseSearchTimer = useRef<number | null>(null);
@@ -157,7 +157,7 @@ const ComplaintDetail: React.FC = () => {
     const seq = ++enterpriseFetchSeq.current;
     setEnterpriseLoading(true);
     try {
-      const res = await listEnterprises({
+      const res = await listEnterpriseOptions({
         keyword: keyword && keyword.trim() !== '' ? keyword.trim() : undefined,
         size: 50,
       });
@@ -194,31 +194,25 @@ const ComplaintDetail: React.FC = () => {
   const clearEnterpriseError = useCallback(() => setEnterpriseError(null), []);
 
   const toEnterpriseOptions = useCallback(
-    (list: EnterpriseListItem[]) =>
+    (list: EnterpriseOption[]) =>
       list.map((e) => ({
         value: e.enterpriseCode,
         label:
           e.enterpriseName +
           '（' + e.enterpriseCode + '）' +
-          (e.businessTypeName ? ' · ' + e.businessTypeName : ''),
+          (e.businessType ? ' · ' + e.businessType : ''),
       })),
     []
   );
 
   /** 服务端结果里若没有该诉求已登记的企业，补在首位以便回显（值来自该诉求自身，不是前端常量） */
   const withCurrentEnterprise = useCallback(
-    (list: EnterpriseListItem[], code?: string | null, name?: string | null): EnterpriseListItem[] => {
+    (list: EnterpriseOption[], code?: string | null, name?: string | null): EnterpriseOption[] => {
       if (!code || list.some((e) => e.enterpriseCode === code)) return list;
-      const current: EnterpriseListItem = {
-        id: -1,
+      const current: EnterpriseOption = {
         enterpriseCode: code,
         enterpriseName: name ?? code,
         businessType: '',
-        businessTypeName: '',
-        uscc: null,
-        contactPerson: null,
-        contactPhone: null,
-        serviceArea: null,
         status: 'enabled',
       };
       return [current, ...list];

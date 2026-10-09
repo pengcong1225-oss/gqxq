@@ -1,3 +1,4 @@
+import {buildEnterpriseScopeSql} from '../auth/enterpriseScope';
 // operation_audit_log（追加写）：操作审计。
 // 复用既有表（迁移设计 §3.3）：不新建 audit_log。
 // 列：audit_id / user_id / app_code / resource_code / action / biz_type / biz_id / result / client_ip / detail / created_at
@@ -64,9 +65,11 @@ const complaintLinkSql="((a.biz_type = 'complaint' and a.action in ('INTAKE_CREA
  "(a.biz_type = 'analysis_record' and a.action = 'ANALYSIS_INCLUDED' and exists (select 1 from analysis_record ar where ar.analysis_id = a.biz_id and ar.complaint_id = c.complaint_id)) or " +
  "(a.biz_type = 'business_event' and a.action in ('CALLBACK_DUPLICATE','CALLBACK_IGNORED') and c.complaint_id = a.biz_id) or " +
  "(a.biz_type = 'business_event' and a.action = 'CALLBACK_REJECTED' and exists (select 1 from business_event be where be.event_id = a.biz_id and be.source_business_id = c.complaint_id)))";
+const enterpriseAuditSql="(a.biz_type='enterprise' and a.action in ('ENTERPRISE_SAVE','ENTERPRISE_HOUSEHOLDS_SAVE','ENTERPRISE_MAPPING_SAVE'))";
 function auditWhere(filter:AuditLogFilter,access:AccessContext):{sql:string;params:unknown[]} {
- const scope=buildComplaintScopeSql(access,'c');const clauses=[ '('+systemSql+' or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+'))' ];
- const params:unknown[]=[...scope.params];
+ const scope=buildComplaintScopeSql(access,'c');const enterpriseScope=buildEnterpriseScopeSql(access,'audit_e');const enterpriseLinked=enterpriseAuditSql+' and exists (select 1 from enterprise audit_e where audit_e.enterprise_code=a.biz_id and '+enterpriseScope.sql+')';
+ const clauses=[ '('+systemSql+' or ('+enterpriseLinked+') or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+'))' ];
+ const params:unknown[]=[...enterpriseScope.params,...scope.params];
  for(const [value,sql] of [[filter.category,categorySql+' = ?'],[filter.module,moduleSql+' = ?'],[filter.action,'a.action = ?'],[filter.result,resultSql+' = ?']] as const){
   if(value){clauses.push(sql);params.push(value);}
  }
@@ -74,8 +77,8 @@ function auditWhere(filter:AuditLogFilter,access:AccessContext):{sql:string;para
  if(filter.from){clauses.push('a.created_at >= ?');params.push(new Date(filter.from));}
  if(filter.to){clauses.push('a.created_at <= ?');params.push(new Date(filter.to));}
  if(filter.businessNo){
-  clauses.push("a.biz_type <> 'http' and a.action <> 'SENSITIVE_WORD_RESCAN' and (("+systemSql+' and a.biz_id = ?) or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+' and (c.complaint_id = ? or c.complaint_no = ?)))');
-  params.push(filter.businessNo,...scope.params,filter.businessNo,filter.businessNo);
+  clauses.push("a.biz_type <> 'http' and a.action <> 'SENSITIVE_WORD_RESCAN' and (("+systemSql+' and a.biz_id = ?) or exists (select 1 from complaint c where '+complaintLinkSql+' and '+scope.sql+' and (c.complaint_id = ? or c.complaint_no = ?)) or ('+enterpriseLinked+' and a.biz_id=?))');
+  params.push(filter.businessNo,...scope.params,filter.businessNo,filter.businessNo,...enterpriseScope.params,filter.businessNo);
  }
  return {sql:clauses.join(' and '),params};
 }

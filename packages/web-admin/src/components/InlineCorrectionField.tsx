@@ -4,14 +4,14 @@ import type {DictItem} from '../types/api';
 import type {CategoryRef} from '../types/masterData';
 import React, { useEffect, useState } from 'react';
 import { Button, Input, Select, Space, Typography } from 'antd';
-import type { CorrectionItem, EnterpriseListItem } from '../types/api';
+import type { CorrectionItem, EnterpriseOption } from '../types/api';
 import { correctionEffectiveText } from '../api/corrections';
 
 export interface InlineCorrectionDraft { value: string; basis: string }
 
 export interface InlineCorrectionFieldProps {
   item: CorrectionItem;
-  enterpriseOptions: EnterpriseListItem[];
+  enterpriseOptions: EnterpriseOption[];
   enterpriseLoading: boolean;
   enterpriseError?: string | null;
   disabled: boolean;

@@ -752,6 +752,9 @@ export interface EnterpriseListItem {
 }
 
 export interface EnterpriseDetail extends EnterpriseListItem {
+  version?: number;
+  districtCode?: string | null;
+  address?: string | null;
   legalPerson: string | null;
   annualScore: number | null;
 }
@@ -880,3 +883,8 @@ export interface AuditLogView {
  bizType:string|null;bizId:string|null;businessNo:string|null;result:'success'|'failed'|'rejected'|'duplicate'|'unknown';originalResult:string;
  clientIp:string|null;createdAt:string|null;detail:Record<string,unknown>;
 }
+
+export interface EnterpriseOption { enterpriseCode:string; enterpriseName:string; businessType:string; status:string }
+export interface HouseholdVersion { enterpriseCode:string; households:number|null; validFrom:string; validTo:string|null; version:string }
+export interface EnterpriseWriteInput {enterpriseCode:string;enterpriseName:string;businessType:string;status:'enabled'|'disabled';expectedVersion?:number;districtCode?:string|null;uscc?:string|null;legalPerson?:string|null;contactPerson?:string|null;contactPhone?:string|null;serviceArea?:string|null;address?:string|null;disableReason?:string}
+export interface DepartmentMapping {sourceSystem:string;sourceDepartmentCode:string;sourceDepartmentName:string;enterpriseCode:string;entityType:'enterprise';aliases:string[];verified:boolean|number;version:number}

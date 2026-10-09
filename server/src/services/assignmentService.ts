@@ -17,7 +17,7 @@ import { withTransaction } from '../db/tx';
 import { insertAudit } from '../repositories/auditLogRepo';
 import { lockComplaintByAnyKey } from '../repositories/dispatchRepo';
 import { insertAssignment, updateComplaintEnterprise } from '../repositories/assignmentRepo';
-import { findEnterpriseByCodeIn } from '../repositories/enterpriseRepo';
+import { findEnterpriseTargetIn } from '../repositories/enterpriseRepo';
 import { GQXQ_APP_CODE } from './intakeService';
 import { optionalText, requiredText, type OperatorContext } from './dispatchService';
 import { parseFieldState } from '../domain/effectiveFieldPolicy';
@@ -78,13 +78,14 @@ export async function assertTargetEnterprise(
     ]);
   }
 
-  const master = await findEnterpriseByCodeIn(tx, enterpriseCode);
+  const master = await findEnterpriseTargetIn(tx, enterpriseCode);
   if (master === null) {
     throw AppError.validation(
       '责任单位编码 ' + enterpriseCode + ' 不在企业主数据（enterprise 表）登记值里，本次不写回',
       [{ field: fields.code, message: '必须从企业主数据里选，编码未登记' }]
     );
   }
+  if (master.status !== 'enabled') throw AppError.validation('目标企业已停用，不能新选');
   const enterpriseName = master.enterpriseName;
   if (name !== null && name.trim() !== '' && name.trim() !== enterpriseName) {
     throw AppError.validation(

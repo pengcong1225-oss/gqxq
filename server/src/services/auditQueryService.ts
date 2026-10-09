@@ -63,6 +63,7 @@ function safeDetail(row:AuditRow):Record<string,unknown> {
   if(!['SENSITIVE_WORD_CREATE','SENSITIVE_WORD_UPDATE'].includes(action))return {};
   const out=pick(data,['operator']);for(const key of ['before','after'])if(data[key]!==undefined)out[key]=pick(data[key],['word','status']);return out;
  }
+ if(row.biz_type==='enterprise'&&['ENTERPRISE_SAVE','ENTERPRISE_HOUSEHOLDS_SAVE','ENTERPRISE_MAPPING_SAVE'].includes(action))return pick(data,['enterpriseCode','enterpriseName','businessType','status','districtCode','version','households','validFrom','validTo','closedVersion','sourceSystem','sourceDepartmentCode','verified']);
  if(row.biz_type==='dictionary'&&['DICTIONARY_TYPE_SAVE','DICTIONARY_ITEM_SAVE','DICTIONARY_TYPE_DELETE','DICTIONARY_ITEM_DELETE'].includes(action))return pick(data,['typeCode','itemCode','label','parentCode','status','version','dictionaryVersion','published']);
  if(row.biz_type==='complaint'&&action==='CATEGORY_REVISE')return pick(data,['oldMajorCode','oldMinorCode','oldDictionaryVersion','majorCode','minorCode','dictionaryVersion','editVersion']);
  const out=pick(data,['assignmentId','complaintId','correctionId','eventId','eventType','taskId','approvalConclusion','statusBefore','statusAfter','dispatchStatusBefore','dispatchStatusAfter','fromStatus','toStatus','reportingStatus','supervisionStatus','supervisionStatusBefore','supervisionStatusAfter','scopeVersion','editVersion','itemCount','writtenBack','analysisEntered','analysisId','disposition','beforeCode','beforeName','afterCode','afterName','unchanged']);

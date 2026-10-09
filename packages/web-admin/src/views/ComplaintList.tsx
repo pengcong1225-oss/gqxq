@@ -41,7 +41,7 @@ import { listComplaints } from '../api/complaints';
 import { applyDisposition } from '../api/complaintActions';
 import { createDispatch } from '../api/dispatch';
 import { getDictItems } from '../api/dicts';
-import { listEnterprises } from '../api/enterprises';
+import { listEnterpriseOptions } from '../api/enterprises';
 import { getSourceAdapterState } from '../api/source';
 import type {
   ApiError,
@@ -54,7 +54,7 @@ import type {
   DictCode,
   DictItem,
   DispositionKind,
-  EnterpriseListItem,
+  EnterpriseOption,
   OvertimeFilter,
   SourceAdapterState,
   SourceEventStatus,
@@ -277,7 +277,7 @@ const ComplaintList: React.FC = () => {
   /* ---------- 企业主数据：发起交办时的企业选择 ---------- */
   // 企业清单来自服务端 GET /enterprises。这里**不做本地兜底**：
   // 手抄 enterprise_code 一旦与登记值不一致，后续交办就匹配不到同一主体。
-  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseOption[]>([]);
   const [enterpriseLoading, setEnterpriseLoading] = useState(false);
   const [enterpriseError, setEnterpriseError] = useState<string | null>(null);
   const enterpriseSearchTimer = useRef<number | null>(null);
@@ -287,7 +287,7 @@ const ComplaintList: React.FC = () => {
     const seq = ++enterpriseFetchSeq.current;
     setEnterpriseLoading(true);
     try {
-      const res = await listEnterprises({
+      const res = await listEnterpriseOptions({
         keyword: keyword && keyword.trim() !== '' ? keyword.trim() : undefined,
         size: 50,
       });
@@ -325,13 +325,13 @@ const ComplaintList: React.FC = () => {
 
   /** 选项文本：企业名称（编码）· 业务类型 */
   const toEnterpriseOptions = useCallback(
-    (list: EnterpriseListItem[]) =>
+    (list: EnterpriseOption[]) =>
       list.map((e) => ({
         value: e.enterpriseCode,
         label:
           e.enterpriseName +
           '（' + e.enterpriseCode + '）' +
-          (e.businessTypeName ? ' · ' + e.businessTypeName : ''),
+          (e.businessType ? ' · ' + e.businessType : ''),
       })),
     []
   );
@@ -341,18 +341,12 @@ const ComplaintList: React.FC = () => {
    * 注意这不是「硬编码企业清单」：值来自这条诉求自身已登记的责任单位，不是前端常量。
    */
   const withCurrentEnterprise = useCallback(
-    (list: EnterpriseListItem[], code?: string | null, name?: string | null): EnterpriseListItem[] => {
+    (list: EnterpriseOption[], code?: string | null, name?: string | null): EnterpriseOption[] => {
       if (!code || list.some((e) => e.enterpriseCode === code)) return list;
-      const current: EnterpriseListItem = {
-        id: -1,
+      const current: EnterpriseOption = {
         enterpriseCode: code,
         enterpriseName: name ?? code,
         businessType: '',
-        businessTypeName: '',
-        uscc: null,
-        contactPerson: null,
-        contactPhone: null,
-        serviceArea: null,
         status: 'enabled',
       };
       return [current, ...list];

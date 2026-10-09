@@ -589,6 +589,9 @@ export interface EnterpriseListItem {
 }
 
 export interface EnterpriseDetail extends EnterpriseListItem {
+  version?: number;
+  districtCode?: string | null;
+  address?: string | null;
   legalPerson: string | null;
   annualScore: number | null;
 }

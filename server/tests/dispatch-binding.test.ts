@@ -16,8 +16,8 @@ class MemoryDb {
     enterprise_code: 'E1', enterprise_name: 'Enterprise One', supervision_status: 'none',
     reporting_status: 'not_started', source_status: 'synthetic-source-open', status: 'open',
     is_sensitive: 1, sensitive_keywords: 'synthetic', edit_version: 7, effective_field_state: '{}' }];
-  enterprises = [{ id: 1, enterprise_code: 'E1', enterprise_name: 'Enterprise One' },
-    { id: 2, enterprise_code: 'E2', enterprise_name: 'Enterprise Two' }];
+  enterprises = [{ id: 1, enterprise_code: 'E1', enterprise_name: 'Enterprise One',status:'enabled' },
+    { id: 2, enterprise_code: 'E2', enterprise_name: 'Enterprise Two',status:'enabled' }];
   orders: Record<string, any>[] = [];
   events = new Map<string, any>();
   fieldVersions: any[][] = [];

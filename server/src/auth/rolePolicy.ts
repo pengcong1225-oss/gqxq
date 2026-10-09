@@ -47,6 +47,13 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
+  {method:'GET',path:/^\/enterprise-reference-options$/,roles:R,permissionCode:'enterprise.read',desc:'企业维护选项（已发布字典只读）'},
+  {method:'GET',path:/^\/enterprise-options$/,roles:R,permissionCode:'enterprise.read',desc:'登记目标最小选单'},
+  {method:'POST',path:/^\/enterprises$/,roles:A,permissionCode:'enterprise.manage',desc:'企业新增'},
+  {method:'PATCH',path:/^\/enterprises\/[^/]+$/,roles:A,permissionCode:'enterprise.manage',desc:'企业维护'},
+  {method:'GET',path:/^\/enterprises\/[^/]+\/(households|department-mappings)$/,roles:R,permissionCode:'enterprise.read',desc:'企业经营历史'},
+  {method:'POST',path:/^\/enterprises\/[^/]+\/(households|department-mappings)$/,roles:A,permissionCode:'enterprise.manage',desc:'企业经营数据维护'},
+
   {method:'GET',path:/^\/categories$/,roles:R,permissionCode:'dict.read',desc:'正式分类可选项'},
   {method:'POST',path:/^\/complaints\/[^/]+\/category$/,roles:W,permissionCode:'complaint.correct',desc:'正式分类纠偏'},
   {method:'GET',path:/^\/complaints\/[^/]+\/category-history$/,roles:R,permissionCode:'complaint.read',desc:'正式分类修订'},
