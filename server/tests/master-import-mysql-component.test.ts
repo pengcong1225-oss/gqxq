@@ -66,6 +66,54 @@ test('B4 isolated real SQL unified import contracts',{skip:process.env.GQXQ_B4_C
    const invalidCommunity=await service.previewImport(csv('community',[{code:'UNKNOWN-CM',name:'虚构错误小区',adminGridCode:'UNKNOWN-AG'}]),'community',all);assert.equal(invalidCommunity.canCommit,false);assert.equal((await service.getBatch(invalidCommunity.batchId,all)).details[0].action,'error');assert.match(await service.errors(invalidCommunity.batchId,all),/UNKNOWN-CM/);
   });
   const scope=async(districts:string[]|null)=>db('app_user').where('user_id','master').update({scope_rules:JSON.stringify(districts?[{kind:'restricted',enterpriseCodes:[],districtCodes:districts}]:[{kind:'all'}])});
+  await t.test('preview proofs use the validator current before after a second connection commits beyond the RR authorization snapshot',async()=>{
+   const seed=await service.previewImport(csv('enterprise',[enterprise('RR-PROOF')]),'enterprise',all);await confirm(seed);
+   const reader=await pool.getConnection();const writer=await pool.getConnection();const getConnection=pool.getConnection.bind(pool);const query=reader.query.bind(reader);const release=reader.release.bind(reader);
+   let snapshotReady!:()=>void,resume!:()=>void;const snapshot=new Promise<void>(r=>snapshotReady=r),continued=new Promise<void>(r=>resume=r);let pending:ReturnType<typeof service.previewImport>|undefined;
+   try{
+    await reader.query('set transaction isolation level repeatable read');await writer.beginTransaction();
+    // Observe and await real SQL results; never synthesize persistence or query data.
+    (reader as any).query=async(sql:string,values?:unknown[])=>{const result=await query(sql,values);if(sql.startsWith('select scope_version, scope_rules')){snapshotReady();await continued;}return result;};
+    reader.release=()=>{};let first=true;pool.getConnection=async()=>{if(first){first=false;return reader;}return getConnection();};
+    pending=service.previewImport(csv('enterprise',[enterprise('RR-PROOF')]),'enterprise',all);
+    await Promise.race([snapshot,pending.then(()=>{throw Error('preview completed before snapshot barrier');})]);
+    const [initial]=await query('select district_code from enterprise where enterprise_code=?',['RR-PROOF']);assert.equal((initial as any)[0].district_code,'d1');
+    const {enterpriseService}=await import('../src/services/enterpriseService');await enterpriseService.saveInTx(writer,{...enterprise('RR-PROOF'),districtCode:'d2',expectedVersion:1},all);await writer.commit();
+    const [stale]=await query('select district_code from enterprise where enterprise_code=?',['RR-PROOF']);assert.equal((stale as any)[0].district_code,'d1','the preview connection really retains its old RR snapshot');
+    resume();const p=await pending;pool.getConnection=getConnection;(reader as any).query=query;
+    const preview=await service.getBatch(p.batchId,all);assert.equal((preview.details[0].before as any).districtCode,'d2','actual locking validator sees the concurrent writer');
+    const saved=await db('master_data_import_batch').where('batch_id',p.batchId).first();const proof=typeof saved.scope_proofs==='string'?JSON.parse(saved.scope_proofs):saved.scope_proofs;assert.equal(proof[0].original[0].districtCode,'d2','proof must match the current typed validator before, not RR d1');
+    assert.equal((await confirm(p)).updated,1);await scope(['d1']);await assert.rejects(()=>service.getBatch(p.batchId,all),{status:404});
+    await db('master_data_import_batch').where('batch_id',p.batchId).update({expires_at:new Date('2020-01-01')});const {pruneExpiredImports}=await import('../src/services/masterDataImportService');await pruneExpiredImports();assert.equal((await db('master_data_import_batch').where('batch_id',p.batchId).first()).file_bytes,null);await assert.rejects(()=>service.getBatch(p.batchId,all),{status:404});await scope(['d1','d2']);assert.equal((await service.getBatch(p.batchId,all)).result?.state,'succeeded');
+   }finally{resume();await pending?.catch(()=>{});pool.getConnection=getConnection;(reader as any).query=query;reader.release=release;await reader.rollback();await writer.rollback();release();writer.release();await scope(null);}
+  });
+  await t.test('capture uses current admin and community parent facts; grid discovery drift aborts without reversed parent locks',async race=>{
+   const {serviceGridService:grids}=await import('../src/services/serviceGridService');
+   for(const kind of ['admin','community','grid'] as const)await race.test(kind,async()=>{
+    const code='RR-'+kind;let file:ReturnType<typeof csv>;let importKind:'admin_grid'|'community'|'grid_coverage';
+    if(kind==='grid'){
+     await confirm(await service.previewImport(csv('service_grid',[{code,name:'RR grid',enterpriseCode:'001',businessType:'water'}]),'service_grid',all));
+     await confirm(await service.previewImport(csv('grid_coverage',[{code,validFrom:'2026-01-01',validTo:'',relationKind:'admin_grid',relationCode:'AG1'}]),'grid_coverage',all));
+     importKind='grid_coverage';file=csv(importKind,[{code,validFrom:'2027-01-01',validTo:'',relationKind:'admin_grid',relationCode:'AG1'}]);
+    }else{
+     await confirm(await service.previewImport(csv('admin_grid',[{code,name:'RR parent',districtCode:'d1'}]),'admin_grid',all));
+     importKind=kind==='admin'?'admin_grid':'community';file=kind==='admin'?csv(importKind,[{code,name:'RR parent',districtCode:'d1'}]):csv(importKind,[{code:code+'-C',name:'RR changed community',adminGridCode:code}]);
+     if(kind==='community')await confirm(await service.previewImport(csv('community',[{code:code+'-C',name:'RR community',adminGridCode:code}]),'community',all));
+    }
+    const reader=await pool.getConnection(),writer=await pool.getConnection();const getConnection=pool.getConnection.bind(pool),query=reader.query.bind(reader),release=reader.release.bind(reader);let ready!:()=>void,resume!:()=>void;const barrier=new Promise<void>(r=>ready=r),continued=new Promise<void>(r=>resume=r);let pending:ReturnType<typeof service.previewImport>|undefined;
+    try{
+     await reader.query('set transaction isolation level repeatable read');await writer.beginTransaction();
+     (reader as any).query=async(sql:string,values?:unknown[])=>{const result=await query(sql,values);if(sql.startsWith('select scope_version, scope_rules')){ready();await continued;}return result;};reader.release=()=>{};let first=true;pool.getConnection=async()=>{if(first){first=false;return reader;}return getConnection();};
+     pending=service.previewImport(file,importKind,all);await Promise.race([barrier,pending.then(()=>{throw Error('preview ended before RR barrier');})]);
+     const observe=kind==='grid'?'select version from service_grid where grid_code=?':'select district_code from admin_grid where code=?';const [old]=await query(observe,[code]);
+     if(kind==='grid')await grids.saveInTx(writer,{code,enterpriseCode:'001',businessType:'water',adminGridCodes:['AG2'],communityCodes:[],validFrom:'2026-07-01',validTo:null,expectedVersion:2},all);
+     else await grids.saveAdminInTx(writer,{code,name:'RR parent',districtCode:'d2',geometry:null,coordinateSystem:null,geometrySource:null,expectedVersion:1},all);
+     await writer.commit();const [stale]=await query(observe,[code]);assert.deepEqual(stale,old,'reader really keeps the earlier snapshot');resume();
+     if(kind==='grid')await assert.rejects(()=>pending!,{status:409});
+     else{const p=await pending;const row=await db('master_data_import_batch').where('batch_id',p.batchId).first();const proof=typeof row.scope_proofs==='string'?JSON.parse(row.scope_proofs):row.scope_proofs;assert.equal(proof[0].original[0].districtCode,'d2',kind+' proof uses the locked current district');if(kind==='community')assert.equal(proof[0].proposed[0].districtCode,'d2','proposed parent fact is current too');}
+    }finally{resume();await pending?.catch(()=>{});pool.getConnection=getConnection;(reader as any).query=query;reader.release=release;await reader.rollback();await writer.rollback();release();writer.release();}
+   });
+  });
   await t.test('scope proofs retain original coverage after replacement and expiry, and independently check current coverage',async()=>{
    const p=await service.previewImport(csv('grid_coverage',[{code:'SG',validFrom:'2026-07-01',validTo:'',relationKind:'admin_grid',relationCode:'AG2'}]),'grid_coverage',all);assert.equal(p.canCommit,true);assert.equal((await confirm(p)).updated,1);
    try{await scope(['d2']);await assert.rejects(()=>service.getBatch(p.batchId,all),{status:404});await assert.rejects(()=>service.errors(p.batchId,all),{status:404});await assert.rejects(()=>confirm(p),{status:404});assert.equal((await service.list('grid_coverage',all)).content.some(x=>x.preview.batchId===p.batchId),false);

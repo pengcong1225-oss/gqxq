@@ -47,11 +47,12 @@ function orderedRows(rows:ImportRow[],kind:MasterDataImportKind):ImportRow[]{
  * admin, community, service-grid. A5 singleton is always acquired first. */
 async function prelock(tx:Tx,rows:ImportRow[],kind:MasterDataImportKind){
  const dict=new Set<string>();const ent=new Set<string>();const admins=new Set<string>();const communities=new Set<string>();const grids=new Set<string>();
+ const discoveredGridVersions=new Map<string,number|null>();
  for(const {values:v} of rows){
   if(kind==='dictionary_type')dict.add(String(v.code));if(kind==='dictionary_item'||kind==='category')dict.add(String(v.typeCode??'complaint_category'));
   if(kind==='enterprise'||kind==='service_grid'||kind==='grid_coverage')dict.add('business_type');if(kind==='enterprise'&&v.districtCode||kind==='admin_grid'||kind==='grid_boundary')dict.add('district');
   if(v.enterpriseCode)ent.add(String(v.enterpriseCode));if(kind==='admin_grid'||kind==='grid_boundary')admins.add(String(v.code));if(v.adminGridCode)admins.add(String(v.adminGridCode));if(kind==='community')communities.add(String(v.code));
-  if(kind==='service_grid'||kind==='grid_coverage'){grids.add(String(v.code));const existing=await readGridIn(tx,String(v.code));if(existing){ent.add(existing.enterprise_code);const coverage=await readCoverageIn(tx,existing);coverage?.adminGridCodes.forEach(c=>admins.add(c));coverage?.communityCodes.forEach(c=>communities.add(c));}}
+  if(kind==='service_grid'||kind==='grid_coverage'){grids.add(String(v.code));const existing=await readGridIn(tx,String(v.code));discoveredGridVersions.set(String(v.code),existing?.version??null);if(existing){ent.add(existing.enterprise_code);const coverage=await readCoverageIn(tx,existing);coverage?.adminGridCodes.forEach(c=>admins.add(c));coverage?.communityCodes.forEach(c=>communities.add(c));}}
   if(kind==='grid_coverage'){if(v.relationKind==='admin_grid')admins.add(String(v.relationCode));if(v.relationKind==='community')communities.add(String(v.relationCode));}
  }
  for(const c of [...communities].sort()){const prior=await readCommunityIn(tx,c);if(prior)admins.add(prior.adminGridCode);}
@@ -60,7 +61,12 @@ async function prelock(tx:Tx,rows:ImportRow[],kind:MasterDataImportKind){
  for(const code of [...ent].filter(Boolean).sort())await readEnterpriseIn(tx,code,true);
  for(const code of [...admins].sort())await readAdminIn(tx,code,true);
  for(const code of [...communities].sort())await readCommunityIn(tx,code,true);
- for(const code of [...grids].sort())await readGridIn(tx,code,true);
+ for(const code of [...grids].sort()){
+  const current=await readGridIn(tx,code,true);
+  // Parent discovery used the RR snapshot before acquiring ordered locks. Do
+  // not discover new parents after locking a changed grid: retry the preview.
+  if((current?.version??null)!==discoveredGridVersions.get(code))throw AppError.conflict('网格或覆盖在锁定前已变化，请重新预览');
+ }
 }
 async function plan(tx:Tx,rawRows:ImportRow[],kind:MasterDataImportKind,ctx:MasterDataContext):Promise<ImportDetail[]>{
  assertImportPermission(kind,ctx);await prelock(tx,rawRows,kind);let rows=orderedRows(rawRows,kind);
