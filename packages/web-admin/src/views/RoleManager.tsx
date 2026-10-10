@@ -20,7 +20,7 @@ export default function RoleManager(){
    setOpen(false);form.resetFields();message.success('角色已保存，后续请求使用当前授权');await load();
   }catch(e){message.error((e as Error).message);}finally{setSaving(false);}
  };
- return <div><h2>角色权限管理</h2><Alert type="info" showIcon message="一人一个业务角色。账号与角色管理权限受保护；只读角色仅可查询和修改本人口令。" style={{marginBottom:16}}/>
+ return <div><h2>角色权限管理</h2>
  {error&&<Alert type="error" showIcon message={error}/>}
  <Space style={{marginBottom:16}}><Button onClick={()=>void load()} loading={loading}>刷新</Button><Button type="primary" disabled={!access.can} onClick={()=>begin(null)}>新增角色</Button></Space>
  <Table rowKey="roleCode" dataSource={roles} loading={loading} pagination={false} columns={[

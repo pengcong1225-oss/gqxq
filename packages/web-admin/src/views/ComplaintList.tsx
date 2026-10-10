@@ -361,7 +361,7 @@ const ComplaintList: React.FC = () => {
       showIcon
       style={{ marginBottom: 12 }}
       message={'企业列表加载失败：' + enterpriseError}
-      description="下拉将为空，不会被本地示例企业替代。"
+      description="请重试后选择企业。"
       action={
         <Button size="small" onClick={() => void fetchEnterprises()}>
           重试
@@ -386,7 +386,7 @@ const ComplaintList: React.FC = () => {
           style={{ marginBottom: 16 }}
           message="来源对接状态获取失败"
           description={
-            '无法确认宜接就办来源适配器当前是否已接入：' + sourceStateError + '。（不会用默认值假装未接入）'
+            sourceStateError
           }
           action={
             <Button size="small" onClick={() => void loadSourceState()}>
@@ -399,38 +399,7 @@ const ComplaintList: React.FC = () => {
     if (sourceState === null) return null; // 尚未取到：不做任何断言，避免误报
     if (sourceState.enabled) return null; // 已接入：不显示提示条
 
-    if (sourceState.misconfigured) {
-      return (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={'来源对接：适配器配置无效（批次 ' + (sourceState.batch ?? 'G6') + '）'}
-          description={
-            <>
-              {sourceState.message}
-              <br />
-              列表中的来源状态一律显示「未接入」，这是真实状态，不代表异常。
-            </>
-          }
-        />
-      );
-    }
-    return (
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message={'来源对接：未接入（批次 ' + (sourceState.batch ?? 'G6') + '）'}
-        description={
-          <>
-            {sourceState.message}
-            <br />
-            列表中的来源状态一律显示「未接入」，这是真实状态，不代表异常；本平台不展示任何模拟的来源进度。
-          </>
-        }
-      />
-    );
+    return sourceState.misconfigured ? <Alert type="warning" showIcon message="来源数据暂不可同步，请联系管理员。" style={{marginBottom:16}}/> : null;
   })();
 
   const reload = useCallback(() => {
@@ -583,7 +552,7 @@ const ComplaintList: React.FC = () => {
         width: 110,
         render: (_: unknown, r) =>
           r.sourceEventStatusCode === 'unknown' ? (
-            <Tooltip title="宜接就办接口尚未对接（批次 G6），来源处置状态暂不可知">
+            <Tooltip title="暂未获取来源处置状态">
               <Tag color="default">{r.sourceEventStatusName}</Tag>
             </Tooltip>
           ) : (
@@ -729,7 +698,7 @@ const ComplaintList: React.FC = () => {
           showIcon
           style={{ marginBottom: 16 }}
           message={'筛选字典加载失败：' + dictError}
-          description="筛选下拉项来自服务端字典接口，加载失败时下拉为空；表格数据不受影响。"
+          description="部分筛选条件暂不可用，请稍后重试。"
         />
       )}
 
@@ -866,25 +835,19 @@ const ComplaintList: React.FC = () => {
               applyFilter({ range: next });
             }}
           />
-          <Tooltip title="导出与批量导入尚未实现（后端未提供接口）">
+          <Tooltip title="暂不可用">
             <Button icon={<ExportOutlined />} disabled>
               导出Excel
             </Button>
           </Tooltip>
-          <Tooltip title="批量导入尚未实现（后端未提供接口）">
+          <Tooltip title="暂不可用">
             <Button icon={<ImportOutlined />} disabled>
               批量导入
             </Button>
           </Tooltip>
         </Space>
 
-        <div style={{ marginBottom: 12 }}>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            统计卡片为当前筛选条件下的全量口径（不受分页影响）。来源状态「未接入」表示宜接就办接口尚未对接（批次 G6），不代表处置进度。
-            <br />
-            「超期」是时效维度，只由来源同步路径派生（批次 G6／迁移 M11）；「无时效信息」= 来源没给结论，不等于「未超期」，历史存量尚未回填。
-          </Typography.Text>
-        </div>
+
 
         {error ? (
           <Result
@@ -943,13 +906,7 @@ const ComplaintList: React.FC = () => {
         okText="创建交办"
         width={560}
       >
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="同一诉求同一轮只能有一条有效交办"
-          description="该约束由数据库唯一键保证，不依赖前端判断。若并发下已存在交办，后端返回 created=false，此处会提示「该诉求已有交办」并刷新，不会产生第二条。"
-        />
+
         {enterpriseErrorAlert}
         <Form form={dispatchForm} layout="vertical">
           <Form.Item

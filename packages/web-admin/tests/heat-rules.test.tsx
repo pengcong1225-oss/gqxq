@@ -46,7 +46,7 @@ test('review1 manager sends displayed saved revision and shows conflict instead 
  try{
   const p=within(ui.container);await waitFor(()=>assert.ok(p.getByRole('button',{name:'编辑草稿'})));fireEvent.click(p.getByRole('button',{name:'编辑草稿'}));
   for(const [label,value] of [['样本数量','450'],['样本天数','30']])await act(async()=>{const el=p.getByLabelText(label) as HTMLInputElement;el.value=value;Simulate.change(el);});
-  fireEvent.click(p.getByRole('button',{name:'候选样本预览'}));await waitFor(()=>assert.ok(received));assert.equal(received.expectedVersion,1);
+  fireEvent.click(p.getByRole('button',{name:'样本预览'}));await waitFor(()=>assert.ok(received));assert.equal(received.expectedVersion,1);
   await waitFor(()=>assert.match(ui.container.textContent??'',/草稿版本已变化/));assert.equal(ui.container.textContent?.includes('orange'),false);
  }finally{ui.unmount();cleanup();client.defaults.adapter=adapter;}
 });
@@ -71,8 +71,8 @@ test('saved draft preview cannot claim unsaved edited coefficients and revoked m
  const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');const adapter=client.defaults.adapter;const input={ruleId:'DRAFT-A',category:{majorCode:'fee',minorCode:null,dictionaryVersion:'10'},coefficients:['1','5','10','20','30'],policyId:'P1',policyVersion:1,policy:{anchor:'upper',endpointOwner:'lower',zero:'green',belowFirst:'green',top:'red',day:'shanghai_inclusive',classFallback:'exact_only',noRule:'null',ruleSelection:'query_end'},effectiveFrom:'2026-10-10',expectedVersion:0};
  client.defaults.adapter=async(config:any)=>({data:{code:200,data:config.url.endsWith('/categories')?{dictionaryVersion:'10',items:[{code:'fee',label:'Synthetic fee',parentCode:null}]}:config.url.endsWith('/preview')?{candidate:true,level:'orange',ruleVersion:'draft:1'}:[{ruleId:'DRAFT-A',editVersion:1,input,approvalStatus:'unconfirmed'}]},status:200,statusText:'OK',headers:{},config});
  const {render,within,waitFor,fireEvent,act,cleanup}=await import('@testing-library/react');const ui=render(<Page/>);try{const p=within(ui.container);await waitFor(()=>assert.ok(p.getByRole('button',{name:'编辑草稿'})));fireEvent.click(p.getByRole('button',{name:'编辑草稿'}));
-  for(const [label,value] of [['样本数量','450'],['样本天数','30']])await act(async()=>{const el=p.getByLabelText(label) as HTMLInputElement;el.value=value;Simulate.change(el);});fireEvent.click(p.getByRole('button',{name:'候选样本预览'}));await waitFor(()=>assert.match(ui.container.textContent??'',/orange/));
-  await act(async()=>{const el=p.getByLabelText('绿系数') as HTMLInputElement;el.value='2';Simulate.change(el);});assert.equal((p.getByRole('button',{name:'候选样本预览'}) as HTMLButtonElement).disabled,true,'unsaved editor must not preview different persisted coefficients');assert.equal(ui.container.textContent?.includes('orange'),false);
+  for(const [label,value] of [['样本数量','450'],['样本天数','30']])await act(async()=>{const el=p.getByLabelText(label) as HTMLInputElement;el.value=value;Simulate.change(el);});fireEvent.click(p.getByRole('button',{name:'样本预览'}));await waitFor(()=>assert.match(ui.container.textContent??'',/orange/));
+  await act(async()=>{const el=p.getByLabelText('绿系数') as HTMLInputElement;el.value='2';Simulate.change(el);});assert.equal((p.getByRole('button',{name:'样本预览'}) as HTMLButtonElement).disabled,true,'unsaved editor must not preview different persisted coefficients');assert.equal(ui.container.textContent?.includes('orange'),false);
   await act(async()=>useAppStore.setState({userInfo:{roles:['custom'],permissions:[]}}));assert.equal(ui.container.textContent?.includes('DRAFT-A'),false);
  }finally{ui.unmount();cleanup();client.defaults.adapter=adapter;}
 });

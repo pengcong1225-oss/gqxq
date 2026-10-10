@@ -118,7 +118,7 @@ const CompanyList:React.FC=()=>{
  };
  if(!read.can)return <Result status="403" title="无权限，请联系管理员"/>;
  return <Card title="企业档案" extra={<Space><MasterDataImportDialog kinds={['enterprise','department_mapping','household']} onImported={()=>setReload(v=>v+1)}/>{write.can&&<Button type="primary" onClick={()=>void edit()}>新增企业</Button>}</Space>}>
-  <Alert type="info" showIcon message="管理归属区县须按真实区划明确登记，不表示服务覆盖或户数区县分配。户数为全企业口径；区县局部诉求不能直接配全企业户数计算比率。" style={{marginBottom:16}}/>
+
   {error&&<Alert type="error" showIcon message={error} style={{marginBottom:16}}/>}
   <Space style={{marginBottom:16}}><Input aria-label="企业搜索" value={search} onChange={e=>setSearch(e.target.value)} placeholder="登记编码或名称"/><Button onClick={()=>{setPage(1);setKeyword(search);}}>查询</Button><Button onClick={()=>setReload(v=>v+1)}>刷新</Button></Space>
   <Table<EnterpriseListItem> rowKey="enterpriseCode" dataSource={items} loading={loading} pagination={{current:page,pageSize:20,total,onChange:setPage}} locale={{emptyText:error?'查询失败':'当前范围暂无企业'}} columns={[
@@ -147,11 +147,11 @@ const CompanyList:React.FC=()=>{
    {error&&<Alert type="error" message={error}/>}
    {selected&&<><Descriptions column={2} items={[{key:'code',label:'登记编码',children:selected.enterpriseCode},{key:'version',label:'档案版本',children:selected.version},{key:'district',label:'管理归属区县',children:selected.districtCode??'未登记'},{key:'score',label:'年度评分',children:selected.annualScore??'未知'},{key:'contact',label:'联系人',children:selected.contactPerson??'—'},{key:'phone',label:'联系电话',children:selected.contactPhone??'—'},{key:'address',label:'注册地址',children:selected.address??'—'},{key:'area',label:'服务范围说明',children:selected.serviceArea??'—'}]}/>
    <Tabs items={[{key:'households',label:'服务户数历史',children:<>
-    <Alert type="info" message="有效期为开始日含、结束日不含；新增较晚版本会结束上一开放区间。空户数表示未知，0表示已核实为0。历史户数不会覆盖。"/>
+
     <Table<HouseholdVersion> rowKey="version" dataSource={households} pagination={false} columns={[{title:'户数',dataIndex:'households',render:v=>v??'未知'},{title:'生效日',dataIndex:'validFrom'},{title:'截止日（不含）',dataIndex:'validTo',render:v=>v??'持续有效'},{title:'版本',dataIndex:'version'}]}/>
     {write.can&&<Form ref={instance=>{if(instance)detailFormsMounted.current.households=true;}} form={houseForm} layout="vertical" onFinish={()=>void addHousehold()}><Form.Item name="households" label="服务户数（留空为未知）"><InputNumber min={0} precision={0}/></Form.Item><Form.Item name="validFrom" label="生效日" rules={[{required:true}]}><Input type="date"/></Form.Item><Form.Item name="validTo" label="截止日（可空）"><Input type="date"/></Form.Item><Button htmlType="submit" loading={detailSaving}>新增户数版本</Button></Form>}
    </>},{key:'mapping',label:'来源部门映射',children:<>
-    <Alert type="info" message="仅来源系统和部门码决定映射；别名只供人工核验展示，未核验不会自动关联。政府机构不得登记为企业主体。"/>
+
     <Table<DepartmentMapping> rowKey={m=>m.sourceSystem+':'+m.sourceDepartmentCode} dataSource={mappings} pagination={false} columns={[{title:'来源系统',dataIndex:'sourceSystem'},{title:'部门码',dataIndex:'sourceDepartmentCode'},{title:'名称',dataIndex:'sourceDepartmentName'},{title:'别名',dataIndex:'aliases',render:v=>Array.isArray(v)?v.join('、'):'—'},{title:'核验',dataIndex:'verified',render:v=>v?'已核验':'待核验'},{title:'操作',render:(_,m)=>write.can&&<Button onClick={()=>mappingForm.setFieldsValue({...m,verified:Boolean(m.verified),aliases:m.aliases.join('\n')})}>核验或编辑</Button>}]}/>
     {write.can&&<Form ref={instance=>{if(instance)detailFormsMounted.current.mapping=true;}} form={mappingForm} layout="vertical" onFinish={()=>void addMapping()}><Form.Item name="sourceSystem" label="来源系统" rules={[{required:true}]}><Input maxLength={64}/></Form.Item><Form.Item name="sourceDepartmentCode" label="来源部门码" rules={[{required:true}]}><Input maxLength={64}/></Form.Item><Form.Item name="sourceDepartmentName" label="来源部门名称" rules={[{required:true}]}><Input maxLength={128}/></Form.Item><Form.Item name="aliases" label="人工核验别名（每行一个）"><Input.TextArea/></Form.Item><Form.Item name="verified" label="已人工核验" valuePropName="checked"><Switch/></Form.Item><Button htmlType="submit" loading={detailSaving}>保存部门映射</Button></Form>}
    </>} ]}/></>}

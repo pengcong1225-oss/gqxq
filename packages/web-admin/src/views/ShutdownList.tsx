@@ -69,8 +69,8 @@ const ShutdownList: React.FC = () => {
     { title: '状态', dataIndex: 'status', width: 80, render: (s: string) => <Tag color={statusMap[s]?.color}>{statusMap[s]?.text}</Tag> },
     { title: '操作', width: 120,
       render: (_: any, r: any) => <Space>
-        <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue({...r, plannedStartTime: dayjs(r.plannedStartTime), plannedEndTime: dayjs(r.plannedEndTime)}); setFormVisible(true); }} disabled>编辑</Button></span></Tooltip>
-        <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
+        <Tooltip title="暂不可用"><span><Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue({...r, plannedStartTime: dayjs(r.plannedStartTime), plannedEndTime: dayjs(r.plannedEndTime)}); setFormVisible(true); }} disabled>编辑</Button></span></Tooltip>
+        <Tooltip title="暂不可用"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
       </Space> },
   ];
 
@@ -90,7 +90,7 @@ const ShutdownList: React.FC = () => {
         <Space style={{ marginBottom: 16 }} wrap>
           <Input placeholder="搜索编号/企业/区域" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 260 }} allowClear />
           <Select placeholder="状态筛选" allowClear style={{ width: 120 }} onChange={setFilterStatus} options={Object.entries(statusMap).map(([k,v]) => ({value:k, label:v.text}))} />
-          <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setFormVisible(true); }} disabled>新建申请</Button></span></Tooltip>
+          <Tooltip title="暂不可用"><span><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setFormVisible(true); }} disabled>新建申请</Button></span></Tooltip>
         </Space>
         <Table columns={columns} dataSource={filtered} size="middle" scroll={{ x: 1600 }} pagination={{ defaultPageSize: 12 }} />
       </Card>

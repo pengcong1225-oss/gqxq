@@ -62,8 +62,8 @@ const PipelineList: React.FC = () => {
       } },
     { title: '操作', width: 120,
       render: (_: any, r: any) => <Space>
-        <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue({...r, startDate: dayjs(r.startDate), plannedEndDate: dayjs(r.plannedEndDate)}); setFormVisible(true); }} disabled>编辑</Button></span></Tooltip>
-        <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
+        <Tooltip title="暂不可用"><span><Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue({...r, startDate: dayjs(r.startDate), plannedEndDate: dayjs(r.plannedEndDate)}); setFormVisible(true); }} disabled>编辑</Button></span></Tooltip>
+        <Tooltip title="暂不可用"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
       </Space> },
   ];
 
@@ -83,7 +83,7 @@ const PipelineList: React.FC = () => {
         <Space style={{ marginBottom: 16 }} wrap>
           <Input placeholder="搜索项目名称/编号/企业" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 280 }} allowClear />
           <Select placeholder="状态筛选" allowClear style={{ width: 120 }} onChange={setFilterStatus} options={[{value:'pending',label:'待开工'},{value:'in_progress',label:'施工中'},{value:'completed',label:'已完工'},{value:'suspended',label:'暂停'}]} />
-          <Tooltip title="功能未实现（批次 另立批次）"><span><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setFormVisible(true); }} disabled>新增项目</Button></span></Tooltip>
+          <Tooltip title="暂不可用"><span><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setFormVisible(true); }} disabled>新增项目</Button></span></Tooltip>
         </Space>
         <Table columns={columns} dataSource={filtered} size="middle" scroll={{ x: 1500 }} pagination={{ defaultPageSize: 10 }} />
       </Card>

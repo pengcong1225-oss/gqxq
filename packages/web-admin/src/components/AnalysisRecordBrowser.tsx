@@ -77,7 +77,7 @@ export default function AnalysisRecordBrowser() {
     if (!canRead)
         return <Result status="403" title="当前账号无分析入库记录查询权限"/>;
     return <Card title="入库记录浏览">
-  <Alert type="info" showIcon message="保留已存入库字段；未按业务日期统计，不计算同比环比" description="包括没有业务日期的历史入库记录。纠偏确认时间仅表示入库确认，不补造来源日期；未知值显示 —。当前数据范围仍由服务端检查。"/>
+
   <Space wrap style={{ margin: '16px 0' }}>{(['districtCode', 'businessType', 'enterpriseCode'] as const).map((field, i) => <label key={field}>{['入库区域编码', '入库业务类型编码', '入库企业编码'][i]}<Input aria-label={['入库区域编码', '入库业务类型编码', '入库企业编码'][i]} value={draft[field]} onChange={event => setDraft({ ...draft, [field]: event.target.value })}/></label>)}
    <Button onClick={() => { setPage(1); setFilters({ districtCode: draft.districtCode.trim() || undefined, businessType: (draft.businessType.trim() || undefined) as BusinessType | undefined, enterpriseCode: draft.enterpriseCode.trim() || undefined }); }}>应用入库筛选</Button><Button onClick={() => setRefresh(value => value + 1)}>刷新记录</Button>
   </Space>

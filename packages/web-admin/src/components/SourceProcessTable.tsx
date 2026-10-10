@@ -28,7 +28,7 @@ const SourceProcessTable:React.FC<{complaintId:string}>=({complaintId})=>{
  };
  if(!access.can)return null;
  return <Card title="来源全过程" style={{marginTop:16}} extra={<Button loading={loading} onClick={()=>void load()}>查看来源全过程</Button>}>
-  <Typography.Paragraph type="secondary">按来源业务时间及来源顺序展示。缺少顺序的同时间节点仅按节点键稳定排列，先后不可确认。本地存储修订号记录观察次序，不代表来源版本大小。</Typography.Paragraph>
+
   {error&&<Alert type="error" showIcon message={error}/>}
   {result&&<>
    <Alert showIcon style={{marginBottom:12}} type={result.state==='error'?'error':result.complete?'success':'warning'}

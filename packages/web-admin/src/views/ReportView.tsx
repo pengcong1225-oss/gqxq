@@ -105,13 +105,7 @@ const ReportView: React.FC = () => {
       <FixedReportPanel todoIds={selectedTodoIds}/>
       {canTodos&&<>
       <h2 style={{ marginBottom: 8 }}>待查报告待办</h2>
-      <Alert
-        type="warning"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="报告的形成、审批与发布规则待业务方确认"
-        description="待办区域提供「待查入口」：下列待办由分析库（已完成纠偏闭环的诉求）派生，用于提示哪些诉求需要出报告。待办本身不代表报告已经生成，也不代表可对外发布。"
-      />
+
 
       <Card>
         <Space style={{ marginBottom: 16 }} wrap>

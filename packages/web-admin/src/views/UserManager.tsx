@@ -183,7 +183,7 @@ const UserManager: React.FC = () => {
     setSubmitting(true);
     try {
       const res = await updateUser(editing.userId, values);
-      message.success(res.changed.length === 0 ? '无字段变化，未写入审计' : '已更新：' + res.changed.join('、'));
+      message.success(res.changed.length === 0 ? '没有需要更新的内容' : '已更新：' + res.changed.join('、'));
       setEditing(null);
       refresh();
     } catch (e) {
@@ -250,7 +250,7 @@ const UserManager: React.FC = () => {
             </Button>
           </WriteGate>
           {/* 没有删除按钮：禁用即下线，历史审计里的 user_id 要还能查得到人 */}
-          <Tooltip title="不提供删除：禁用即下线，历史审计要查得到人">
+          <Tooltip title="禁用后该账号将无法登录">
             <span style={{ marginLeft: 8, color: '#bfbfbf' }}>无删除</span>
           </Tooltip>
           <Button type="link" disabled={!isAdmin} onClick={()=>{resetForm.resetFields();setResetting(r);}}>重置口令</Button>
@@ -332,7 +332,7 @@ const UserManager: React.FC = () => {
           type="warning"
           showIcon
           message="本页面仅系统管理员可用"
-          description="接口层按策略表 U1–U3 拒绝非 admin（403），所以这里不会显示任何账号。"
+          description="请联系管理员开通账号管理权限。"
           style={{ marginBottom: 12 }}
         />
       )}

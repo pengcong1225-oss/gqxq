@@ -20,5 +20,5 @@ export default function StatisticsFilters({value,onChange,onApply,allowed,loadin
   <label style={fieldStyle}>结束业务日<input aria-label="结束业务日" style={controlStyle} type="date" value={value.to} max={statisticsToday()} onChange={e=>update({to:e.target.value,periodKind:'custom'})}/></label>
   {([['businessType','业务编码'],['majorCode','正式大类编码'],['minorCode','正式小类编码'],['enterpriseCode','企业编码'],['districtCode','区划编码'],['serviceGridCode','服务网格编码']] as const).map(([field,label])=><label key={field} style={fieldStyle}>{label}<input aria-label={label} style={controlStyle} value={value[field]??''} maxLength={64} placeholder="全部" onChange={e=>update({[field]:e.target.value||undefined})}/></label>)}
   <Button type="primary" loading={loading} disabled={!value.projection||!allowed.includes(value.dataset)} onClick={onApply}>应用统计筛选</Button>
- </Space><div style={{marginTop:12,color:'#666'}}>Asia/Shanghai · 截至 {value.to} · 候选统计政策（待业务确认）。日历期间从期初开始；日期最多3660日。编码筛选按稳定业务编码匹配。</div></div>;
+ </Space></div>;
 }

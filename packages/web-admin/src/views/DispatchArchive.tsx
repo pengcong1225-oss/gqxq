@@ -239,13 +239,6 @@ const DispatchArchive: React.FC = () => {
   return (
     <div>
       <h2 style={{ marginBottom: 8 }}>交办归档</h2>
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="归档前置条件"
-        description="交办需已完成（填报审批最终通过），且该诉求没有未确认的纠偏项。若被拒，页面会给出具体原因与纠偏入口。归档是写 dispatch_order 的状态与归档时间并留审计，不会删除历史记录。"
-      />
 
       <Card>
         <Tabs
@@ -332,7 +325,7 @@ const DispatchArchive: React.FC = () => {
           showIcon
           style={{ marginBottom: 12 }}
           message="该交办当前不满足归档条件"
-          description="常见原因：交办尚未完成（填报审批未最终通过），或该诉求仍有未确认的纠偏项。请按下面后端返回的原文处理后重试。"
+          description="常见原因：交办尚未完成（填报审批未最终通过），或该诉求仍有未确认的纠偏项。请处理以下问题后重试。"
         />
         <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6, wordBreak: 'break-all' }}>
           {blocked?.message}

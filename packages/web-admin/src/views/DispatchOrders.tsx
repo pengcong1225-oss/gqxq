@@ -409,13 +409,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
   return (
     <>
     <Card>
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="这里展示规则命中的敏感诉求，不等于已经生成交办单"
-        description="数据按服务端 isSensitive=1 筛选；命中词来自入站规则引擎。业务经办或管理员可在本表直接发起交办，已有有效交办会直接打开记录。"
-      />
+
       <Space style={{ marginBottom: 16 }} wrap>
         <Input.Search
           placeholder="搜索诉求编号、标题或内容"
@@ -484,13 +478,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
         width={560}
         destroyOnClose
       >
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="同一诉求已有有效交办时会复用现有记录"
-          description="提交使用现有幂等接口；并发下命中已有交办时不会重复创建，并会直接打开对应交办详情。"
-        />
+
         <Form form={dispatchForm} layout="vertical">
           <Form.Item name="targetEnterpriseCode" label="交办企业" rules={[{ required: true, message: '请选择交办企业' }]}>
             <Select
@@ -852,7 +840,7 @@ const DispatchOrders: React.FC = () => {
           v ? (
             <Tooltip title={v}>{v}</Tooltip>
           ) : (
-            <Tooltip title="填报任务号由批次 G3 推送成功后回填">
+            <Tooltip title="推送成功后显示填报任务号">
               <span style={{ color: '#bfbfbf' }}>—</span>
             </Tooltip>
           ),
@@ -914,14 +902,14 @@ const DispatchOrders: React.FC = () => {
                   </span>
                 </Tooltip>
               )}
-              <Tooltip title="无需手动同步：结果事件由 public-utility 主动回传（批次 G4），已在详情内展示审批轨迹">
+              <Tooltip title="审批进度自动更新，可在详情中查看">
                 <span>
                   <Button type="link" size="small" disabled>
                     同步
                   </Button>
                 </span>
               </Tooltip>
-              <Tooltip title="功能未实现（批次 G5）">
+              <Tooltip title="暂不可用">
                 <span>
                   <Button type="link" size="small" disabled>
                     归档
@@ -1055,13 +1043,7 @@ const DispatchOrders: React.FC = () => {
   return (
     <div>
       <h2 style={{ marginBottom: 8 }}>敏感交办工作台</h2>
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 12 }}
-        message="规则命中与正式交办分开呈现"
-        description="「规则命中诉求」按敏感规则筛选候选；「交办记录」只展示已经人工决定并生成的交办单。规则命中不会自动替代人工交办。"
-      />
+
       <Tabs
         activeKey={activeView}
         onChange={(key) => setActiveView(key as 'matches' | 'orders')}
@@ -1080,13 +1062,7 @@ const DispatchOrders: React.FC = () => {
         />
       ) : (
         <>
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-            message="这里展示已生成的交办记录及其进度"
-            description="新交办从上方「规则命中诉求」发起；已有交办记录可在此查询、推送或查看详情。"
-          />
+
 
           {dictError && (
             <Alert
@@ -1094,7 +1070,7 @@ const DispatchOrders: React.FC = () => {
               showIcon
               style={{ marginBottom: 16 }}
               message={'状态字典加载失败：' + dictError}
-              description="状态筛选下拉的文案来自服务端字典；加载失败时下拉回退显示状态码本身，表格数据不受影响。"
+              description="部分状态筛选暂不可用，请稍后重试。"
             />
           )}
 
@@ -1253,7 +1229,7 @@ const DispatchOrders: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="填报任务号">
               {detail.reportingTaskId ?? (
-                <Tooltip title="填报任务号由批次 G3 推送成功后回填">
+                <Tooltip title="推送成功后显示填报任务号">
                   <span style={{ color: '#bfbfbf' }}>—</span>
                 </Tooltip>
               )}
@@ -1346,13 +1322,7 @@ const DispatchOrders: React.FC = () => {
               <Timeline items={timelineItems} />
             )}
 
-            <Alert
-              style={{ marginTop: 12 }}
-              type="info"
-              showIcon
-              message="签收不在回传事件里"
-              description="对方的结果事件只有 提交/退回/通过/不同意 四类，无法表达「企业签收」，因此本轨迹不会出现签收节点（落地计划 §3.2 已标注的契约缺口）。"
-            />
+
           </>
         )}
       </Modal>
@@ -1467,7 +1437,7 @@ const DispatchOrders: React.FC = () => {
           showIcon
           style={{ marginBottom: 12 }}
           message="撤销后不可复活"
-          description="该交办会进入终态「已撤销」，且本次操作会写入审计。如需重新交办，请在诉求总账重新发起。"
+          description="撤销后无法恢复。如需重新交办，请在诉求总账重新发起。"
         />
         <Form form={cancelForm} layout="vertical">
           <Form.Item

@@ -378,7 +378,7 @@ const ComplaintDetail: React.FC = () => {
       if (code === 501 || code === 'NOT_IMPLEMENTED') {
         setSourceSyncNotice({
           type: 'info',
-          text: '来源适配器未启用（批次 G6），真实接口待对接：' + (e?.message ?? ''),
+          text: '来源数据暂不可同步',
         });
       } else {
         setSourceSyncNotice({
@@ -500,7 +500,7 @@ const ComplaintDetail: React.FC = () => {
           style={{ marginBottom: 12 }}
           message="来源对接状态获取失败"
           description={
-            '无法确认宜接就办来源适配器当前是否已接入：' + sourceStateError + '。（不会用默认值假装未接入）'
+            sourceStateError
           }
           action={
             <Button size="small" onClick={() => void loadSourceState()}>
@@ -510,25 +510,7 @@ const ComplaintDetail: React.FC = () => {
         />
       )}
 
-      {sourceState !== null && !sourceState.enabled && (
-        <Alert
-          type={sourceState.misconfigured ? 'warning' : 'info'}
-          showIcon
-          style={{ marginBottom: 12 }}
-          message={
-            sourceState.misconfigured
-              ? '来源对接：适配器配置无效（批次 ' + (sourceState.batch ?? 'G6') + '）'
-              : '来源对接：未接入（批次 ' + (sourceState.batch ?? 'G6') + '）'
-          }
-          description={
-            <>
-              {sourceState.message}
-              <br />
-              本页的来源状态显示「未接入」，这是真实状态，不代表异常；本平台不展示任何模拟的来源进度。
-            </>
-          }
-        />
-      )}
+      {sourceState?.misconfigured && <Alert type="warning" showIcon message="来源数据暂不可同步，请联系管理员。" style={{marginBottom:12}}/>}
 
       {sourceSyncNotice !== null && (
         <Alert
@@ -680,7 +662,7 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="来源状态">
                 {detail.sourceEventStatusCode === 'unknown' ? (
-                  <Tooltip title="宜接就办接口尚未对接（批次 G6），来源处置状态暂不可知">
+                  <Tooltip title="暂未获取来源处置状态">
                     <Tag color="default">{detail.sourceEventStatusName}</Tag>
                   </Tooltip>
                 ) : (
@@ -849,7 +831,7 @@ const ComplaintDetail: React.FC = () => {
                 <Descriptions.Item label="请求号">{dispatch.requestId ?? '—'}</Descriptions.Item>
                 <Descriptions.Item label="填报任务号">
                   {dispatch.reportingTaskId ?? (
-                    <Tooltip title="填报任务号由批次 G3 推送成功后回填">
+                    <Tooltip title="推送成功后显示填报任务号">
                       <span>—</span>
                     </Tooltip>
                   )}
@@ -859,7 +841,7 @@ const ComplaintDetail: React.FC = () => {
 
             <Divider />
             <Space wrap>
-              <Tooltip title="本系统办结属批次 G5，未实现">
+              <Tooltip title="暂不可用">
                 <span>
                   <Button type="primary" size="small" icon={<CheckCircleOutlined />} disabled>
                     标记办结
@@ -945,17 +927,17 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="已处理时长">{fmtDuration(timing.elapsed)}</Descriptions.Item>
               <Descriptions.Item label="交办耗时">
-                <Tooltip title="依赖交办记录，批次 G2">
+                <Tooltip title="暂无交办记录">
                   <span>—</span>
                 </Tooltip>
               </Descriptions.Item>
               <Descriptions.Item label="签收耗时">
-                <Tooltip title="依赖填报系统签收回执，批次 G4">
+                <Tooltip title="暂无企业签收信息">
                   <span>—</span>
                 </Tooltip>
               </Descriptions.Item>
               <Descriptions.Item label="剩余时限">
-                <Tooltip title="依赖交办截止时间，批次 G2">
+                <Tooltip title="暂无交办截止时间">
                   <span>—</span>
                 </Tooltip>
               </Descriptions.Item>
@@ -980,20 +962,14 @@ const ComplaintDetail: React.FC = () => {
         okText="创建交办"
         width={560}
       >
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="同一诉求同一轮只能有一条有效交办"
-          description="该约束由数据库唯一键保证，不依赖前端判断。若并发下已存在交办，后端返回 created=false，此处会提示「该诉求已有交办」并刷新，不会产生第二条。"
-        />
+
         {enterpriseError && (
           <Alert
             type="warning"
             showIcon
             style={{ marginBottom: 12 }}
             message={'企业列表加载失败：' + enterpriseError}
-            description="下拉将为空，不会被本地示例企业替代。"
+            description="请重试后选择企业。"
             action={
               <Button size="small" onClick={() => void fetchEnterprises()}>
                 重试

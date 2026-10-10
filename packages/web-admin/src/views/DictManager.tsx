@@ -220,13 +220,7 @@ export const SensitiveWordManager: React.FC = () => {
 
   return (
     <div>
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="规则说明"
-        description="“当前敏感诉求”按 isSensitive=1 统计诉求数；表格中的历史证据行数按词条统计，可能因一件命中多个词而多于诉求数，停用词的历史证据仍保留。"
-      />
+
 
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={8}><Card size="small"><Statistic title="词条总数" value={rows.length} /></Card></Col>
@@ -315,7 +309,7 @@ export const SensitiveWordManager: React.FC = () => {
               type="warning"
               showIcon
               message="请核对影响范围"
-              description={`预览令牌仅当前管理员可使用一次，有效至 ${new Date(preview.expiresAt).toLocaleString()}。期间词表或诉求数据变化时，服务端会拒绝执行。`}
+              description={`请在以下时间前确认： ${new Date(preview.expiresAt).toLocaleString()}。数据变化后需要重新预览。`}
             />
             <Row gutter={[12, 12]}>
               <Col span={12}><Statistic title="扫描总数" value={preview.summary.total} /></Col>
@@ -539,7 +533,7 @@ const DictionaryAdmin: React.FC = () => {
   <Tabs activeKey={active} onChange={changeActive} items={[...types.map(t => ({ key: t.code, label: t.name })), { key: 'sensitive_word', label: '敏感词' }]}/>
   {active === 'sensitive_word' ? <SensitiveWordManager /> : <Card loading={loading}>
    {current && <><Space wrap style={{ marginBottom: 16 }}><Tag>字典版本 {current.type.version}</Tag>{!current.type.readOnly && <><Button onClick={() => openType(current.type)}>编辑类型</Button><Button type="primary" onClick={() => openItem(null)}>新增字典项</Button>{!current.type.published && !current.type.fixedCodes && current.type.code !== 'complaint_category' && <Button danger onClick={removeType}>删除类型草稿</Button>}</>}<Button onClick={() => void readReferences()}>类型引用</Button></Space>
-   {current.type.readOnly && <Alert type="info" message="状态机枚举仅供查看；状态流转由业务流程控制。"/>}{current.type.fixedCodes && <Alert type="info" message="协议编码固定，可维护合法编码的标签、排序和停用。停用仅限制新的人工选择，来源事实继续如实保留。"/>}
+   {current.type.readOnly && <Alert type="info" message="此类字典仅供查看。"/>}{current.type.fixedCodes && <Alert type="info" message="可修改名称、排序和启用状态，编码不可更改。"/>}
    <Table rowKey="itemId" columns={columns} dataSource={current.items} pagination={false}/></>}
   </Card>}
   <Modal key={contextKey + ':item:' + itemOwner.current?.action} title={editing ? '编辑字典条目' : '新增字典条目'} open={editor && ownsAction(itemOwner.current)} onCancel={() => { actionSerial.current++; setEditor(false); }} onOk={() => void saveItem()} okText="保存条目" confirmLoading={saving}>

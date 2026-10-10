@@ -32,7 +32,7 @@ const AuditLogView:React.FC=()=>{
  };
  if(!access.can)return <Result status="403" title={FORBIDDEN_MESSAGE}/>;
  return <Card title="登录与操作日志">
-  <Alert type="info" showIcon message="业务日志按当前数据范围展示；详情仅含允许字段。未授权或无法确认关联的日志不可查看。" style={{marginBottom:16}}/>
+
   <Form form={form} layout="inline" onFinish={submit} style={{rowGap:12,marginBottom:16}}>
    <Form.Item name="category" label="日志类别"><Select allowClear style={{width:140}} options={[{value:'login',label:'登录日志'},{value:'operation',label:'操作日志'}]}/></Form.Item>
    <Form.Item name="timeRange" label="时间区间"><DatePicker.RangePicker showTime/></Form.Item>
