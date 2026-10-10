@@ -27,8 +27,16 @@ const Login: React.FC = () => {
       const result = await loginApi(values.username, values.password);
       setToken(result.token);
       setUserInfo(result.userInfo);
-      const from = (location.state as { from?: string } | null)?.from;
-      navigate(result.userInfo.mustChangePassword ? '/change-password' : from !== undefined && from !== '' ? from : '/dashboard', { replace: true });
+      const from = (location.state as { from?: unknown } | null)?.from;
+      const returnPath = typeof from === 'string' && /^\/(?!\/)/.test(from)
+        ? from.split(/[?#]/, 1)[0].replace(/\/+$/, '')
+        : '';
+      // Logging out after a successful change can leave the old password page
+      // in router state. Only the current server flag may require another change.
+      const destination = returnPath && !['/login', '/change-password'].includes(returnPath)
+        ? from as string
+        : '/dashboard';
+      navigate(result.userInfo.mustChangePassword ? '/change-password' : destination, { replace: true });
     } catch (err) {
       // 后端对"用户不存在"与"口令错误"返回同一句话，不泄露账号是否存在
       setError(err instanceof Error ? err.message : '登录失败，请重试');

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test, {before,after} from 'node:test';
 import React from 'react';
 let MemoryRouter: typeof import('react-router-dom').MemoryRouter;
+let useLocation: typeof import('react-router-dom').useLocation;
 import {JSDOM} from 'jsdom';
 import {createServer, type ViteDevServer} from 'vite';
 import {fileURLToPath} from 'node:url';
@@ -19,7 +20,7 @@ before(async()=>{
  const computed=dom.window.getComputedStyle.bind(dom.window);
  dom.window.getComputedStyle=((element:Element)=>computed(element)) as any;
  Object.defineProperty(globalThis,'getComputedStyle',{value:dom.window.getComputedStyle,configurable:true});
- ({MemoryRouter}=await import('react-router-dom'));
+ ({MemoryRouter,useLocation}=await import('react-router-dom'));
  vite=await createServer({root:fileURLToPath(new URL('..',import.meta.url)),appType:'custom',cacheDir:fileURLToPath(new URL('../node_modules/.vite-account-test',import.meta.url)),server:{port:0,middlewareMode:true,hmr:false}});
 });
 after(async()=>{await vite.close();});
@@ -62,6 +63,24 @@ test('password form submits API and clears revoked login only after successful c
   await waitFor(()=>assert.ok(page.getByPlaceholderText('用户名')));
  }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
 });
+test('login after completed password change ignores stale password return route and preserves business return',async()=>{
+ const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');
+ const {default:App}=await vite.ssrLoadModule('/src/App.tsx');
+ const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');
+ const {render,within,fireEvent,cleanup,waitFor}=await import('@testing-library/react');
+ const original=client.defaults.adapter;
+ function Path(){return <output data-testid="route-path">{useLocation().pathname}</output>;}
+ try{
+  for(const [from,forced,expected] of [['/change-password',false,'/dashboard'],['/change-password/?old=1',false,'/dashboard'],['/system/roles',false,'/system/roles'],['/system/roles',true,'/change-password']] as const){
+   const user={id:1,userId:'u',username:'u',realName:'测试',roles:['readonly'],permissions:[],mustChangePassword:forced,authorizationVersion:2};
+   client.defaults.adapter=async(config:any)=>({data:{code:200,data:config.url==='/auth/login'?{token:'new-session',userInfo:user}:config.url==='/auth/user-info'?user:[]},status:200,statusText:'OK',headers:{},config});
+   useAppStore.setState({token:null,userInfo:null});localStorage.removeItem('token');
+   const ui=render(<MemoryRouter future={{v7_startTransition:true,v7_relativeSplatPath:true}} initialEntries={[{pathname:'/login',state:{from}}]}><App/><Path/></MemoryRouter>);
+   try{const page=within(ui.container);fireEvent.change(page.getByPlaceholderText('用户名'),{target:{value:'u'}});fireEvent.change(page.getByPlaceholderText('密码'),{target:{value:'Synthetic-Changed-2'}});fireEvent.submit(ui.container.querySelector('form')!);await waitFor(()=>assert.equal(page.getByTestId('route-path').textContent,expected));if(!forced)assert.equal(page.queryByLabelText('当前口令'),null);}finally{ui.unmount();cleanup();}
+  }
+ }finally{client.defaults.adapter=original;useAppStore.setState({token:null,userInfo:null});localStorage.removeItem('token');}
+});
+
 test('role manager creates a configured business role and excludes protected administrator grants',async()=>{
  const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');
  const {default:RoleManager}=await vite.ssrLoadModule('/src/views/RoleManager.tsx');
