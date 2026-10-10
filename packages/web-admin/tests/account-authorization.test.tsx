@@ -44,15 +44,25 @@ test('custom permissions govern button access and empty authorization never writ
   ui.unmount();cleanup();
  }
 });
-test('password form submits API and clears revoked login only after successful change',async()=>{
+test('password change clears revoked session and subsequent login reaches dashboard',async()=>{
  const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');
  const {default:App}=await vite.ssrLoadModule('/src/App.tsx');
  const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');
- const original=client.defaults.adapter;let calls=0;
- client.defaults.adapter=async(config:any)=>{assert.equal(config.url,'/auth/change-password');const body=JSON.parse(config.data);assert.ok(body.currentPassword);assert.ok(body.newPassword);calls++;return {data:{code:200,data:{changed:true}},status:200,statusText:'OK',headers:{},config};};
+ const original=client.defaults.adapter;let calls=0;let logins=0;
+ const changedUser={id:1,userId:'u',username:'u',realName:'测试',roles:['readonly'],permissions:[],mustChangePassword:false,authorizationVersion:2};
+ client.defaults.adapter=async(config:any)=>{
+  let data:any=[];
+  if(config.url==='/auth/change-password'){
+   const body=JSON.parse(config.data);assert.equal(body.currentPassword,'Synthetic-Initial-1');assert.equal(body.newPassword,'Synthetic-Changed-2');calls++;data={changed:true};
+  }else if(config.url==='/auth/login'){
+   assert.equal(calls,1);const body=JSON.parse(config.data);assert.equal(body.password,'Synthetic-Changed-2');logins++;data={token:'new-session',userInfo:changedUser};
+  }else if(config.url==='/auth/user-info')data=changedUser;
+  return {data:{code:200,data},status:200,statusText:'OK',headers:{},config};
+ };
  useAppStore.setState({token:'synthetic-token',userInfo:{id:1,userId:'u',username:'u',realName:'测试',roles:['readonly'],permissions:[],mustChangePassword:true,authorizationVersion:1}});
  const {render,within,fireEvent,cleanup,waitFor}=await import('@testing-library/react');
- const ui=render(<MemoryRouter future={{v7_startTransition:true,v7_relativeSplatPath:true}} initialEntries={['/change-password']}><App/></MemoryRouter>);
+ function Path(){return <output data-testid="route-path">{useLocation().pathname}</output>;}
+ const ui=render(<MemoryRouter future={{v7_startTransition:true,v7_relativeSplatPath:true}} initialEntries={['/dashboard']}><App/><Path/></MemoryRouter>);
  try{
   const page=within(ui.container);
   fireEvent.change(page.getByLabelText('当前口令'),{target:{value:'Synthetic-Initial-1'}});
@@ -61,7 +71,14 @@ test('password form submits API and clears revoked login only after successful c
   fireEvent.submit(ui.container.querySelector('form')!);
   await waitFor(()=>assert.equal(calls,1));await waitFor(()=>assert.equal(useAppStore.getState().token,null));
   await waitFor(()=>assert.ok(page.getByPlaceholderText('用户名')));
- }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
+  fireEvent.change(page.getByPlaceholderText('用户名'),{target:{value:'u'}});
+  fireEvent.change(page.getByPlaceholderText('密码'),{target:{value:'Synthetic-Changed-2'}});
+  fireEvent.submit(ui.container.querySelector('form')!);
+  await waitFor(()=>assert.equal(page.getByTestId('route-path').textContent,'/dashboard'));
+  assert.equal(logins,1);assert.equal(useAppStore.getState().token,'new-session');
+  assert.equal(useAppStore.getState().userInfo.mustChangePassword,false);
+  assert.equal(page.queryByLabelText('当前口令'),null);
+ }finally{ui.unmount();cleanup();client.defaults.adapter=original;useAppStore.setState({token:null,userInfo:null});localStorage.removeItem('token');}
 });
 test('login after completed password change ignores stale password return route and preserves business return',async()=>{
  const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');
@@ -71,7 +88,7 @@ test('login after completed password change ignores stale password return route 
  const original=client.defaults.adapter;
  function Path(){return <output data-testid="route-path">{useLocation().pathname}</output>;}
  try{
-  for(const [from,forced,expected] of [['/change-password',false,'/dashboard'],['/change-password/?old=1',false,'/dashboard'],['/system/roles',false,'/system/roles'],['/system/roles',true,'/change-password']] as const){
+  for(const [from,forced,expected] of [['/change-password',false,'/dashboard'],['/change-password/?old=1',false,'/dashboard'],['/Change-Password',false,'/dashboard'],['/LOGIN',false,'/dashboard'],['/system/roles',false,'/system/roles'],['/system/roles',true,'/change-password']] as const){
    const user={id:1,userId:'u',username:'u',realName:'测试',roles:['readonly'],permissions:[],mustChangePassword:forced,authorizationVersion:2};
    client.defaults.adapter=async(config:any)=>({data:{code:200,data:config.url==='/auth/login'?{token:'new-session',userInfo:user}:config.url==='/auth/user-info'?user:[]},status:200,statusText:'OK',headers:{},config});
    useAppStore.setState({token:null,userInfo:null});localStorage.removeItem('token');

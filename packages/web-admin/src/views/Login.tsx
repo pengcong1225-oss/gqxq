@@ -33,7 +33,7 @@ const Login: React.FC = () => {
         : '';
       // Logging out after a successful change can leave the old password page
       // in router state. Only the current server flag may require another change.
-      const destination = returnPath && !['/login', '/change-password'].includes(returnPath)
+      const destination = returnPath && !['/login', '/change-password'].includes(returnPath.toLowerCase())
         ? from as string
         : '/dashboard';
       navigate(result.userInfo.mustChangePassword ? '/change-password' : destination, { replace: true });
