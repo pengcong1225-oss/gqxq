@@ -690,6 +690,18 @@ async function intakeOnce(cmd: IntakeCommand, receivedAt: Date): Promise<IntakeR
   });
 }
 
+/** File imports share the caller's transaction and never redeliver an existing
+ * source key. Its unique constraint still arbitrates concurrent machine intake. */
+export async function importNewAppealInTx(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<IntakeResponse | null> {
+  const row = await selectForUpdate(tx, cmd.sourceSystem, cmd.sourceId);
+  if (row !== null) return null;
+  return createNew(tx, cmd, receivedAt);
+}
+
+export function isRetryableIntakeError(error: unknown): boolean {
+  return error instanceof IntakeRaceRetry || isRetryableLockError(error);
+}
+
 export async function intakeAppeal(cmd: IntakeCommand, ctx?: Partial<IntakeContext>): Promise<IntakeResponse> {
   const receivedAt = ctx?.receivedAt ?? new Date();
   let lastError: unknown = null;

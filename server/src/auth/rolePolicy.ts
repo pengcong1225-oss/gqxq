@@ -47,6 +47,9 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
+  {method:'POST',path:/^\/complaint-imports\/preview$/,roles:A,permissionCode:'complaint.import',desc:'诉求文件校验预览'},
+  {method:'POST',path:/^\/complaint-imports\/[^/]+\/commit$/,roles:A,permissionCode:'complaint.import',desc:'诉求整批事务确认'},
+  {method:'GET',path:/^\/complaint-imports(?:\/[^/]+)?$/,roles:A,permissionCode:'complaint.import',desc:'本人诉求导入批次'},
   {method:'GET',path:/^\/heat-rules(?:\/categories)?$/,roles:A,permissionCode:'heatmap.manage',desc:'D2 全局热力草稿'},
   {method:'POST',path:/^\/heat-rules(?:\/[^/]+\/(?:preview|publish))?$/,roles:A,permissionCode:'heatmap.manage',desc:'D2 候选草稿与精确确认发布门槛'},
   {method:'GET',path:/^\/statistics\/(summary|complaints)$/,roles:R,permissionCode:'statistics.read',desc:'D1 候选统计，另需数据集能力；明细另需complaint.read'},

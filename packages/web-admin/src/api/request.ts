@@ -39,6 +39,8 @@ const request = axios.create({
 
 request.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
+  // Preserve a caller's originating session across asynchronous file reads.
+  if(config.headers.Authorization&&config.headers.Authorization!==`Bearer ${token??''}`)throw new Error('登录身份已改变，请重新操作');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

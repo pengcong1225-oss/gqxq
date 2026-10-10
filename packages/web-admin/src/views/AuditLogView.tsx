@@ -5,7 +5,7 @@ import {listAuditLogs,getAuditLog} from '../api/auditLogs';
 import type {AuditLogFilter,AuditLogView,Paged} from '../types/api';
 import {FORBIDDEN_MESSAGE,usePermissionAccess} from '../stores/roleAccess';
 const resultLabels={success:'成功',failed:'失败',rejected:'拒绝',duplicate:'重复',unknown:'未知'};
-const modules=[['report_record','固定模板报告'],['heat_rule','热力规则'],['manual_followup','人工回访'],['master_import','基础数据导入批次摘要'],['auth','登录'],['user','账号'],['role','角色授权'],['corrections','纠偏'],['complaint','诉求'],['dispatch_order','交办'],['analysis_record','分析入库'],['business_event','回调'],['sensitive_word','敏感词字典'],['dictionary','通用字典与大小类'],['enterprise','企业档案与户数'],['service_grid','企业服务网格'],['admin_grid','行政网格'],['community','小区'],['address_candidate','地址候选'],['security','权限拒绝']];
+const modules=[['report_record','固定模板报告'],['heat_rule','热力规则'],['manual_followup','人工回访'],['master_import','基础数据导入批次摘要'],['complaint_import','诉求导入'],['auth','登录'],['user','账号'],['role','角色授权'],['corrections','纠偏'],['complaint','诉求'],['dispatch_order','交办'],['analysis_record','分析入库'],['business_event','回调'],['sensitive_word','敏感词字典'],['dictionary','通用字典与大小类'],['enterprise','企业档案与户数'],['service_grid','企业服务网格'],['admin_grid','行政网格'],['community','小区'],['address_candidate','地址候选'],['security','权限拒绝']];
 interface FilterForm extends Omit<AuditLogFilter,'from'|'to'> {timeRange?:[Dayjs,Dayjs]}
 const date=(value:string|null)=>value?new Date(value).toLocaleString('zh-CN',{hour12:false}):'—';
 const errorMessage=(error:unknown)=>error instanceof Error?error.message:'请求失败，请稍后重试';

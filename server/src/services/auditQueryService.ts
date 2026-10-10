@@ -48,6 +48,7 @@ function safeDetail(row:AuditRow):Record<string,unknown> {
  const data=record(row.detail);const action=String(row.action??'');
  if(row.biz_type==='manual_followup'&&['FOLLOWUP_CREATE','FOLLOWUP_REVISE','FOLLOWUP_CONCLUDE'].includes(action))return pick(data,['followupId','version','operation','contacted','evaluationCode']);
  if(row.biz_type==='master_import'&&['MASTER_IMPORT_COMMIT','MASTER_IMPORT_FAILED','MASTER_IMPORT_ERRORS_DOWNLOAD'].includes(action))return pick(data,['batchId','kind','templateVersion','previewVersion','created','updated','unchanged','state']);
+ if(row.biz_type==='complaint_import'&&action==='COMPLAINT_IMPORT_COMMIT')return pick(data,['total','duplicates','created','skipped']);
  if(row.biz_type==='http'&&action==='ACCESS_DENIED'){
   const reason=String(data.reason??'');
   return {...pick(data,['requestId']),reasonCode:reason.includes('口令')?'PASSWORD_CHANGE_REQUIRED':reason.includes('readonly')?'READONLY_WRITE_DENIED':reason.includes('未登记')?'UNREGISTERED_ENDPOINT':'MISSING_PERMISSION'};

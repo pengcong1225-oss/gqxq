@@ -32,6 +32,7 @@ test('complete registered endpoint matrix preserves builtins and verifies each c
  const groupedPaths=['/heat-rules','/heat-rules/categories','/heat-rules/sample/preview','/heat-rules/sample/publish','/statistics/summary','/statistics/complaints','/master-data/imports','/master-data/imports/sample','/master-data/imports/sample/errors',
   '/enterprises/sample/households','/enterprises/sample/department-mappings',
   '/grids/sample','/grids/sample/history','/grids/sample/boundary','/grids','/admin-grids','/communities'];
+ groupedPaths.push('/complaint-imports','/complaint-imports/sample','/complaint-imports/preview','/complaint-imports/sample/commit');
  for(const rule of ROLE_POLICY) {
   const paths=rule.path.source.includes('(')?groupedPaths.filter(path=>rule.path.test(path)):[rule.path.source.replace(/^\^|\$$/g,'').replace(/\[\^\/\]\+/g,'sample').replace(/\\\//g,'/')];
   assert.ok(paths.length>0,'Add concrete URL fixtures for '+rule.desc);

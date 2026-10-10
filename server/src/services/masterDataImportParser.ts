@@ -19,7 +19,7 @@ const required:Record<MasterDataImportKind,string[]>={enterprise:['enterpriseCod
 export function parseKind(value:unknown):MasterDataImportKind {if(typeof value!=='string'||!IMPORT_KINDS.includes(value as MasterDataImportKind))throw AppError.validation('导入类型无效');return value as MasterDataImportKind;}
 function text(bytes:Buffer){try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes).replace(/^\uFEFF/,'');}catch{throw AppError.validation('文件编码必须为 UTF-8');}}
 /** Consume every ZIP stream, enforcing actual inflated bytes as well as declared sizes. */
-export function preflightXlsx(bytes:Buffer):Promise<void>{return new Promise((resolve,reject)=>{
+export function preflightXlsx(bytes:Buffer,maxRows=IMPORT_LIMITS.rows+1):Promise<void>{return new Promise((resolve,reject)=>{
  if(bytes.subarray(0,2).toString()!=='PK'){reject(AppError.validation('XLSX 必须为有效 ZIP 文件'));return;}
  yauzl.fromBuffer(bytes,{lazyEntries:true,validateEntrySizes:true},(error,zip)=>{
   if(error||!zip){reject(AppError.validation('XLSX ZIP 损坏'));return;}let inflated=0,entries=0,cells=0,finished=false;const names=new Set<string>();
@@ -30,8 +30,8 @@ export function preflightXlsx(bytes:Buffer):Promise<void>{return new Promise((re
    zip.openReadStream(entry,(err,stream)=>{if(err||!stream)return fail('XLSX ZIP 损坏');const parts:Buffer[]=[];stream.on('error',()=>fail('XLSX ZIP 损坏'));stream.on('data',(part:Buffer)=>{inflated+=part.length;if(inflated>IMPORT_LIMITS.inflatedBytes){stream.destroy();fail('XLSX 实际解压体积超限');}else if(entry.fileName.endsWith('.xml')||entry.fileName.endsWith('.rels'))parts.push(part);});stream.on('end',()=>{if(finished)return;const xml=Buffer.concat(parts).toString('utf8');if(/<(?:[\w]+:)?f(?:\s|>)/.test(xml))return fail('禁止公式单元格（含共享公式与缓存值）');if(/TargetMode\s*=\s*["']External/.test(xml))return fail('禁止外部链接');if(/macroEnabled|vbaProject/i.test(xml))return fail('禁止宏');if(/<!DOCTYPE|<!ENTITY/i.test(xml))return fail('禁止 XML 实体');
     if(/xl\/worksheets\//.test(entry.fileName)){
      cells+=xml.match(/<(?:[\w]+:)?c(?:\s|>)/g)?.length??0;if(cells>IMPORT_LIMITS.cells)return fail('XLSX 单元格超限');
-     for(const match of xml.matchAll(/<(?:[\w]+:)?row\b[^>]*\br\s*=\s*["'](\d+)["']/g))if(Number(match[1])>IMPORT_LIMITS.rows+1)return fail('XLSX 行资源超限');
-     for(const match of xml.matchAll(/<(?:[\w]+:)?c\b[^>]*\br\s*=\s*["']([A-Z]+)(\d+)["']/g)){let col=0;for(const c of match[1])col=col*26+c.charCodeAt(0)-64;if(col>64||Number(match[2])>IMPORT_LIMITS.rows+1)return fail('XLSX 单元格坐标超限');}
+     for(const match of xml.matchAll(/<(?:[\w]+:)?row\b[^>]*\br\s*=\s*["'](\d+)["']/g))if(Number(match[1])>maxRows)return fail('XLSX 行资源超限');
+     for(const match of xml.matchAll(/<(?:[\w]+:)?c\b[^>]*\br\s*=\s*["']([A-Z]+)(\d+)["']/g)){let col=0;for(const c of match[1])col=col*26+c.charCodeAt(0)-64;if(col>64||Number(match[2])>maxRows)return fail('XLSX 单元格坐标超限');}
     }
     if(entry.fileName==='xl/sharedStrings.xml'&&(xml.match(/<(?:[\w]+:)?si(?:\s|>)/g)?.length??0)>IMPORT_LIMITS.cells)return fail('XLSX 共享文本资源超限');zip.readEntry();});});
   });zip.readEntry();

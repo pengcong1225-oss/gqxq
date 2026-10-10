@@ -54,6 +54,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       permissionCodes: authorization.permissionCodes,
       authorizationVersion: authorization.authorizationVersion,
       mustChangePassword: identity.mustChangePassword,
+      sessionVersion: identity.sessionVersion,
     };
     req.accessContext = await resolveAccessContext(identity.userId, authorization);
     runWithAccessContext(req.accessContext, () => next());

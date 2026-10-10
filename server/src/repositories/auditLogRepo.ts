@@ -72,7 +72,7 @@ const enterpriseAuditSql="(a.biz_type='enterprise' and a.action in ('ENTERPRISE_
 function auditWhere(filter:AuditLogFilter,access:AccessContext & {permissionCodes?:readonly string[]}):{sql:string;params:unknown[]} {
  // Aggregate summaries require explicit complete scope. Per-object B1-B3
  // mutation audits retain their ordinary current master scope classification.
- const importSummary=access.rules.some(r=>r.kind==='all')?"(a.biz_type='master_import' and a.action in ('MASTER_IMPORT_COMMIT','MASTER_IMPORT_FAILED','MASTER_IMPORT_ERRORS_DOWNLOAD'))":'0=1';
+ const importSummary=access.rules.some(r=>r.kind==='all')?"((a.biz_type='master_import' and a.action in ('MASTER_IMPORT_COMMIT','MASTER_IMPORT_FAILED','MASTER_IMPORT_ERRORS_DOWNLOAD')) or (a.biz_type='complaint_import' and a.action='COMPLAINT_IMPORT_COMMIT'))":'0=1';
  const gridScope=buildGridScopeSql(access,'audit_g');const adminScope=buildSpatialScopeSql(access,'audit_ag.district_code');const communityScope=buildSpatialScopeSql(access,'audit_cag.district_code');
  const gridLinked="(a.biz_type='service_grid' and a.action in ('SERVICE_GRID_SAVE','SERVICE_GRID_REGISTER') and exists (select 1 from service_grid audit_g where audit_g.grid_code=a.biz_id and "+gridScope.sql+'))';
  const adminLinked="(a.biz_type='admin_grid' and a.action='ADMIN_GRID_SAVE' and exists (select 1 from admin_grid audit_ag where audit_ag.code=a.biz_id and "+adminScope.sql+'))';

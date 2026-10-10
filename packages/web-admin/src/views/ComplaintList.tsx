@@ -1,4 +1,5 @@
 import {useWriteAccess} from '../stores/roleAccess';
+import ComplaintImportDialog from '../components/ComplaintImportDialog';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -29,7 +30,6 @@ import {
   EyeOutlined,
   ExportOutlined,
   FileTextOutlined,
-  ImportOutlined,
   InboxOutlined,
   SearchOutlined,
   SendOutlined,
@@ -840,11 +840,7 @@ const ComplaintList: React.FC = () => {
               导出Excel
             </Button>
           </Tooltip>
-          <Tooltip title="暂不可用">
-            <Button icon={<ImportOutlined />} disabled>
-              批量导入
-            </Button>
-          </Tooltip>
+          <ComplaintImportDialog onImported={reload}/>
         </Space>
 
 

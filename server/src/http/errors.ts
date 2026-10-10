@@ -33,6 +33,7 @@ export interface AuthUser {
   permissionCodes?: string[];
   authorizationVersion?: number;
   mustChangePassword?: boolean;
+  sessionVersion?: number;
 }
 
 export class AppError extends Error {

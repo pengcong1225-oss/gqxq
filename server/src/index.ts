@@ -6,6 +6,7 @@ import { reconcileOpenReporting } from './services/reportingEvidenceService';
 import {recoverPendingDispatches} from './services/dispatchRecoveryService';
 import { assertDbReachable, closePool } from './db/pool';
 import {pruneExpiredImports} from './services/masterDataImportService';
+import {pruneExpiredComplaintImports} from './services/complaintImportService';
 import {startReportWorker} from './services/reportService';
 
 /**
@@ -35,7 +36,7 @@ async function main(): Promise<void> {
   const app = createApp();
   const stopReportWorker=startReportWorker();
   let pruning=false;
-  const prune=async()=>{if(pruning)return;pruning=true;try{await pruneExpiredImports();}catch{console.error('[master-import] expired resource cleanup failed; retained for retry');}finally{pruning=false;}};
+  const prune=async()=>{if(pruning)return;pruning=true;try{await pruneExpiredImports();await pruneExpiredComplaintImports();}catch{console.error('[import] expired resource cleanup failed; retained for retry');}finally{pruning=false;}};
   const importRetentionTimer=setInterval(()=>void prune(),60_000);importRetentionTimer.unref();void prune();
   // M1（防护方案 §4.1）：显式绑定 env.host（默认 127.0.0.1），不再让 Express 走 0.0.0.0/::。
   // 生产形态 = 只绑回环 + 本机反代转发；对外暴露由 M2 安全组与 M3 网关白名单收口。
