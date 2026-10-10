@@ -27,11 +27,11 @@ test('source evaluation is a narrow independent projection and formal policy rem
  assert.equal(JSON.stringify(sourceEvaluation({metadata:{'坐席满意度':'13800001234'}})).includes('13800001234'),false);
  assert.equal(formalEvaluationState.state,'unavailable');
 });
-test('C3 capabilities register owner editing separately from supervisor conclusion',async()=>{
+test('retired local followup capabilities no longer grant handling access',async()=>{
  const {isAllowed,builtinPermissionCodes}=await import('../src/auth/rolePolicy');
  const user={id:'u',username:'u',roles:['custom'],permissionCodes:['followup.create']};
- assert.equal(isAllowed(user,'POST','/complaints/C1/followups').allowed,true);
+ assert.equal(isAllowed(user,'POST','/complaints/C1/followups').allowed,false);
  assert.equal(isAllowed(user,'PATCH','/followups/F1/conclusion').allowed,false);
- assert.ok(builtinPermissionCodes('handler').includes('followup.create' as any));
+ assert.equal(builtinPermissionCodes('handler').includes('followup.create' as any),false);
  assert.equal(builtinPermissionCodes('handler').includes('followup.conclude' as any),false);
 });

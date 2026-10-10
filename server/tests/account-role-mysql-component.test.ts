@@ -43,8 +43,8 @@ test('A5 isolated MySQL account component (not canonical baseline acceptance)', 
       for(const permission of ['followup.create','followup.conclude'])assert.ok(registered.has(permission),'C3 capability must be registered');
       for(const code of ['admin','handler','readonly']) {
         const role=(await roles.getRoles()).find(r=>r.roleCode===code)!;
-        assert.equal(role.permissionCodes.includes('followup.create'),code!=='readonly');
-        assert.equal(role.permissionCodes.includes('followup.conclude'),code==='admin');
+        assert.equal(role.permissionCodes.includes('followup.create' as any),false);
+        assert.equal(role.permissionCodes.includes('followup.conclude' as any),false);
         if(code!=='admin') assert.deepEqual(role.permissionCodes.slice().sort(),builtinPermissionCodes(code).filter(permission=>registered.has(permission)).sort());
         for(const rule of ROLE_POLICY){
           if(rule.selfService||!registered.has(rule.permissionCode))continue;

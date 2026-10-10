@@ -1,6 +1,5 @@
 /** Stable endpoint capabilities. Only registered codes can be stored on a role. */
 export const PERMISSION_CATALOG = [
-  ['followup.create', '人工回访登记及本人更正'], ['followup.conclude', '主管独立回访结论'],
   ['complaint.read', '诉求查询'], ['complaint.assign', '责任单位匹配'],
   ['complaint.import', '诉求 Excel 导入（另需诉求查询及全域范围）'],
   ['complaint.disposition', '诉求归库'], ['complaint.correct', '诉求纠偏'],

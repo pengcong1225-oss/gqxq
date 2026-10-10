@@ -70,13 +70,73 @@ test('account manager exposes explicit type maintenance and sends accountType wi
  }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
 });
 
-test('actual complaint detail mounts the scoped manual followup entry and loads its own endpoint',async()=>{
+test('actual complaint detail only displays reporting results and never loads retired local handling modules',async()=>{
  const {store,client}=await modules();const Detail=(await vite.ssrLoadModule('/src/views/ComplaintDetail.tsx')).default;const {Routes,Route}=await import('react-router-dom');const original=client.defaults.adapter;const calls:string[]=[];
- store.setState({userInfo:identity(['complaint.read'])});
+ store.setState({userInfo:identity(['complaint.read','dispatch.read','followup.create','followup.conclude'])});
  client.defaults.adapter=async(config:any)=>{calls.push(config.url);return {data:{code:200,data:config.url==='/complaints/C1/followups'?payload():config.url==='/complaints/C1'?{complaintId:'C1',complaintNo:'C1',title:'Synthetic',sourceAddress:'来源地址',effectiveAddress:'当前地址',address:'当前地址',sourceFieldReasons:{},sourceDeadlineAt:null,sourceCompletedAt:null,sourceSnapshotAt:null,businessTimeSource:'platform_received_at',receivedAt:'2026-10-09T00:00:00Z',locationClues:[],locationConflict:false,content:'合成正文'}:config.url==='/source-status'?{enabled:false,message:'disabled'}:{content:[],total:0}},status:200,statusText:'OK',headers:{},config};};
  const {render,within,waitFor,cleanup}=await import('@testing-library/react');const ui=render(<MemoryRouter future={{v7_startTransition:true,v7_relativeSplatPath:true}} initialEntries={['/complaints/C1']}><Routes><Route path="/complaints/:id" element={<Detail/>}/></Routes></MemoryRouter>);
- try{await waitFor(()=>assert.ok(within(ui.container).getByText('合成正文')));assert.ok(within(ui.container).queryByText('人工回访'),'detail must expose the actual manual followup entry');await waitFor(()=>assert.ok(calls.includes('/complaints/C1/followups')));await waitFor(()=>assert.ok(within(ui.container).getByText('备注：原备注')));
+ try{await waitFor(()=>assert.ok(within(ui.container).getByText('合成正文')));assert.ok(within(ui.container).queryByText('填报事项结果'));await waitFor(()=>assert.ok(calls.includes('/dispatch/orders')));
+  for(const label of ['来源全过程','人工回访','登记回访','更正回访','填写主管结论'])assert.equal(within(ui.container).queryByText(label),null);
+  assert.equal(calls.some(url=>url.endsWith('/followups')||url.endsWith('/source-processes')),false);
  }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
+});
+
+test('reporting results include archived assignments and show only synchronized final evidence',async()=>{
+ const {store,client}=await modules();const Results=(await vite.ssrLoadModule('/src/components/ComplaintReportingResults.tsx')).default;
+ const original=client.defaults.adapter;const calls:any[]=[];
+ store.setState({userInfo:identity(['complaint.read','dispatch.read','dispatch.push','dispatch.reconcile','followup.create','followup.conclude'])});
+ client.defaults.adapter=async(config:any)=>{
+  calls.push(config);const data=config.url==='/dispatch/orders'?{content:[{assignmentId:'A1',orderNo:'JB-1',complaintId:'C1',targetEnterpriseName:'合成企业',externalStatus:'approved',archivedAt:'2026-10-10T00:00:00Z'}],total:1}:
+   {taskUrl:'https://synthetic.example/tasks/1',events:[
+    {eventId:'FINAL',state:'applied',payload:{eventType:'TASK_APPROVED',enterpriseDisposalResult:{summary:'填报系统同步的最终回复'},attachments:[]}},
+    {eventId:'PENDING',state:'pending',payload:{eventType:'TASK_APPROVED',submissionVersion:2,enterpriseDisposalResult:{summary:'未经确认的结果'}}},
+    {eventId:'PROCESS',state:'applied',payload:{eventType:'TASK_PROGRESS',submissionVersion:2,enterpriseDisposalResult:{summary:'实际处理中的内容'}}},
+   ]};return {data:{code:200,data},status:200,statusText:'OK',headers:{},config};
+ };
+ const {render,within,waitFor,fireEvent,cleanup}=await import('@testing-library/react');const ui=render(<Results complaintId="C1"/>);
+ try{
+  await waitFor(()=>assert.ok(within(ui.container).getByText('已归档')));
+  assert.equal(calls[0].params.complaintId,'C1');assert.equal(calls[0].params.status,undefined);
+  fireEvent.click(within(ui.container).getByRole('button',{name:'查看事项结果'}));
+  await waitFor(()=>assert.ok(within(ui.container).getByText('填报系统同步的最终回复')));
+  for(const label of ['未经确认的结果','实际处理中的内容','登记回访','推送预检','签名对账','打开企业填报任务'])assert.equal(ui.container.textContent?.includes(label),false,label);
+  assert.equal(within(ui.container).queryByRole('textbox'),null);assert.ok(calls.every(c=>c.method==='get'));
+ }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
+});
+
+test('reporting results discard pending evidence when current authorization changes',async()=>{
+ const {store,client}=await modules();const Results=(await vite.ssrLoadModule('/src/components/ComplaintReportingResults.tsx')).default;
+ const original=client.defaults.adapter;let release:(()=>void)|undefined;
+ store.setState({userInfo:identity(['complaint.read','dispatch.read'])});
+ client.defaults.adapter=async(config:any)=>{
+  let data:any={content:[{assignmentId:'A1',orderNo:'JB-1',complaintId:'C1',targetEnterpriseName:'合成企业'}],total:1};
+  if(config.url.endsWith('/reporting-result')){await new Promise<void>(resolve=>release=resolve);data={events:[{eventId:'OLD',state:'applied',payload:{eventType:'TASK_APPROVED',submissionVersion:1,enterpriseDisposalResult:{summary:'旧权限下的回复'}}}]};}
+  return {data:{code:200,data},status:200,statusText:'OK',headers:{},config};
+ };
+ const {render,within,waitFor,fireEvent,cleanup,act}=await import('@testing-library/react');const ui=render(<Results complaintId="C1"/>);
+ try{
+  await waitFor(()=>assert.ok(within(ui.container).getByText('JB-1')));fireEvent.click(within(ui.container).getByRole('button',{name:'查看事项结果'}));await waitFor(()=>assert.ok(release));
+  await act(async()=>store.setState({userInfo:{...identity(['complaint.read']),authorizationVersion:2}}));
+  await act(async()=>release!());assert.equal(ui.container.textContent?.includes('旧权限下的回复'),false);assert.equal(ui.container.textContent?.includes('填报事项结果'),false);
+ }finally{release?.();ui.unmount();cleanup();client.defaults.adapter=original;}
+});
+
+test('reporting results discard an attachment download after access is revoked',async()=>{
+ const {store,client}=await modules();const Results=(await vite.ssrLoadModule('/src/components/ComplaintReportingResults.tsx')).default;
+ const original=client.defaults.adapter,originalUrl=URL.createObjectURL;let release:(()=>void)|undefined;let downloads=0;
+ URL.createObjectURL=()=>{downloads++;return 'blob:synthetic';};store.setState({userInfo:identity(['complaint.read','dispatch.read'])});
+ client.defaults.adapter=async(config:any)=>{
+  let data:any=config.url==='/dispatch/orders'?{content:[{assignmentId:'A1',orderNo:'JB-1',complaintId:'C1'}],total:1}:
+   {events:[{eventId:'FINAL',state:'applied',payload:{eventType:'TASK_APPROVED',submissionVersion:1,enterpriseDisposalResult:{summary:'已完成'},attachments:[{attachmentId:'1',fileName:'处置材料.txt',size:1}]}}]};
+  if(config.url.includes('/reporting-attachments/')){await new Promise<void>(resolve=>release=resolve);data=new Blob(['x']);}
+  return {data:config.responseType==='blob'?data:{code:200,data},status:200,statusText:'OK',headers:{},config};
+ };
+ const {render,within,waitFor,fireEvent,cleanup,act}=await import('@testing-library/react');const ui=render(<Results complaintId="C1"/>);
+ try{
+  await waitFor(()=>assert.ok(within(ui.container).getByText('JB-1')));fireEvent.click(within(ui.container).getByRole('button',{name:'查看事项结果'}));await waitFor(()=>assert.ok(within(ui.container).getByRole('button',{name:/处置材料/})));
+  fireEvent.click(within(ui.container).getByRole('button',{name:/处置材料/}));await waitFor(()=>assert.ok(release));await act(async()=>store.setState({userInfo:{...identity(['complaint.read']),authorizationVersion:2}}));
+  await act(async()=>release!());assert.equal(downloads,0);
+ }finally{release?.();URL.createObjectURL=originalUrl;ui.unmount();cleanup();client.defaults.adapter=original;}
 });
 
 for(const scenario of ['success-draft-retry','success-new-pending','conflict-new-pending'] as const)test('write lifecycle round trip preserves current editor/retry/submitting: '+scenario,async()=>{

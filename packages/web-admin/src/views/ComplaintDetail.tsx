@@ -1,8 +1,7 @@
 import {namedLabel,fieldLabel,chineseLabel,sourceLabel} from '../utils/chineseDisplay';
 import ChineseDetail from '../components/ChineseDetail';
 import ComplaintCategoryEditor from '../components/ComplaintCategoryEditor';
-import ComplaintFollowups from '../components/ComplaintFollowups';
-import SourceProcessTable from '../components/SourceProcessTable';
+import ComplaintReportingResults from '../components/ComplaintReportingResults';
 import {useWriteAccess,usePermissionAccess} from '../stores/roleAccess';
 import {useAppStore} from '../stores/appStore';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -720,8 +719,7 @@ const ComplaintDetail: React.FC = () => {
             <LocationClues clues={detail.locationClues} conflict={detail.locationConflict} />
           </Card>
 
-          <SourceProcessTable complaintId={detail.complaintId}/>
-          <ComplaintFollowups complaintId={detail.complaintId}/>
+          <ComplaintReportingResults complaintId={detail.complaintId}/>
           <Card title="本平台处理记录" style={{ marginTop: 16 }}>
             {timelineError && (
               <Alert

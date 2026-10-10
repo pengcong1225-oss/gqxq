@@ -1,8 +1,6 @@
 import { Router } from 'express';
 import { healthRouter } from './health';
 import { complaintsRouter } from './complaints';
-import { followupsRouter } from './followups';
-import { sourceProcessesRouter } from './sourceProcesses';
 import { dashboardRouter } from './dashboard';
 import {statisticsRouter} from './statistics';
 import { dictsRouter } from './dicts';
@@ -59,8 +57,6 @@ export function buildRouter(): Router {
   root.use(enforceRolePolicy());
   root.use(addressCandidatesRouter);
   root.use(complaintsRouter);
-  root.use(followupsRouter);
-  root.use(sourceProcessesRouter);
   root.use(complaintActionsRouter);
   root.use(enterprisesRouter);
   root.use(gridsRouter);

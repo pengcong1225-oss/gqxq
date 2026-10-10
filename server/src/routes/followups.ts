@@ -1,11 +1,3 @@
-import {Router,type Request} from 'express';
-import {requirePermission} from '../middleware/requireRole';
-import {ok} from '../http/respond';
-import {parseCreate} from '../domain/followup';
-import {getFollowups,createFollowup,reviseFollowup,concludeFollowup} from '../services/followupService';
+import {Router} from 'express';
+/** Retired local handling routes. Historical storage is retained; no user endpoint is registered. */
 export const followupsRouter=Router();
-const ctx=(req:Request)=>({userId:req.user?.id??null,clientIp:req.remoteIp??null});
-followupsRouter.get('/complaints/:idOrNo/followups',requirePermission('complaint.read'),async(req,res,next)=>{try{ok(res,await getFollowups(req.params.idOrNo,ctx(req)));}catch(e){next(e);}});
-followupsRouter.post('/complaints/:idOrNo/followups',requirePermission('followup.create'),async(req,res,next)=>{try{ok(res,await createFollowup({...parseCreate(req.body),complaintId:req.params.idOrNo},ctx(req)));}catch(e){next(e);}});
-followupsRouter.patch('/followups/:id',requirePermission('followup.create'),async(req,res,next)=>{try{ok(res,await reviseFollowup(req.params.id,req.body,ctx(req)));}catch(e){next(e);}});
-followupsRouter.patch('/followups/:id/conclusion',requirePermission('followup.conclude'),async(req,res,next)=>{try{ok(res,await concludeFollowup(req.params.id,req.body,ctx(req)));}catch(e){next(e);}});

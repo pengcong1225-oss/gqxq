@@ -28,9 +28,9 @@ test('source business time remains distinct from fallback and unavailable addres
  assert.equal(detail.businessTimeSource,'source_reported_at');assert.equal(detail.sourceAddress,null);assert.ok(detail.sourceFieldReasons.sourceAddress);assert.equal(detail.sourceSnapshotAt,null);
  const missing=projectComplaintDetail({id:1,complaint_id:'C1'},ctx);assert.equal(missing.businessTimeSource,'unavailable');
 });
-test('process endpoint uses current complaint capability for custom roles and denies revoked direct API',()=>{
+test('source process endpoint stays retired even with current complaint capability',()=>{
  const user={id:'u',username:'u',roles:['custom'],permissionCodes:['complaint.read']};
- assert.equal(isAllowed(user,'GET','/complaints/C1/source-processes').allowed,true);
+ assert.equal(isAllowed(user,'GET','/complaints/C1/source-processes').allowed,false);
  assert.equal(isAllowed({...user,permissionCodes:[]},'GET','/complaints/C1/source-processes').allowed,false);
  assert.equal(isAllowed(user,'POST','/complaints/C1/source-processes').allowed,false);
 });
