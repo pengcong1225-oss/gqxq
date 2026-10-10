@@ -310,6 +310,29 @@ const CHANGE_SOURCE_LABELS: Record<string, string> = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
+  INTAKE_CREATE: '接收诉求',
+  INTAKE_REJECTED: '拒绝接收诉求',
+  INTAKE_DUPLICATE_SAME: '重复接收诉求',
+  INTAKE_REDELIVERY: '更新来源诉求',
+  ASSIGN_ENTERPRISE: '分配责任企业',
+  COMPLAINT_DISPOSITION: '登记处置结果',
+  COMPLAINT_CLOSE: '办结诉求',
+  CATEGORY_REVISE: '调整诉求分类',
+  CORRECTION_GENERATE: '生成纠偏项',
+  CORRECTION_CONFIRM: '确认纠偏',
+  CORRECTION_REJECT: '拒绝纠偏',
+  CORRECTION_RESOLVE: '完成纠偏',
+  CORRECTION_LOCATION_GROUP: '纠偏位置信息',
+  SOURCE_DOCUMENT_READ: '查看来源原始记录',
+  LOCATION_CLUE_BACKFILL_ROW: '补充位置线索',
+  ANALYSIS_INCLUDED: '纳入分析库',
+  DISPATCH_CREATE: '创建交办',
+  DISPATCH_PUSH: '推送交办',
+  DISPATCH_CANCEL: '撤销交办',
+  DISPATCH_ARCHIVE: '归档交办',
+  FOLLOWUP_CREATE: '登记回访',
+  FOLLOWUP_REVISE: '修订回访',
+  FOLLOWUP_CONCLUDE: '确认回访结论',
   create: '新建',
   update: '修改',
   delete: '删除',
@@ -429,7 +452,7 @@ function buildOperationItems(rows: OperationLogRow[], startSeq: number): Pending
   return rows.map((r) => {
     const at = toDate(r.created_at) ?? new Date(0);
     const actionRaw = String(r.action ?? '');
-    const label = ACTION_LABELS[actionRaw] ?? (actionRaw === '' ? '操作' : actionRaw);
+    const label = ACTION_LABELS[actionRaw] ?? (/^[\u3400-\u9fff\s]+$/.test(actionRaw) ? actionRaw : '其他操作');
     const parsed = projectAuditDetail(r.detail);
 
     let summary = label;
@@ -440,7 +463,10 @@ function buildOperationItems(rows: OperationLogRow[], startSeq: number): Pending
           ? parsed.message
           : null;
     if (note) summary += '：' + note;
-    if (r.result && r.result !== 'success') summary += '｜结果 ' + r.result;
+    if (r.result && r.result !== 'success') {
+      const results: Record<string, string> = {failed: '失败', denied: '已拒绝', rejected: '已拒绝', ignored: '已忽略'};
+      summary += '｜结果 ' + (results[r.result] ?? '未知结果');
+    }
 
     return {
       at,
