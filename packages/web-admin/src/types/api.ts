@@ -129,7 +129,7 @@ export interface ComplaintListItem {
   complaintNo: string;
   title: string;
 
-  /** 来源系统（库里 source_system 直接存展示值，无独立 code->label 映射） */
+  /** 来源系统原值（界面通过中文映射展示，保留接口和数据库原值） */
   sourceSystem: string | null;
   sourceId: string | null;
   sourceChannel: string | null;

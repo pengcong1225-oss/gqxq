@@ -1,4 +1,4 @@
-import {namedLabel} from '../utils/chineseDisplay';
+import {namedLabel,sourceLabel} from '../utils/chineseDisplay';
 import MasterDataImportDialog from '../components/MasterDataImportDialog';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Alert,Button,Card,Descriptions,Drawer,Form,Input,InputNumber,Modal,Result,Select,Space,Switch,Table,Tabs,Tag} from 'antd';
@@ -153,7 +153,7 @@ const CompanyList:React.FC=()=>{
     {write.can&&<Form ref={instance=>{if(instance)detailFormsMounted.current.households=true;}} form={houseForm} layout="vertical" onFinish={()=>void addHousehold()}><Form.Item name="households" label="服务户数（留空为未知）"><InputNumber min={0} precision={0}/></Form.Item><Form.Item name="validFrom" label="生效日" rules={[{required:true}]}><Input type="date"/></Form.Item><Form.Item name="validTo" label="截止日（可空）"><Input type="date"/></Form.Item><Button htmlType="submit" loading={detailSaving}>新增户数版本</Button></Form>}
    </>},{key:'mapping',label:'来源部门映射',children:<>
 
-    <Table<DepartmentMapping> rowKey={m=>m.sourceSystem+':'+m.sourceDepartmentCode} dataSource={mappings} pagination={false} columns={[{title:'来源系统',dataIndex:'sourceSystem'},{title:'部门码',dataIndex:'sourceDepartmentCode'},{title:'名称',dataIndex:'sourceDepartmentName'},{title:'别名',dataIndex:'aliases',render:v=>Array.isArray(v)?v.join('、'):'—'},{title:'核验',dataIndex:'verified',render:v=>v?'已核验':'待核验'},{title:'操作',render:(_,m)=>write.can&&<Button onClick={()=>mappingForm.setFieldsValue({...m,verified:Boolean(m.verified),aliases:m.aliases.join('\n')})}>核验或编辑</Button>}]}/>
+    <Table<DepartmentMapping> rowKey={m=>m.sourceSystem+':'+m.sourceDepartmentCode} dataSource={mappings} pagination={false} columns={[{title:'来源系统',dataIndex:'sourceSystem',render:value=>sourceLabel(value,'system')},{title:'部门码',dataIndex:'sourceDepartmentCode'},{title:'名称',dataIndex:'sourceDepartmentName'},{title:'别名',dataIndex:'aliases',render:v=>Array.isArray(v)?v.join('、'):'—'},{title:'核验',dataIndex:'verified',render:v=>v?'已核验':'待核验'},{title:'操作',render:(_,m)=>write.can&&<Button onClick={()=>mappingForm.setFieldsValue({...m,verified:Boolean(m.verified),aliases:m.aliases.join('\n')})}>核验或编辑</Button>}]}/>
     {write.can&&<Form ref={instance=>{if(instance)detailFormsMounted.current.mapping=true;}} form={mappingForm} layout="vertical" onFinish={()=>void addMapping()}><Form.Item name="sourceSystem" label="来源系统" rules={[{required:true}]}><Input maxLength={64}/></Form.Item><Form.Item name="sourceDepartmentCode" label="来源部门码" rules={[{required:true}]}><Input maxLength={64}/></Form.Item><Form.Item name="sourceDepartmentName" label="来源部门名称" rules={[{required:true}]}><Input maxLength={128}/></Form.Item><Form.Item name="aliases" label="人工核验别名（每行一个）"><Input.TextArea/></Form.Item><Form.Item name="verified" label="已人工核验" valuePropName="checked"><Switch/></Form.Item><Button htmlType="submit" loading={detailSaving}>保存部门映射</Button></Form>}
    </>} ]}/></>}
   </Drawer>

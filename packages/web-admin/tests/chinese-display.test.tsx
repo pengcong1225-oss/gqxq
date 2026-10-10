@@ -5,6 +5,17 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import ChineseDetail from '../src/components/ChineseDetail';
 import {chineseLabel,namedLabel,fieldValue,detailLines,systemMessage} from '../src/utils/chineseDisplay';
 
+test('source systems and channels display Chinese names and keep unknown codes hidden',()=>{
+ assert.equal(fieldValue('sourceSystem','LOCAL_ACCEPTANCE'),'本地验收来源');
+ assert.equal(fieldValue('source_system','YJJB'),'宜接就办');
+ assert.equal(fieldValue('sourceChannel','hotline'),'热线');
+ assert.equal(fieldValue('source_channel','WEB'),'网页端');
+ assert.equal(fieldValue('sourceSystem','UNRECOGNIZED_SOURCE'),'来源系统待核实');
+ assert.equal(fieldValue('sourceChannel','UNRECOGNIZED_CHANNEL'),'来源渠道待核实');
+ assert.equal(fieldValue('sourceChannel','12345热线'),'12345热线');
+ assert.equal(fieldValue('sourceChannel',null),'—');
+});
+
 test('the same internal state has Chinese labels appropriate to its workflow',()=>{
  assert.equal(chineseLabel('pending','supervision_status'),'待推送');
  assert.equal(chineseLabel('pending','correction_status'),'待纠偏');

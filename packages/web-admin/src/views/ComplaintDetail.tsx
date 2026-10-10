@@ -1,4 +1,4 @@
-import {namedLabel,fieldLabel,chineseLabel} from '../utils/chineseDisplay';
+import {namedLabel,fieldLabel,chineseLabel,sourceLabel} from '../utils/chineseDisplay';
 import ChineseDetail from '../components/ChineseDetail';
 import ComplaintCategoryEditor from '../components/ComplaintCategoryEditor';
 import ComplaintFollowups from '../components/ComplaintFollowups';
@@ -622,8 +622,8 @@ const ComplaintDetail: React.FC = () => {
                   {detail.urgencyLevelName}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="来源系统">{detail.sourceSystem ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="来源渠道">{detail.sourceChannel ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="来源系统">{sourceLabel(detail.sourceSystem,'system')}</Descriptions.Item>
+              <Descriptions.Item label="来源渠道">{sourceLabel(detail.sourceChannel,'channel')}</Descriptions.Item>
               <Descriptions.Item label="来源案件编号">{detail.sourceId ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="所属区域">{detail.districtName ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="责任企业">

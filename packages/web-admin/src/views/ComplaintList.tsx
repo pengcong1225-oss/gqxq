@@ -1,4 +1,4 @@
-import {namedLabel} from '../utils/chineseDisplay';
+import {namedLabel,sourceLabel} from '../utils/chineseDisplay';
 import {useWriteAccess} from '../stores/roleAccess';
 import ComplaintImportDialog from '../components/ComplaintImportDialog';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -529,13 +529,13 @@ const ComplaintList: React.FC = () => {
         title: '来源系统',
         dataIndex: 'sourceSystem',
         width: 110,
-        render: (v: string | null) => (v ? <Tag color="blue">{v}</Tag> : DASH),
+        render: (v: string | null) => (v ? <Tag color="blue">{sourceLabel(v,'system')}</Tag> : DASH),
       },
       {
         title: '来源渠道',
         dataIndex: 'sourceChannel',
         width: 100,
-        render: (v: string | null) => v ?? DASH,
+        render: (v: string | null) => sourceLabel(v,'channel'),
       },
       {
         title: '督办状态',

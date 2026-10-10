@@ -3,7 +3,8 @@ const dictionaries: Record<string, Record<string, string>> = {
  business_type:{water:'供水',gas:'燃气',lpg:'液化气'},
  complaint_type:{complaint:'投诉',consult:'咨询',suggest:'建议',report:'举报',help:'求助',other:'其他',praise:'表扬'},
  urgency_level:{normal:'一般',urgent:'紧急',critical:'特急'},
- source_system:{local_excel:'本地表格导入',yijiejiuban:'宜接就办',yijie:'宜接就办',yjjb:'宜接就办',zhuxin_platform:'填报平台'},
+ source_system:{local_acceptance:'本地验收来源',local_excel:'本地表格导入',yijiejiuban:'宜接就办',yijie:'宜接就办',yjjb:'宜接就办',zhuxin_platform:'填报平台'},
+ source_channel:{hotline:'热线',web:'网页端',grid:'网格上报',phone:'电话',telephone:'电话',wechat:'微信',dingtalk:'钉钉',api:'接口接入',manual:'人工录入',excel:'表格导入',excel_import:'表格导入',local_excel:'表格导入',local_acceptance:'本地验收渠道'},
  source_event_status:{unknown:'未接入',accepted:'已受理',processing:'处置中',completed:'来源已办结',closed:'来源已关闭'},
  supervision_status:{none:'未交办',pending_match:'待匹配单位',pending:'待推送',pushed:'已推送待签收',accepted:'企业已签收',processing:'企业办理中',returned:'审批退回待补正',completed:'填报审批最终通过',rejected:'审批不同意',archived:'已归档',cancelled:'已受控撤销'},
  reporting_status:{not_started:'未推送',pushed:'已推送',accepted:'企业已签收',submitted:'企业已提交',returned:'退回补正',approved:'最终同意',rejected:'审批不同意'},
@@ -50,12 +51,17 @@ export function chineseLabel(value:unknown,domain?:string,fallback='未知状态
 export function namedLabel(code:unknown,name:unknown,domain?:string):string {
  return typeof name==='string'&&/[\u3400-\u9fff]/.test(name)?name:chineseLabel(code,domain);
 }
+export function sourceLabel(value:unknown,kind:'system'|'channel'):string {
+ if(value===null||value===undefined||value==='')return '—';
+ const text=String(value).trim();if(!text)return '—';
+ return dictionaries[kind==='system'?'source_system':'source_channel'][text.toLowerCase()]??(/[\u3400-\u9fff]/.test(text)?text:kind==='system'?'来源系统待核实':'来源渠道待核实');
+}
 const fields:Record<string,string>={
  before:'变更前',after:'变更后',oldValue:'原值',newValue:'新值',effectiveValue:'当前有效值',fieldName:'字段',fieldLabel:'字段名称',changed:'变更字段',changes:'字段变化',decisions:'处理结论',
  status:'状态',state:'状态',statusBefore:'原状态',statusAfter:'新状态',fromStatus:'原状态',toStatus:'新状态',dispatchStatusBefore:'原交办状态',dispatchStatusAfter:'新交办状态',supervisionStatusBefore:'原督办状态',supervisionStatusAfter:'新督办状态',
  userId:'用户编号',targetUserId:'目标用户编号',username:'用户名',realName:'姓名',operator:'操作人',operatorId:'操作人编号',operatorName:'操作人姓名',roles:'角色',role:'角色',roleCode:'角色',permissionCodes:'功能权限',accountType:'账号类型',enabled:'启用',builtIn:'内置',passwordSet:'已设置口令',forceChange:'首次登录设置口令',
  name:'名称',label:'名称',code:'业务编码',kind:'类型',type:'类型',typeCode:'字典类型',itemCode:'字典条目',parentCode:'父项',sort:'排序',published:'发布状态',verified:'已核验',rules:'数据范围规则',enterpriseCodes:'企业范围',districtCodes:'区划范围',
- complaintId:'诉求编号',complaintNo:'诉求单号',sourceId:'来源案件编号',sourceSystem:'来源系统',sourceChannel:'来源渠道',sourceDepartmentCode:'来源部门编码',title:'标题',content:'诉求内容',address:'地址',correctedAddress:'纠偏地址',districtCode:'区划编码',districtName:'区划名称',
+ complaintId:'诉求编号',complaintNo:'诉求单号',sourceId:'来源案件编号',sourceSystem:'来源系统',sourceChannel:'来源渠道',source:'来源渠道',sourceDepartmentCode:'来源部门编码',title:'标题',content:'诉求内容',address:'地址',correctedAddress:'纠偏地址',districtCode:'区划编码',districtName:'区划名称',
  businessType:'业务类型',complaintType:'诉求类型',urgencyLevel:'紧急程度',isSensitive:'敏感诉求',sensitiveKeywords:'敏感词',enterpriseCode:'企业编码',enterpriseName:'企业名称',disposalResult:'处置结果',
  majorCode:'大类编码',minorCode:'小类编码',oldMajorCode:'原大类编码',oldMinorCode:'原小类编码',formalCategory:'正式分类',category:'分类',dictionaryVersion:'字典版本',oldDictionaryVersion:'原字典版本',
  version:'版本',editVersion:'记录版本',scopeVersion:'数据范围版本',authorizationVersion:'权限版本',templateVersion:'模板版本',templateCode:'报告模板',previewVersion:'预览版本',publishedVersion:'发布版本',ruleId:'规则编号',ruleVersion:'规则版本',ruleConfidence:'识别可信度',policyId:'政策编号',policyVersion:'政策版本',
@@ -93,6 +99,8 @@ export function fieldValue(key:string,value:unknown):string {
  if(value===null||value===undefined||value==='')return '—';
  if(typeof value==='boolean')return value?'是':'否';
  const normalized=normalize(key);
+ if(normalized==='sourcesystem')return sourceLabel(value,'system');
+ if(normalized==='sourcechannel'||normalized==='source')return sourceLabel(value,'channel');
  if(normalized==='status'&&(value===1||value===0))return value===1?'启用':'停用';
  if(normalized==='formalcategory'&&typeof value==='string'){try{return detailLines(JSON.parse(value));}catch{return '分类信息待核对';}}
  if(normalized==='failurereason')return systemMessage(value,'处理失败，请稍后重试');
