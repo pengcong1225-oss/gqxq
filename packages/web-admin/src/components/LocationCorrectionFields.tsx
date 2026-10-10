@@ -26,8 +26,8 @@ export const LocationCorrectionFields:React.FC<{form:FormInstance;options:Locati
   </Space>
   <Form.Item name="adminGridCode" label="行政网格"><Select aria-label="位置组行政网格" allowClear options={options?.adminGrids.filter(a=>a.districtCode===district).map(a=>({value:a.code,label:a.name+'（'+a.code+'）'}))} onChange={()=>form.setFieldsValue({communityCode:null})}/></Form.Item>
   <Form.Item name="communityCode" label="小区"><Select aria-label="位置组小区" allowClear options={options?.communities.filter(c=>c.adminGridCode===admin).map(c=>({value:c.code,label:c.name+'（'+c.code+'）'}))}/></Form.Item>
-  <Form.Item name="coordinateSystem" label="坐标系状态"><Select aria-label="位置组坐标系" disabled={!lng?.trim()&&!lat?.trim()} options={[{value:'unknown',label:'未核实（不进行空间判定）'},{value:'WGS84',label:'WGS84（操作者声明并提供来源）'}]} onChange={value=>{if(value==='WGS84')form.setFieldsValue({coordinateSource:''});}}/></Form.Item>
-  <Form.Item name="coordinateSource" label="坐标来源说明" rules={crs==='WGS84'?[{required:true,whitespace:true,message:'请说明 WGS84 资料来源；此项记录为操作者声明'}]:[]}><Input aria-label="位置组坐标来源" maxLength={500} disabled={!lng?.trim()&&!lat?.trim()} placeholder="来源或核验方式；不把操作者声明当作地图认证"/></Form.Item>
+  <Form.Item name="coordinateSystem" label="坐标系状态"><Select aria-label="位置组坐标系" disabled={!lng?.trim()&&!lat?.trim()} options={[{value:'unknown',label:'未核实（不进行空间判定）'},{value:'WGS84',label:'全球大地坐标系（操作者声明并提供来源）'}]} onChange={value=>{if(value==='WGS84')form.setFieldsValue({coordinateSource:''});}}/></Form.Item>
+  <Form.Item name="coordinateSource" label="坐标来源说明" rules={crs==='WGS84'?[{required:true,whitespace:true,message:'请说明坐标资料来源；此项记录为操作者声明'}]:[]}><Input aria-label="位置组坐标来源" maxLength={500} disabled={!lng?.trim()&&!lat?.trim()} placeholder="来源或核验方式；不把操作者声明当作地图认证"/></Form.Item>
   <Typography.Text type="secondary">空间复核采用保存当日生效覆盖，不代表诉求发生时的历史关系。同名或重叠候选请按稳定编码人工选择。</Typography.Text>
   <Form.Item name="basis" label="核对依据" rules={[{required:true,whitespace:true,message:'请填写人工核对依据'}]} style={{marginTop:12}}><Input.TextArea aria-label="位置组依据" maxLength={500} rows={2} placeholder="例如：现场核对、来电确认及资料来源"/></Form.Item>
  </>;

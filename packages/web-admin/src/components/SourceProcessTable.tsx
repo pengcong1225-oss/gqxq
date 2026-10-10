@@ -1,3 +1,4 @@
+import {systemMessage} from '../utils/chineseDisplay';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Button,Card,Empty,Table,Typography} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
@@ -33,7 +34,7 @@ const SourceProcessTable:React.FC<{complaintId:string}>=({complaintId})=>{
   {result&&<>
    <Alert showIcon style={{marginBottom:12}} type={result.state==='error'?'error':result.complete?'success':'warning'}
     message={result.state==='unavailable'?'来源全过程尚未接入':result.complete?'完整批次已保存':'来源全过程尚未完整'}
-    description={<>{result.syncError&&<div>{result.syncError}</div>}<div>已完成批次截止时间：{result.cutoffAt?new Date(result.cutoffAt).toLocaleString('zh-CN'):'未提供可信截止时间'}</div>{result.missingTimeNodeIds.length>0&&<div>部分节点缺少来源时间，无法确认完整业务时序。</div>}</>}/>
+    description={<>{result.syncError&&<div>{systemMessage(result.syncError,'来源同步失败，请稍后重试')}</div>}<div>已完成批次截止时间：{result.cutoffAt?new Date(result.cutoffAt).toLocaleString('zh-CN'):'未提供可信截止时间'}</div>{result.missingTimeNodeIds.length>0&&<div>部分节点缺少来源时间，无法确认完整业务时序。</div>}</>}/>
    {result.nodes.length===0?<Empty description="暂无已核实的来源节点"/>:<Table size="small" pagination={false} columns={columns} dataSource={result.nodes} rowKey="nodeId" scroll={{x:850}}
     expandable={{rowExpandable:node=>result.revisions.filter(r=>r.nodeId===node.nodeId).length>1,expandedRowRender:node=><><Typography.Text type="secondary">该节点已保存的来源修订</Typography.Text><Table size="small" pagination={false} columns={columns} dataSource={result.revisions.filter(r=>r.nodeId===node.nodeId)} rowKey={r=>String(r.revision)}/></>}}/>}
   </>}

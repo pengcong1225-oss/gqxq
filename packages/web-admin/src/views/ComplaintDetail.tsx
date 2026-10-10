@@ -1,3 +1,5 @@
+import {namedLabel,fieldLabel,chineseLabel} from '../utils/chineseDisplay';
+import ChineseDetail from '../components/ChineseDetail';
 import ComplaintCategoryEditor from '../components/ComplaintCategoryEditor';
 import ComplaintFollowups from '../components/ComplaintFollowups';
 import SourceProcessTable from '../components/SourceProcessTable';
@@ -478,7 +480,7 @@ const ComplaintDetail: React.FC = () => {
       </Tooltip>
       {documentAccess.can&&detail&&<Button loading={documentLoading} onClick={()=>void readDocument()}>查看来源原件</Button>}
       <Modal key={documentKey} title="来源原件" open={Boolean(sourceDocument)} footer={null} width={800} onCancel={closeDocument}>
-        <pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:'65vh',overflow:'auto'}}>{sourceDocument?JSON.stringify(sourceDocument,null,2):''}</pre>
+        {sourceDocument&&<ChineseDetail value={sourceDocument}/>}
       </Modal>
     </Space>
   );
@@ -600,7 +602,7 @@ const ComplaintDetail: React.FC = () => {
               <Descriptions.Item label="诉求编号">{detail.complaintNo}</Descriptions.Item>
               <Descriptions.Item label="督办状态">
                 <Tag color={SUPERVISION_COLOR[detail.supervisionStatusCode] ?? 'default'}>
-                  {detail.supervisionStatusName}
+                  {namedLabel(detail.supervisionStatusCode,detail.supervisionStatusName,'supervision_status')}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="标题" span={2}>
@@ -608,11 +610,11 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="业务类型">
                 <Tag color={detail.businessTypeCode === 'water' ? 'blue' : 'orange'}>
-                  {detail.businessTypeName}
+                  {namedLabel(detail.businessTypeCode,detail.businessTypeName,'business_type')}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="诉求性质">
-                <Tag>{detail.complaintTypeName}</Tag>
+                <Tag>{namedLabel(detail.complaintTypeCode,detail.complaintTypeName,'complaint_type')}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label="正式大小类" span={2}><ComplaintCategoryEditor detail={detail} onSaved={()=>void load()}/></Descriptions.Item>
               <Descriptions.Item label="紧急程度">
@@ -622,7 +624,7 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="来源系统">{detail.sourceSystem ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="来源渠道">{detail.sourceChannel ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="来源ID">{detail.sourceId ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="来源案件编号">{detail.sourceId ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="所属区域">{detail.districtName ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="责任企业">
                 {detail.enterpriseName ? (
@@ -652,7 +654,7 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="纠偏状态">
                 <Tag color={CORRECTION_COLOR[detail.correctionStatusCode] ?? 'default'}>
-                  {detail.correctionStatusName}
+                  {namedLabel(detail.correctionStatusCode,detail.correctionStatusName,'correction_status')}
                 </Tag>
                 {detail.correctionConfidence != null && (
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -663,10 +665,10 @@ const ComplaintDetail: React.FC = () => {
               <Descriptions.Item label="来源状态">
                 {detail.sourceEventStatusCode === 'unknown' ? (
                   <Tooltip title="暂未获取来源处置状态">
-                    <Tag color="default">{detail.sourceEventStatusName}</Tag>
+                    <Tag color="default">{namedLabel(detail.sourceEventStatusCode,detail.sourceEventStatusName,'source_event_status')}</Tag>
                   </Tooltip>
                 ) : (
-                  <Tag color="cyan">{detail.sourceEventStatusName}</Tag>
+                  <Tag color="cyan">{namedLabel(detail.sourceEventStatusCode,detail.sourceEventStatusName,'source_event_status')}</Tag>
                 )}
               </Descriptions.Item>
               <Descriptions.Item label="超期时效">
@@ -681,7 +683,7 @@ const ComplaintDetail: React.FC = () => {
                 )}
               </Descriptions.Item>
               <Descriptions.Item label="填报状态">
-                <Tag>{detail.reportingStatusName}</Tag>
+                <Tag>{namedLabel(detail.reportingStatusCode,detail.reportingStatusName,'reporting_status')}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label="敏感词规则分值">
                 {sensitiveRuleScoreLabel(detail.ruleConfidence, detail.ruleVersion)}
@@ -689,7 +691,7 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               {detail.addressCandidate && <Descriptions.Item label="地址候选">
                 <Tag color="warning">待核实</Tag> {detail.addressCandidate.value}
-                <Typography.Text type="secondary">（{detail.addressCandidate.sourceField === 'title' ? '标题' : '正文'} · {detail.addressCandidate.extractorVersion}；证据：{detail.addressCandidate.evidence}）</Typography.Text>
+                <Typography.Text type="secondary">（{detail.addressCandidate.sourceField === 'title' ? '标题' : '正文'}；证据：{detail.addressCandidate.evidence}）</Typography.Text>
               </Descriptions.Item>}
               <Descriptions.Item label="本次收到的来源地址">
                 {detail.sourceAddress ?? detail.sourceFieldReasons?.sourceAddress ?? '未留存可核实的结构化来源原值'}
@@ -699,7 +701,7 @@ const ComplaintDetail: React.FC = () => {
               <Descriptions.Item label="有效值核验状态">
                 {detail.effectiveFieldState ? Object.entries(detail.effectiveFieldState)
                   .filter(([, value]) => (value as { resolution?: string })?.resolution === 'needs_verification')
-                  .map(([field]) => field).join('、') || '已有字段保护记录' : '历史保护状态待核验'}
+                  .map(([field]) => fieldLabel(field)).join('、') || '已有字段保护记录' : '历史保护状态待核验'}
               </Descriptions.Item>
               <Descriptions.Item label="纠偏后地址">{detail.correctedAddress ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="诉求时间">{fmtDateTime(detail.createdAt)}</Descriptions.Item>
@@ -741,8 +743,8 @@ const ComplaintDetail: React.FC = () => {
                     children: (
                       <div>
                         <Space size={6} wrap>
-                          <Tag color={meta?.color ?? 'default'}>{meta?.text ?? t.category}</Tag>
-                          <span style={{ fontWeight: 500 }}>{t.action}</span>
+                          <Tag color={meta?.color ?? 'default'}>{meta?.text ?? '业务记录'}</Tag>
+                          <span style={{ fontWeight: 500 }}>{chineseLabel(t.action,undefined,'业务操作')}</span>
                         </Space>
                         <div style={{ color: '#999', fontSize: 12 }}>
                           {fmtDateTime(t.at)} · {t.operatorName ?? '系统'}
@@ -769,10 +771,10 @@ const ComplaintDetail: React.FC = () => {
             <Descriptions size="small" column={1} bordered>
               <Descriptions.Item label="督办状态">
                 <Tag color={SUPERVISION_COLOR[detail.supervisionStatusCode] ?? 'default'}>
-                  {detail.supervisionStatusName}
+                  {namedLabel(detail.supervisionStatusCode,detail.supervisionStatusName,'supervision_status')}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="填报状态">{detail.reportingStatusName}</Descriptions.Item>
+              <Descriptions.Item label="填报状态">{namedLabel(detail.reportingStatusCode,detail.reportingStatusName,'reporting_status')}</Descriptions.Item>
               <Descriptions.Item label="责任企业">
                 {detail.enterpriseName ?? '未匹配'}
               </Descriptions.Item>
@@ -820,7 +822,7 @@ const ComplaintDetail: React.FC = () => {
                 <Descriptions.Item label="交办单号">{dispatch.orderNo}</Descriptions.Item>
                 <Descriptions.Item label="交办状态">
                   <Tag color={SUPERVISION_COLOR[dispatch.status] ?? 'default'}>
-                    {dispatch.statusName}
+                    {namedLabel(dispatch.status,dispatch.statusName,'supervision_status')}
                   </Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="目标企业">
@@ -909,7 +911,7 @@ const ComplaintDetail: React.FC = () => {
                 description="无定位信息（该诉求未提供坐标，可在整体纠偏中补全）"
               />
             )}
-            <Typography.Paragraph type="secondary" style={{marginTop:8}}>坐标系：{detail.locationCoordinateSystem==='WGS84'?'WGS84（操作者声明）':'未核实'}；来源：{detail.locationCoordinateSource??'未留存可核实来源'}。网格：{detail.adminGridCode??'—'}；小区：{detail.communityCode??'—'}。</Typography.Paragraph>
+            <Typography.Paragraph type="secondary" style={{marginTop:8}}>坐标系：{detail.locationCoordinateSystem==='WGS84'?'全球大地坐标系（操作者声明）':'未核实'}；来源：{detail.locationCoordinateSource??'未留存可核实来源'}。网格：{detail.adminGridCode??'—'}；小区：{detail.communityCode??'—'}。</Typography.Paragraph>
             {correctionAccess.can&&<Button onClick={()=>navigate('/address-correction?complaintId='+encodeURIComponent(detail.complaintId))}>前往位置组纠偏</Button>}
           </Card>
 

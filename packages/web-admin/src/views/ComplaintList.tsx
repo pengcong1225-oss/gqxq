@@ -1,3 +1,4 @@
+import {namedLabel} from '../utils/chineseDisplay';
 import {useWriteAccess} from '../stores/roleAccess';
 import ComplaintImportDialog from '../components/ComplaintImportDialog';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -507,14 +508,14 @@ const ComplaintList: React.FC = () => {
         dataIndex: 'businessTypeCode',
         width: 90,
         render: (_: unknown, r) => (
-          <Tag color={BUSINESS_COLOR[r.businessTypeCode] ?? 'default'}>{r.businessTypeName}</Tag>
+          <Tag color={BUSINESS_COLOR[r.businessTypeCode] ?? 'default'}>{namedLabel(r.businessTypeCode,r.businessTypeName,'business_type')}</Tag>
         ),
       },
       {
         title: '诉求类型',
         dataIndex: 'complaintTypeCode',
         width: 90,
-        render: (_: unknown, r) => <Tag>{r.complaintTypeName}</Tag>,
+        render: (_: unknown, r) => <Tag>{namedLabel(r.complaintTypeCode,r.complaintTypeName,'complaint_type')}</Tag>,
       },
       {
         title: '紧急程度',
@@ -542,7 +543,7 @@ const ComplaintList: React.FC = () => {
         width: 130,
         render: (_: unknown, r) => (
           <Tag color={SUPERVISION_COLOR[r.supervisionStatusCode] ?? 'default'}>
-            {r.supervisionStatusName}
+            {namedLabel(r.supervisionStatusCode,r.supervisionStatusName,'supervision_status')}
           </Tag>
         ),
       },
@@ -553,10 +554,10 @@ const ComplaintList: React.FC = () => {
         render: (_: unknown, r) =>
           r.sourceEventStatusCode === 'unknown' ? (
             <Tooltip title="暂未获取来源处置状态">
-              <Tag color="default">{r.sourceEventStatusName}</Tag>
+              <Tag color="default">{namedLabel(r.sourceEventStatusCode,r.sourceEventStatusName,'source_event_status')}</Tag>
             </Tooltip>
           ) : (
-            <Tag color="cyan">{r.sourceEventStatusName}</Tag>
+            <Tag color="cyan">{namedLabel(r.sourceEventStatusCode,r.sourceEventStatusName,'source_event_status')}</Tag>
           ),
       },
       {

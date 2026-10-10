@@ -40,7 +40,7 @@ test('source API failure is visible and stale response cannot survive a complain
  client.defaults.adapter=(config:any)=>new Promise(resolve=>{release=()=>resolve({data:{code:200,data:{complaintId:'C1',nodes:[node],revisions:[node],state:'complete',complete:true,cutoffAt:null,syncError:null,missingTimeNodeIds:[]}},status:200,statusText:'OK',headers:{},config});});
  const {render,within,fireEvent,cleanup,waitFor,act}=await import('@testing-library/react');const ui=render(<Page complaintId="C1"/>);
  try{fireEvent.click(within(ui.container).getByRole('button',{name:'查看来源全过程'}));await waitFor(()=>assert.ok(release));ui.rerender(<Page complaintId="C2"/>);await act(async()=>release(null));assert.equal(ui.container.textContent?.includes(node.opinion),false);
-  client.defaults.adapter=async()=>{throw Error('HTTP failed');};fireEvent.click(within(ui.container).getByRole('button',{name:'查看来源全过程'}));await waitFor(()=>assert.match(ui.container.textContent??'',/HTTP failed/));
+  client.defaults.adapter=async()=>{throw Error('HTTP failed');};fireEvent.click(within(ui.container).getByRole('button',{name:'查看来源全过程'}));await waitFor(()=>assert.match(ui.container.textContent??'',/请求失败，请稍后重试/));
  }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
 });
 test('detail distinguishes original/effective address, null source dates and local timeline',async()=>{

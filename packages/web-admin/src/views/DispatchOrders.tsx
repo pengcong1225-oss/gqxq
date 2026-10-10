@@ -1,3 +1,4 @@
+import {chineseLabel,namedLabel,fieldLabel} from '../utils/chineseDisplay';
 import ReportingResultPanel from '../components/ReportingResultPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -340,7 +341,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
         width: 100,
         render: (value: string, row) => (
           <Tag color={row.urgencyLevelCode === 'critical' ? 'red' : row.urgencyLevelCode === 'urgent' ? 'orange' : 'blue'}>
-            {value}
+            {namedLabel(row.supervisionStatusCode,value,'supervision_status')}
           </Tag>
         ),
       },
@@ -358,7 +359,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
         width: 120,
         render: (value: string, row) => (
           <Tag color={row.supervisionStatusCode === 'pending_match' ? 'warning' : 'processing'}>
-            {value}
+            {namedLabel(row.supervisionStatusCode,value,'supervision_status')}
           </Tag>
         ),
       },
@@ -752,8 +753,8 @@ const DispatchOrders: React.FC = () => {
     () =>
       DISPATCH_STATUSES.map((code) => {
         const hit = statusDict.find((d) => d.value === code);
-        // 字典缺项时回退显示状态码本身，不编造中文
-        return { value: code, label: hit ? hit.label : code };
+        // 字典缺项时仍使用中文状态名称。
+        return { value: code, label: namedLabel(code,hit?.label,'supervision_status') };
       }),
     [statusDict]
   );
@@ -791,21 +792,21 @@ const DispatchOrders: React.FC = () => {
         title: '交办方式',
         dataIndex: 'dispatchType',
         width: 100,
-        // 契约里没有 dispatchTypeName / triggerTypeName，这里如实显示状态码，不编造中文
-        render: (v: string | null) => (v ? <Tag color={v === 'auto' ? 'blue' : 'purple'}>{v}</Tag> : DASH),
+        // 内部方式和触发编码仅用于接口，界面显示中文。
+        render: (v: string | null) => (v ? <Tag color={v === 'auto' ? 'blue' : 'purple'}>{chineseLabel(v,'dispatch_type')}</Tag> : DASH),
       },
       {
         title: '触发类型',
         dataIndex: 'triggerType',
         width: 120,
-        render: (v: string | null) => (v ? <Tag>{v}</Tag> : DASH),
+        render: (v: string | null) => (v ? <Tag>{chineseLabel(v,'trigger_type')}</Tag> : DASH),
       },
       {
         title: '状态',
         dataIndex: 'status',
         width: 120,
         render: (_: unknown, r) => (
-          <Tag color={STATUS_COLOR[r.status] ?? 'default'}>{r.statusName}</Tag>
+          <Tag color={STATUS_COLOR[r.status] ?? 'default'}>{namedLabel(r.status,r.statusName,'supervision_status')}</Tag>
         ),
       },
       {
@@ -955,23 +956,23 @@ const DispatchOrders: React.FC = () => {
         title: '结果',
         dataIndex: 'result',
         width: 140,
-        render: (v: string) => <Tag color={PUSH_RESULT_COLOR[v] ?? 'default'}>{v}</Tag>,
+        render: (v: string) => <Tag color={PUSH_RESULT_COLOR[v] ?? 'default'}>{chineseLabel(v,undefined,'推送结果待核对')}</Tag>,
       },
       {
-        title: 'HTTP',
+        title: '响应状态码',
         dataIndex: 'httpStatus',
         width: 70,
         render: (v: number | null) => (v == null ? DASH : v),
       },
       {
-        title: '错误码',
+        title: '错误原因',
         dataIndex: 'errorCode',
         width: 180,
         ellipsis: true,
-        render: (v: string | null) => (v ? <Tooltip title={v}>{v}</Tooltip> : DASH),
+        render: (v: string | null) => (v ? <span>{chineseLabel(v,undefined,'外部响应未成功')}</span> : DASH),
       },
       {
-        title: 'nonce',
+        title: '请求校验号',
         dataIndex: 'nonce',
         width: 190,
         ellipsis: true,
@@ -990,7 +991,7 @@ const DispatchOrders: React.FC = () => {
         render: (_: unknown, r) => {
           if (!r.startedAt || !r.finishedAt) return DASH;
           const ms = new Date(r.finishedAt).getTime() - new Date(r.startedAt).getTime();
-          return Number.isFinite(ms) ? ms + ' ms' : DASH;
+          return Number.isFinite(ms) ? ms + ' 毫秒' : DASH;
         },
       },
       {
@@ -1018,9 +1019,9 @@ const DispatchOrders: React.FC = () => {
           children: (
             <div>
               <div style={{ fontWeight: 500 }}>
-                {EVENT_TYPE_LABEL[t.eventType] ?? t.eventType}
+                {EVENT_TYPE_LABEL[t.eventType] ?? chineseLabel(t.eventType,'event_type','审批进度待核对')}
                 {t.approvalConclusion
-                  ? ' · ' + (CONCLUSION_LABEL[t.approvalConclusion] ?? t.approvalConclusion)
+                  ? ' · ' + (CONCLUSION_LABEL[t.approvalConclusion] ?? chineseLabel(t.approvalConclusion,undefined,'审批结论待核对'))
                   : ''}
               </div>
               <div style={{ color: '#999', fontSize: 12 }}>
@@ -1194,7 +1195,7 @@ const DispatchOrders: React.FC = () => {
             <Descriptions bordered size="small" column={2}>
             <Descriptions.Item label="交办单号">{detail.orderNo}</Descriptions.Item>
             <Descriptions.Item label="状态">
-              <Tag color={STATUS_COLOR[detail.status] ?? 'default'}>{detail.statusName}</Tag>
+              <Tag color={STATUS_COLOR[detail.status] ?? 'default'}>{namedLabel(detail.status,detail.statusName,'supervision_status')}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="诉求编号">
               {detail.complaintNo ?? DASH}
@@ -1208,8 +1209,8 @@ const DispatchOrders: React.FC = () => {
             <Descriptions.Item label="企业编码">
               {detail.targetEnterpriseCode ?? DASH}
             </Descriptions.Item>
-            <Descriptions.Item label="交办方式">{detail.dispatchType ?? DASH}</Descriptions.Item>
-            <Descriptions.Item label="触发类型">{detail.triggerType ?? DASH}</Descriptions.Item>
+            <Descriptions.Item label="交办方式">{chineseLabel(detail.dispatchType,'dispatch_type')}</Descriptions.Item>
+            <Descriptions.Item label="触发类型">{chineseLabel(detail.triggerType,'trigger_type')}</Descriptions.Item>
             <Descriptions.Item label="敏感词" span={2}>
               {detail.sensitiveWords.length > 0
                 ? detail.sensitiveWords.map((w) => (
@@ -1235,9 +1236,9 @@ const DispatchOrders: React.FC = () => {
               )}
             </Descriptions.Item>
             <Descriptions.Item label="填报状态">
-              {detail.externalStatus ?? DASH}
+              {chineseLabel(detail.externalStatus,'reporting_status')}
             </Descriptions.Item>
-            <Descriptions.Item label="推送状态">{detail.syncStatus ?? DASH}</Descriptions.Item>
+            <Descriptions.Item label="推送状态">{chineseLabel(detail.syncStatus)}</Descriptions.Item>
             <Descriptions.Item label="推送时间">{fmtDateTime(detail.pushedAt)}</Descriptions.Item>
             <Descriptions.Item label="外发状态"><Tag color={DELIVERY_COLOR[detail.deliveryState??'']??'default'}>{DELIVERY_LABEL[detail.deliveryState??'']??'尚未排队'}</Tag></Descriptions.Item>
             <Descriptions.Item label="恢复处理次数">{detail.deliveryAttempts??0}</Descriptions.Item>
@@ -1246,14 +1247,14 @@ const DispatchOrders: React.FC = () => {
             <Descriptions.Item label="归档时间">{fmtDateTime(detail.archivedAt)}</Descriptions.Item>
             <Descriptions.Item label="模板">
               {detail.templateCode
-                ? detail.templateCode + (detail.templateVersion != null ? ' v' + detail.templateVersion : '')
+                ? '已配置填报模板' + (detail.templateVersion != null ? '，版本 ' + detail.templateVersion : '')
                 : DASH}
             </Descriptions.Item>
             <Descriptions.Item label="审批定义">
               {detail.approvalDefinitionCode
-                ? detail.approvalDefinitionCode +
+                ? '已配置审批流程' +
                   (detail.approvalDefinitionVersion != null
-                    ? ' v' + detail.approvalDefinitionVersion
+                    ? '，版本 ' + detail.approvalDefinitionVersion
                     : '')
                 : DASH}
             </Descriptions.Item>
@@ -1364,7 +1365,7 @@ const DispatchOrders: React.FC = () => {
               <ul style={{ marginTop: 12, paddingLeft: 20 }}>
                 {pushOutcome.fieldErrors.map((f) => (
                   <li key={f.field}>
-                    <Typography.Text code>{f.field}</Typography.Text>：{f.message}
+                    <Typography.Text>{fieldLabel(f.field)}</Typography.Text>：{f.message}
                   </li>
                 ))}
               </ul>

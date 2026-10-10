@@ -1,3 +1,4 @@
+import {chineseLabel} from '../utils/chineseDisplay';
 import React from 'react';
 import {Button,Space,Typography} from 'antd';
 import type {StatisticsQuery,PeriodKind,StatisticsDataset,StatisticsProjection} from '../types/statistics';
@@ -18,7 +19,7 @@ export default function StatisticsFilters({value,onChange,onApply,allowed,loadin
   <label style={fieldStyle}>期间<select aria-label="统计期间" style={controlStyle} value={value.periodKind} onChange={e=>preset(e.target.value as PeriodKind)}><option value="custom">自定义</option><option value="month">本月截至今日</option><option value="quarter">本季度截至今日</option><option value="year">本年截至今日</option></select></label>
   <label style={fieldStyle}>起始业务日<input aria-label="起始业务日" style={controlStyle} type="date" value={value.from} max={statisticsToday()} onChange={e=>update({from:e.target.value,periodKind:'custom'})}/></label>
   <label style={fieldStyle}>结束业务日<input aria-label="结束业务日" style={controlStyle} type="date" value={value.to} max={statisticsToday()} onChange={e=>update({to:e.target.value,periodKind:'custom'})}/></label>
-  {([['businessType','业务编码'],['majorCode','正式大类编码'],['minorCode','正式小类编码'],['enterpriseCode','企业编码'],['districtCode','区划编码'],['serviceGridCode','服务网格编码']] as const).map(([field,label])=><label key={field} style={fieldStyle}>{label}<input aria-label={label} style={controlStyle} value={value[field]??''} maxLength={64} placeholder="全部" onChange={e=>update({[field]:e.target.value||undefined})}/></label>)}
+  {([['businessType','业务类型'],['majorCode','正式大类编码'],['minorCode','正式小类编码'],['enterpriseCode','企业编码'],['districtCode','区划编码'],['serviceGridCode','服务网格编码']] as const).map(([field,label])=><label key={field} style={fieldStyle}>{label}{field==='businessType'?<select aria-label={label} style={controlStyle} value={value.businessType??''} onChange={e=>update({businessType:e.target.value as StatisticsQuery['businessType']||undefined})}><option value="">全部</option>{['water','gas','lpg'].map(code=><option key={code} value={code}>{chineseLabel(code,'business_type')}</option>)}</select>:<input aria-label={label} style={controlStyle} value={value[field]??''} maxLength={64} placeholder="全部" onChange={e=>update({[field]:e.target.value||undefined})}/>}</label>)}
   <Button type="primary" loading={loading} disabled={!value.projection||!allowed.includes(value.dataset)} onClick={onApply}>应用统计筛选</Button>
  </Space></div>;
 }

@@ -1,3 +1,4 @@
+import {namedLabel,chineseLabel} from '../utils/chineseDisplay';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, Descriptions, Drawer, Empty, Input, Result, Space, Table } from 'antd';
 import { useNavigate } from 'react-router-dom';
@@ -78,20 +79,20 @@ export default function AnalysisRecordBrowser() {
         return <Result status="403" title="当前账号无分析入库记录查询权限"/>;
     return <Card title="入库记录浏览">
 
-  <Space wrap style={{ margin: '16px 0' }}>{(['districtCode', 'businessType', 'enterpriseCode'] as const).map((field, i) => <label key={field}>{['入库区域编码', '入库业务类型编码', '入库企业编码'][i]}<Input aria-label={['入库区域编码', '入库业务类型编码', '入库企业编码'][i]} value={draft[field]} onChange={event => setDraft({ ...draft, [field]: event.target.value })}/></label>)}
+  <Space wrap style={{ margin: '16px 0' }}>{(['districtCode', 'businessType', 'enterpriseCode'] as const).map((field, i) => <label key={field}>{['入库区域编码', '入库业务类型', '入库企业编码'][i]}{field==='businessType'?<select aria-label="入库业务类型" multiple value={draft.businessType?draft.businessType.split(','):[]} onChange={event=>setDraft({...draft,businessType:Array.from(event.target.selectedOptions).map(option=>option.value).join(',')})}>{['water','gas','lpg'].map(code=><option key={code} value={code}>{chineseLabel(code,'business_type')}</option>)}</select>:<Input aria-label={['入库区域编码', '入库业务类型', '入库企业编码'][i]} value={draft[field]} onChange={event => setDraft({ ...draft, [field]: event.target.value })}/>}</label>)}
    <Button onClick={() => { setPage(1); setFilters({ districtCode: draft.districtCode.trim() || undefined, businessType: (draft.businessType.trim() || undefined) as BusinessType | undefined, enterpriseCode: draft.enterpriseCode.trim() || undefined }); }}>应用入库筛选</Button><Button onClick={() => setRefresh(value => value + 1)}>刷新记录</Button>
   </Space>
   {error && <Alert type="error" message="入库记录加载失败" description={error} action={<Button onClick={() => setRefresh(value => value + 1)}>重试</Button>}/>}
   <Table<AnalysisRecordItem> rowKey="analysisId" loading={loading} dataSource={data?.content ?? []} locale={{ emptyText: <Empty description="当前筛选条件下暂无入库记录"/> }} pagination={{ current: page, pageSize: size, total: data?.total ?? 0, showSizeChanger: true, onChange: (p, n) => { setPage(p); setSize(n); } }} scroll={{ x: 1100 }} columns={[
             { title: '诉求', dataIndex: 'complaintId', render: (value: string) => user?.permissions.includes('complaint.read') ? <Button type="link" onClick={() => navigate('/complaints/' + encodeURIComponent(value))}>{value}</Button> : value },
-            { title: '业务类型', dataIndex: 'businessTypeName' }, { title: '诉求类型', dataIndex: 'complaintTypeName' },
+            { title: '业务类型', dataIndex: 'businessTypeName',render:(v,r)=>namedLabel(r.businessTypeCode,v,'business_type') }, { title: '诉求类型', dataIndex: 'complaintTypeName',render:(v,r)=>namedLabel(r.complaintTypeCode,v,'complaint_type') },
             { title: '区域', dataIndex: 'districtName', render: display }, { title: '责任企业', dataIndex: 'enterpriseName', render: display }, { title: '摘要', dataIndex: 'summary', render: display }, { title: '企业处置结果', dataIndex: 'disposalResult', render: display },
             { title: '纠偏确认时间', dataIndex: 'confirmedAt', render: display }, { title: '操作', render: (_, record) => <Button onClick={() => void openRecord(record.analysisId)}>查看入库记录</Button> },
         ]}/>
   <Drawer key={listKey} title="分析入库记录" open={Boolean(selected) && canRead} onClose={close} width={640}>
    {detailLoading && <p>正在读取入库记录…</p>}{detailError && <Alert type="error" message="入库记录读取失败" description={detailError} action={<Button onClick={() => void openRecord(selected!)}>重试</Button>}/>}
    {detail && <Descriptions column={1} items={[
-                ['入库编号', detail.analysisId], ['诉求', detail.complaintId], ['业务类型', detail.businessTypeName], ['诉求类型', detail.complaintTypeName], ['区域', detail.districtName], ['责任企业', detail.enterpriseName], ['摘要', detail.summary], ['企业处置结果', detail.disposalResult], ['纠偏确认时间', detail.confirmedAt],
+                ['入库编号', detail.analysisId], ['诉求', detail.complaintId], ['业务类型', namedLabel(detail.businessTypeCode,detail.businessTypeName,'business_type')], ['诉求类型', namedLabel(detail.complaintTypeCode,detail.complaintTypeName,'complaint_type')], ['区域', detail.districtName], ['责任企业', detail.enterpriseName], ['摘要', detail.summary], ['企业处置结果', detail.disposalResult], ['纠偏确认时间', detail.confirmedAt],
             ].map(([label, value]) => ({ key: label!, label, children: display(value) }))}/>}
   </Drawer>
  </Card>;

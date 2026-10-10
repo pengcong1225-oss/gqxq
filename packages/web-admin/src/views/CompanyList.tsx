@@ -1,3 +1,4 @@
+import {namedLabel} from '../utils/chineseDisplay';
 import MasterDataImportDialog from '../components/MasterDataImportDialog';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Alert,Button,Card,Descriptions,Drawer,Form,Input,InputNumber,Modal,Result,Select,Space,Switch,Table,Tabs,Tag} from 'antd';
@@ -122,7 +123,7 @@ const CompanyList:React.FC=()=>{
   {error&&<Alert type="error" showIcon message={error} style={{marginBottom:16}}/>}
   <Space style={{marginBottom:16}}><Input aria-label="企业搜索" value={search} onChange={e=>setSearch(e.target.value)} placeholder="登记编码或名称"/><Button onClick={()=>{setPage(1);setKeyword(search);}}>查询</Button><Button onClick={()=>setReload(v=>v+1)}>刷新</Button></Space>
   <Table<EnterpriseListItem> rowKey="enterpriseCode" dataSource={items} loading={loading} pagination={{current:page,pageSize:20,total,onChange:setPage}} locale={{emptyText:error?'查询失败':'当前范围暂无企业'}} columns={[
-   {title:'登记编码',dataIndex:'enterpriseCode'},{title:'企业名称',dataIndex:'enterpriseName'},{title:'业务类型',dataIndex:'businessTypeName'},{title:'联系人',dataIndex:'contactPerson',render:v=>v??'—'},{title:'电话',dataIndex:'contactPhone',render:v=>v??'—'},
+   {title:'登记编码',dataIndex:'enterpriseCode'},{title:'企业名称',dataIndex:'enterpriseName'},{title:'业务类型',dataIndex:'businessTypeName',render:(v,r)=>namedLabel(r.businessType,v,'business_type')},{title:'联系人',dataIndex:'contactPerson',render:v=>v??'—'},{title:'电话',dataIndex:'contactPhone',render:v=>v??'—'},
    {title:'状态',dataIndex:'status',render:v=><Tag color={v==='enabled'?'green':'default'}>{v==='enabled'?'启用':'停用'}</Tag>},
    {title:'操作',render:(_,r)=><Space><Button onClick={()=>void openDetail(r.enterpriseCode)}>详情与历史</Button>{write.can&&<Button onClick={()=>void edit(r.enterpriseCode)}>编辑企业</Button>}</Space>}
   ]}/>

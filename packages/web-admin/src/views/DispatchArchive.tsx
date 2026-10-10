@@ -1,3 +1,4 @@
+import {namedLabel} from '../utils/chineseDisplay';
 import {useWriteAccess} from '../stores/roleAccess';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -159,7 +160,7 @@ const DispatchArchive: React.FC = () => {
       width: 110,
       render: (v: string, r: DispatchOrderListItem) => (
         <Tag color={r.status === 'archived' ? 'default' : r.status === 'completed' ? 'success' : 'processing'}>
-          {v || r.status}
+          {namedLabel(r.status,v,'supervision_status')}
         </Tag>
       ),
     },
@@ -284,7 +285,7 @@ const DispatchArchive: React.FC = () => {
               {detail.targetEnterpriseCode ? '（' + detail.targetEnterpriseCode + '）' : ''}
             </Descriptions.Item>
             <Descriptions.Item label="交办状态">
-              <Tag>{detail.statusName || detail.status}</Tag>
+              <Tag>{namedLabel(detail.status,detail.statusName,'supervision_status')}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="触发类型">{detail.triggerTypeName || DASH}</Descriptions.Item>
             <Descriptions.Item label="交办要求">{detail.requirement ?? DASH}</Descriptions.Item>

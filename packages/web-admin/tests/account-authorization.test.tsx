@@ -116,7 +116,7 @@ test('role manager creates a configured business role and excludes protected adm
   fireEvent.click(within(ui.container).getByText('新增角色'));
   const page=within(document.body);await waitFor(()=>assert.ok(page.getByLabelText('角色代码')));
   fireEvent.change(page.getByLabelText('角色代码'),{target:{value:'analyst'}});fireEvent.change(page.getByLabelText('角色名称'),{target:{value:'分析员'}});
-  const checkbox=await page.findByRole('checkbox',{name:'诉求查询（complaint.read）'});fireEvent.click(checkbox);
+  const checkbox=await page.findByRole('checkbox',{name:'诉求查询'});fireEvent.click(checkbox);
   assert.equal(page.queryByRole('checkbox',{name:/平台账号管理/}),null);
   fireEvent.click(page.getByRole('button',{name:/保 存/}));await waitFor(()=>assert.equal(created,true));
  }finally{ui.unmount();cleanup();client.defaults.adapter=original;message.success=success;}

@@ -1,3 +1,6 @@
+import {chineseLabel} from '../utils/chineseDisplay';
+import {actionLabels} from '../utils/chineseDisplay';
+import ChineseDetail from '../components/ChineseDetail';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Button,Card,DatePicker,Descriptions,Drawer,Form,Input,Result,Select,Space,Table,Tag,Typography} from 'antd';
 import type {Dayjs} from 'dayjs';
@@ -36,9 +39,9 @@ const AuditLogView:React.FC=()=>{
   <Form form={form} layout="inline" onFinish={submit} style={{rowGap:12,marginBottom:16}}>
    <Form.Item name="category" label="日志类别"><Select allowClear style={{width:140}} options={[{value:'login',label:'登录日志'},{value:'operation',label:'操作日志'}]}/></Form.Item>
    <Form.Item name="timeRange" label="时间区间"><DatePicker.RangePicker showTime/></Form.Item>
-   <Form.Item name="actor" label="操作人"><Input maxLength={128} placeholder="用户ID或用户名"/></Form.Item>
+   <Form.Item name="actor" label="操作人"><Input maxLength={128} placeholder="用户编号或用户名"/></Form.Item>
    <Form.Item name="module" label="模块"><Select allowClear style={{width:150}} options={modules.map(([value,label])=>({value,label}))}/></Form.Item>
-   <Form.Item name="action" label="动作"><Input maxLength={128} placeholder="如 USER_UPDATE"/></Form.Item>
+   <Form.Item name="action" label="动作"><Select allowClear showSearch optionFilterProp="label" style={{width:200}} placeholder="请选择操作" options={Object.entries(actionLabels).map(([value,label])=>({value,label}))}/></Form.Item>
    <Form.Item name="result" label="结果"><Select allowClear style={{width:110}} options={Object.entries(resultLabels).map(([value,label])=>({value,label}))}/></Form.Item>
    <Form.Item name="businessNo" label="业务编号"><Input maxLength={128} placeholder="诉求编号或业务键"/></Form.Item>
    <Form.Item><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{form.resetFields();setPage(1);setFilter({});}}>重置</Button></Space></Form.Item>
@@ -49,10 +52,10 @@ const AuditLogView:React.FC=()=>{
    columns={[
     {title:'时间',dataIndex:'createdAt',render:date,width:180},
     {title:'类别',dataIndex:'category',render:value=>value==='login'?'登录':'操作',width:70},
-    {title:'操作人ID',dataIndex:'userId',render:value=>value??'无平台用户',width:160},
-    {title:'模块',dataIndex:'module',render:value=>modules.find(([code])=>code===value)?.[1]??value},
-    {title:'动作',dataIndex:'action'},
-    {title:'结果',dataIndex:'result',render:(value:AuditLogView['result'],row)=><Tag title={'原始值：'+row.originalResult}>{resultLabels[value]}</Tag>},
+    {title:'操作人编号',dataIndex:'userId',render:value=>value??'无平台用户',width:160},
+    {title:'模块',dataIndex:'module',render:value=>modules.find(([code])=>code===value)?.[1]??'其他模块'},
+    {title:'动作',dataIndex:'action',render:value=>chineseLabel(value,undefined,'其他操作')},
+    {title:'结果',dataIndex:'result',render:(value:AuditLogView['result'],row)=><Tag>{resultLabels[value]}</Tag>},
     {title:'业务编号',render:(_,row)=>row.businessNo??row.bizId??'—'},
     {title:'操作',render:(_,row)=><Button type="link" onClick={()=>void openDetail(row.auditId)}>查看详情</Button>},
    ]}/>
@@ -60,14 +63,14 @@ const AuditLogView:React.FC=()=>{
    {detailError&&<Alert type="error" showIcon message={detailError}/>}
    {detail&&<>
     <Descriptions column={1} bordered size="small" items={[
-     {key:'id',label:'审计ID',children:detail.auditId},{key:'time',label:'时间',children:date(detail.createdAt)},
-     {key:'actor',label:'操作人ID',children:detail.userId??'无平台用户'},
-     {key:'action',label:'动作',children:detail.action},{key:'business',label:'业务编号',children:detail.businessNo??detail.bizId??'—'},
-     {key:'result',label:'结果',children:resultLabels[detail.result]+'（原始值：'+(detail.originalResult||'空')+'）'},
-     {key:'ip',label:'客户端IP',children:detail.clientIp??'—'},
+     {key:'id',label:'日志编号',children:detail.auditId},{key:'time',label:'时间',children:date(detail.createdAt)},
+     {key:'actor',label:'操作人编号',children:detail.userId??'无平台用户'},
+     {key:'action',label:'动作',children:chineseLabel(detail.action,undefined,'其他操作')},{key:'business',label:'业务编号',children:detail.businessNo??detail.bizId??'—'},
+     {key:'result',label:'结果',children:resultLabels[detail.result]},
+     {key:'ip',label:'客户端地址',children:detail.clientIp??'—'},
     ]}/>
     <Typography.Title level={5}>允许字段及前后值</Typography.Title>
-    {Object.keys(detail.detail).length?<pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(detail.detail,null,2)}</pre>:<Typography.Text type="secondary">无可公开的详情字段</Typography.Text>}
+    {Object.keys(detail.detail).length?<ChineseDetail value={detail.detail}/>:<Typography.Text type="secondary">无可公开的详情字段</Typography.Text>}
    </>}
   </Drawer>
  </Card>;

@@ -1,3 +1,4 @@
+import {namedLabel} from '../utils/chineseDisplay';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, Empty, Result, Select, Space, Table, Tag } from 'antd';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
@@ -54,8 +55,8 @@ const ReportView: React.FC = () => {
   const seqRef = useRef(0);
 
   /**
-   * 状态中文名一律取自服务端返回的 statusName，前端不建翻译表。
-   * 筛选下拉在没有行可参考时回退显示状态码本身（而不是自造中文）。
+   * 优先使用服务端中文名称，缺项时使用中文状态兜底。
+   * 筛选值保持接口编码，界面仅显示中文名称。
    */
   const [observedLabels, setObservedLabels] = useState<Partial<Record<ReportTodoStatus, string>>>({});
 
@@ -98,7 +99,7 @@ const ReportView: React.FC = () => {
     return()=>{seqRef.current++;};
   }, [load, status, page, size,canTodos]);
 
-  const label = (code: ReportTodoStatus): string => observedLabels[code] ?? code;
+  const label = (code: ReportTodoStatus): string => namedLabel(code,observedLabels[code],'report_todo_status');
 
   return (
     <div>
@@ -191,7 +192,7 @@ const ReportView: React.FC = () => {
                 dataIndex: 'status',
                 width: 100,
                 render: (s: ReportTodoStatus, r: ReportTodoItem) => (
-                  <Tag color={STATUS_COLOR[s] ?? 'default'}>{r.statusName || s}</Tag>
+                  <Tag color={STATUS_COLOR[s] ?? 'default'}>{namedLabel(s,r.statusName,'report_todo_status')}</Tag>
                 ),
               },
               {

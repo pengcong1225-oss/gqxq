@@ -1,3 +1,4 @@
+import {namedLabel,fieldLabel,fieldValue,fieldNameLabel} from '../utils/chineseDisplay';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -795,7 +796,7 @@ const AddressCorrection: React.FC = () => {
                   <Descriptions.Item label="诉求编号">
                     {selectedComplaintInfo?.complaintNo || selectedComplaintId}
                   </Descriptions.Item>
-                  <Descriptions.Item label="诉求 ID">{selectedComplaintId}</Descriptions.Item>
+                  <Descriptions.Item label="诉求编号">{selectedComplaintId}</Descriptions.Item>
                   <Descriptions.Item label="诉求内容" span={2}>
                     {selectedComplaintInfo?.title || '正在读取…'}
                   </Descriptions.Item>
@@ -888,16 +889,16 @@ const AddressCorrection: React.FC = () => {
                       title: '字段',
                       dataIndex: 'fieldLabel',
                       width: 96,
-                      render: (v: string | null, r: CorrectionItem) => v ?? r.fieldName,
+                      render: (v: string | null, r: CorrectionItem) => fieldNameLabel(r.fieldName,v),
                     },
                     {
                       title: '初始值 / 当前有效值 / 纠偏后取值',
                       width: 430,
                       render: (_: unknown, r: CorrectionItem) => (
                         <div style={{ lineHeight: 1.6 }}>
-                          <div><b>初始值：</b>{r.oldValue ?? '—'}</div>
-                          <div><b>当前有效值：</b>{r.effectiveValue ?? '—'}</div>
-                          {r.newValue && r.status !== 'pending' ? <div><b>确认值：</b>{r.newValue}</div> : null}
+                          <div><b>初始值：</b>{fieldValue(r.fieldName,r.oldValue)}</div>
+                          <div><b>当前有效值：</b>{fieldValue(r.fieldName,r.effectiveValue)}</div>
+                          {r.newValue && r.status !== 'pending' ? <div><b>确认值：</b>{fieldValue(r.fieldName,r.newValue)}</div> : null}
                           {r.status === 'pending' && !POSITION_FIELDS.includes(r.fieldName as typeof POSITION_FIELDS[number]) ? (
                             <div style={{ marginTop: 8 }}>
                               <InlineCorrectionField
@@ -938,7 +939,7 @@ const AddressCorrection: React.FC = () => {
                       dataIndex: 'status',
                       width: 92,
                       render: (v: string, r: CorrectionItem) => {
-                        const m = STATUS_TAG[v] ?? { color: 'default', text: r.statusName };
+                        const m = STATUS_TAG[v] ?? { color: 'default', text: namedLabel(v,r.statusName,'correction_status') };
                         const statusText =
                           v === 'confirmed' &&
                           r.newValue === r.oldValue &&
@@ -1007,9 +1008,9 @@ const AddressCorrection: React.FC = () => {
           if(Object.prototype.hasOwnProperty.call(changed,'lng')||Object.prototype.hasOwnProperty.call(changed,'lat'))positionForm.setFieldsValue({coordinateSystem:'unknown',coordinateSource:'人工录入，坐标系未核实'});
         }}>
           <Descriptions size="small" column={1} bordered style={{ marginBottom: 12 }}>
-            <Descriptions.Item label="诉求 ID">{selectedComplaintId}</Descriptions.Item>
+            <Descriptions.Item label="诉求编号">{selectedComplaintId}</Descriptions.Item>
             <Descriptions.Item label="诉求标题">{selectedComplaintInfo?.title || '正在读取…'}</Descriptions.Item>
-            {positionItems.filter(Boolean).map(item => <Descriptions.Item key={item!.fieldName} label={'当前有效' + (item!.fieldLabel ?? item!.fieldName)}>
+            {positionItems.filter(Boolean).map(item => <Descriptions.Item key={item!.fieldName} label={'当前有效' + (fieldNameLabel(item!.fieldName,item!.fieldLabel))}>
               {correctionEffectiveText(item!) || '（空）'}
             </Descriptions.Item>)}
             <Descriptions.Item label="当前行政网格 / 小区">{selectedComplaintDetail?.adminGridCode??'（空）'} / {selectedComplaintDetail?.communityCode??'（空）'}</Descriptions.Item>
@@ -1059,7 +1060,7 @@ const AddressCorrection: React.FC = () => {
             <Descriptions size="small" column={1} bordered style={{ marginBottom: 16 }}>
               <Descriptions.Item label="诉求编号">{selectedComplaintInfo?.complaintNo || verifyTarget.complaintId}</Descriptions.Item>
               <Descriptions.Item label="诉求标题">{selectedComplaintInfo?.title || '正在读取…'}</Descriptions.Item>
-              <Descriptions.Item label="字段">{verifyTarget.fieldLabel ?? verifyTarget.fieldName}</Descriptions.Item>
+              <Descriptions.Item label="字段">{fieldNameLabel(verifyTarget.fieldName,verifyTarget.fieldLabel)}</Descriptions.Item>
               <Descriptions.Item label="当前有效值">
                 {correctionEffectiveText(verifyTarget) || '当前为空'}
               </Descriptions.Item>

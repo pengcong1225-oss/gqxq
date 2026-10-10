@@ -38,6 +38,14 @@ test('audit route and menu deny missing current capability without querying logs
  const ui=render(<MemoryRouter future={{v7_startTransition:true,v7_relativeSplatPath:true}} initialEntries={['/system/audit-logs']}><App/></MemoryRouter>);
  try{await waitFor(()=>assert.ok(within(ui.container).getByText('无权限，请联系管理员')));assert.equal(within(ui.container).queryByText('登录与操作日志'),null);assert.equal(within(ui.container).queryByText('查看详情'),null);assert.equal(auditCalls,0);}finally{ui.unmount();cleanup();client.defaults.adapter=original;}
 });
+test('Chinese validation errors preserve machine field names and error codes',async()=>{
+ const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');const original=client.defaults.adapter;
+ client.defaults.adapter=async(config:any)=>({data:{code:400,message:'Validation failed',data:{fieldErrors:[{field:'enterpriseCode',message:'Required'}]}},status:400,statusText:'Bad Request',headers:{},config});
+ try{await assert.rejects(client.get('/synthetic-validation'),(error:any)=>{
+  assert.equal(error.code,400);assert.equal(error.status,400);assert.equal(error.message,'请求失败，请稍后重试');
+  assert.deepEqual(error.fieldErrors,[{field:'enterpriseCode',message:'请检查填写内容'}]);return true;
+ });}finally{client.defaults.adapter=original;}
+});
 test('audit page submits actor/business filters, pages safely and opens projected details',{timeout:20000},async()=>{
  const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');const {default:App}=await vite.ssrLoadModule('/src/App.tsx');
  const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');const original=client.defaults.adapter;const calls:any[]=[];
@@ -47,13 +55,15 @@ test('audit page submits actor/business filters, pages safely and opens projecte
  useAppStore.setState({token:'synthetic-token',userInfo:identity});const {render,within,fireEvent,cleanup,waitFor}=await import('@testing-library/react');
  const ui=render(<MemoryRouter future={{v7_startTransition:true,v7_relativeSplatPath:true}} initialEntries={['/system/audit-logs']}><App/></MemoryRouter>);
  try{
-  await waitFor(()=>assert.ok(within(ui.container).getByText('USER_UPDATE')));
+  await waitFor(()=>assert.ok(within(ui.container).getByText('更新账号')));
   assert.ok(within(ui.container).getAllByText('登录与操作日志').length>=1);
   fireEvent.change(within(ui.container).getByLabelText('操作人'),{target:{value:'operator-1'}});fireEvent.change(within(ui.container).getByLabelText('业务编号'),{target:{value:'NO-C1'}});fireEvent.click(within(ui.container).getByRole('button',{name:/查\s*询/}));
   await waitFor(()=>assert.ok(calls.some(c=>c.url==='/audit-logs'&&c.params.actor==='operator-1'&&c.params.businessNo==='NO-C1'&&c.params.page===1)));
   fireEvent.click(ui.container.querySelector('.ant-pagination-item-2')!);await waitFor(()=>assert.ok(calls.some(c=>c.params?.page===2&&c.params.actor==='operator-1')));
   fireEvent.click(within(ui.container).getByRole('button',{name:'查看详情'}));await waitFor(()=>assert.ok(within(document.body).getByText('安全详情')));
-  assert.ok(document.body.textContent?.includes('handler'));assert.ok(document.body.textContent?.includes('auditor'));assert.equal(document.body.textContent?.includes('SECRET'),false);
+  await waitFor(()=>assert.ok(document.body.textContent?.includes('业务经办')));
+  assert.ok(document.body.textContent?.includes('其他角色'));assert.ok(document.body.textContent?.includes('变更前'));
+  for(const code of ['USER_UPDATE','handler','auditor','before','roles','success','SECRET'])assert.equal(document.body.textContent?.includes(code),false,code+' must not appear in user-facing logs');
   assert.equal(within(ui.container).queryByRole('button',{name:'导出'}),null);assert.equal(within(ui.container).queryByRole('button',{name:'删除'}),null);
  }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
 });

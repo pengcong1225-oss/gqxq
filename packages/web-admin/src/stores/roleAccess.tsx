@@ -22,7 +22,7 @@ export const READONLY_TIP = '只读档无写权限：需要操作请由业务经
 export const ADMIN_ONLY_TIP = '当前账号未获管理功能授权';
 
 function labelOf(role: string): string {
-  return ROLE_LABELS[role] ?? '未知角色:' + role;
+  return ROLE_LABELS[role] ?? '未识别角色';
 }
 
 /** 当前登录者的角色集合；未登录/未取到为 [] */

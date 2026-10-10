@@ -1,3 +1,4 @@
+import {fieldLabel,fieldNameLabel} from '../utils/chineseDisplay';
 import CategorySelector from './CategorySelector';
 import {getDictItems} from '../api/dicts';
 import type {DictItem} from '../types/api';
@@ -32,7 +33,7 @@ const InlineCorrectionField: React.FC<InlineCorrectionFieldProps> = ({
   useEffect(()=>{if(item.fieldName==='complaint_type')getDictItems('complaint_type').then(setNatureOptions).catch(e=>setNatureError(e.message??'诉求性质加载失败'));},[item.fieldName]);
   const isEnterprise = item.fieldName === 'enterprise_name';
   const isLocation=['district_name','address','location_lng','location_lat'].includes(item.fieldName);
-  const label = item.fieldLabel ?? item.fieldName;
+  const label = fieldNameLabel(item.fieldName,item.fieldLabel);
   const [localValue, setValue] = useState(isEnterprise ? '' : correctionEffectiveText(item));
   const [localBasis, setBasis] = useState(item.basis ?? '');
   const value = draft?.value ?? localValue;

@@ -1,3 +1,4 @@
+import {chineseLabel} from '../utils/chineseDisplay';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Alert,Button,Card,Space,Typography} from 'antd';
 import {getFollowups,createFollowup,reviseFollowup,concludeFollowup} from '../api/followups';
@@ -40,7 +41,7 @@ const ComplaintFollowups:React.FC<{complaintId:string}>=({complaintId})=>{
  return <Card title="人工回访" style={{marginTop:16}} extra={<Button disabled={submitting} loading={loading} onClick={()=>void load()}>刷新回访</Button>}>
   <Typography.Text type="secondary">诉求：{complaintId}。回访事实、主管结论与来源评价分别保存。</Typography.Text>
   {error&&<Alert role="alert" type="error" message={error} style={{marginTop:8}}/>}{notice&&<Alert role="status" type="info" message={notice} style={{marginTop:8}}/>}
-  {data&&<><p>来源坐席评价：{data.sourceEvaluation.label??data.sourceEvaluation.reason}（{data.sourceEvaluation.provenance}）</p><Alert type="info" message={data.formalEvaluation.reason}/>
+  {data&&<><p>来源坐席评价：{data.sourceEvaluation.label??data.sourceEvaluation.reason}（{chineseLabel(data.sourceEvaluation.provenance,undefined,'来源坐席记录')}）</p><Alert type="info" message={data.formalEvaluation.reason.replace(/^Q\d+\s*/,'')}/>
    {create.can&&<Button disabled={submitting} style={{marginTop:12}} onClick={()=>open('create',null)}>登记回访</Button>}
    {!data.records.length&&<p>暂无人工回访记录</p>}
    {data.records.map(r=><div key={r.followupId} style={{borderBottom:'1px solid #eee',padding:'12px 0'}}><p>{date(r.occurredAt)} · {label(r)} · 登记人 {r.ownerId} · 版本 {r.version}</p>{r.dissatisfactionReason&&<p>不满意理由：{r.dissatisfactionReason}</p>}{r.notes&&<p>备注：{r.notes}</p>}<p>主管结论：{r.conclusion??'尚无主管结论'}{r.concludedBy&&'（'+r.concludedBy+'）'}</p><Space>{create.can&&r.ownerId===user?.userId&&<Button disabled={submitting} onClick={()=>open('revise',r)}>更正回访</Button>}{supervisor&&<Button disabled={submitting} onClick={()=>open('conclude',r)}>填写主管结论</Button>}</Space></div>)}

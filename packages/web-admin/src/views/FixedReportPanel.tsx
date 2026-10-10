@@ -1,3 +1,4 @@
+import {chineseLabel,systemMessage} from '../utils/chineseDisplay';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Alert,Button,Card,Checkbox,Select,Space,Table,Tag} from 'antd';
 import StatisticsFilters,{initialStatisticsDraft,type StatisticsDraft} from '../components/StatisticsFilters';
@@ -34,7 +35,7 @@ export default function FixedReportPanel({todoIds}:{todoIds:string[]}){
    <Space style={{marginBottom:16}}><Button onClick={()=>{setContinuation(null);void load();}} loading={loading}>刷新报告</Button>{next&&<Button onClick={()=>{setContinuation(next);void load(next);}}>下一页</Button>}</Space>
    {error&&<Alert type="error" showIcon message={error} style={{marginBottom:16}}/>}
    <Table<ReportArtifact> rowKey="reportId" dataSource={rows} loading={loading} pagination={false} scroll={{x:950}} columns={[
-    {title:'报告编号',dataIndex:'reportId'},{title:'格式',dataIndex:'format'},{title:'状态',render:(_,r)=><Tag>{stateNames[r.state]}</Tag>},{title:'数据截止',dataIndex:'dataCutoffAt'},{title:'失败原因',dataIndex:'failureReason'},
+    {title:'报告编号',dataIndex:'reportId'},{title:'格式',dataIndex:'format',render:v=>v==='docx'?'文档':'表格'},{title:'状态',render:(_,r)=><Tag>{stateNames[r.state]??chineseLabel(r.state)}</Tag>},{title:'数据截止',dataIndex:'dataCutoffAt'},{title:'失败原因',dataIndex:'failureReason',render:v=>v?systemMessage(v,'报告生成失败，请重试'):'—'},
     {title:'操作',render:(_,r)=><Space>{r.state==='succeeded'&&codes.includes('report.download')&&<Button disabled={busy} onClick={()=>void download(r)}>下载</Button>}{r.state==='failed'&&retry.can&&generate.can&&<Button disabled={busy} onClick={()=>void action(async()=>{const e=epoch.current;await retryReport(r.reportId);if(e===epoch.current)await load(continuation??undefined);})}>重新生成</Button>}</Space>}
    ]}/>
   </>}

@@ -1,3 +1,4 @@
+import {chineseLabel} from '../utils/chineseDisplay';
 import MasterDataImportDialog from '../components/MasterDataImportDialog';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -528,7 +529,7 @@ const DictionaryAdmin: React.FC = () => {
                     setError(errorText(e));
             } } });
     };
-    const columns: ColumnsType<DictionaryItem> = [{ title: '编码', dataIndex: 'code' }, { title: '标签', dataIndex: 'label' }, { title: '父项', dataIndex: 'parentCode', render: v => v ?? '大类 / 根项' }, { title: '排序', dataIndex: 'sort' }, { title: '状态', dataIndex: 'status', render: v => <Tag>{v === 'enabled' ? '启用' : '停用'}</Tag> }, { title: '版本', dataIndex: 'version' }, { title: '发布', dataIndex: 'published', render: v => v ? '已发布' : '草稿' }, { title: '操作', render: (_, item) => <Space>{!current?.type.readOnly && <Button size="small" onClick={() => openItem(item)}>编辑条目</Button>}<Button size="small" onClick={() => void readReferences(item.code)}>引用</Button>{!item.published && !current?.type.readOnly && !current?.type.fixedCodes && <Button danger size="small" onClick={() => removeItem(item)}>删除草稿</Button>}</Space> }];
+    const columns: ColumnsType<DictionaryItem> = [{ title: '条目', dataIndex: 'code', render: v => current?.type.fixedCodes ? chineseLabel(v,active,'其他条目') : v }, { title: '标签', dataIndex: 'label' }, { title: '父项', dataIndex: 'parentCode', render: v => v ? current?.items.find(i=>i.code===v)?.label??'父项待核对' : '大类 / 根项' }, { title: '排序', dataIndex: 'sort' }, { title: '状态', dataIndex: 'status', render: v => <Tag>{v === 'enabled' ? '启用' : '停用'}</Tag> }, { title: '版本', dataIndex: 'version' }, { title: '发布', dataIndex: 'published', render: v => v ? '已发布' : '草稿' }, { title: '操作', render: (_, item) => <Space>{!current?.type.readOnly && <Button size="small" onClick={() => openItem(item)}>编辑条目</Button>}<Button size="small" onClick={() => void readReferences(item.code)}>引用</Button>{!item.published && !current?.type.readOnly && !current?.type.fixedCodes && <Button danger size="small" onClick={() => removeItem(item)}>删除草稿</Button>}</Space> }];
     return <div><h2>字典管理</h2><Space style={{ marginBottom: 12 }}><MasterDataImportDialog kinds={['dictionary_type', 'dictionary_item', 'category']} onImported={() => void refresh()}/><Button onClick={() => openType(null)}>新增字典类型</Button><Button onClick={() => void refresh()}>刷新字典</Button></Space>{error && !editor && !typeEditor && <Alert type="error" message={error}/>}
   <Tabs activeKey={active} onChange={changeActive} items={[...types.map(t => ({ key: t.code, label: t.name })), { key: 'sensitive_word', label: '敏感词' }]}/>
   {active === 'sensitive_word' ? <SensitiveWordManager /> : <Card loading={loading}>
@@ -538,7 +539,7 @@ const DictionaryAdmin: React.FC = () => {
   </Card>}
   <Modal key={contextKey + ':item:' + itemOwner.current?.action} title={editing ? '编辑字典条目' : '新增字典条目'} open={editor && ownsAction(itemOwner.current)} onCancel={() => { actionSerial.current++; setEditor(false); }} onOk={() => void saveItem()} okText="保存条目" confirmLoading={saving}>
    {error && <Alert type="error" message={error}/>}<Form form={form} layout="vertical">
-    <Form.Item label="编码" name="code" rules={[{ required: true }]}>{current?.type.fixedCodes ? <Select aria-label="条目编码" disabled={Boolean(editing)} options={(fixedCodes[active] ?? []).filter(code => code === editing?.code || !current.items.some(i => i.code === code)).map(code => ({ value: code, label: code }))}/> : <Input aria-label="条目编码" disabled={Boolean(editing)}/>}</Form.Item>
+    <Form.Item label="编码" name="code" rules={[{ required: true }]}>{current?.type.fixedCodes ? <Select aria-label="条目编码" disabled={Boolean(editing)} options={(fixedCodes[active] ?? []).filter(code => code === editing?.code || !current.items.some(i => i.code === code)).map(code => ({ value: code, label: chineseLabel(code,active,'其他条目') }))}/> : <Input aria-label="条目编码" disabled={Boolean(editing)}/>}</Form.Item>
     <Form.Item label="标签" name="label" rules={[{ required: true }]}><Input aria-label="条目标签"/></Form.Item>
     {!current?.type.fixedCodes && <Form.Item label="父项（不选为大类）" name="parentCode"><Select aria-label="条目父项" allowClear options={current?.items.filter(i => !i.parentCode && i.code !== editing?.code).map(i => ({ value: i.code, label: i.label }))}/></Form.Item>}
     <Form.Item label="排序" name="sort"><InputNumber aria-label="条目排序"/></Form.Item><Form.Item label="状态" name="status"><Select options={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}/></Form.Item>
