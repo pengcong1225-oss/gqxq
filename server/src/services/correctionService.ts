@@ -15,7 +15,8 @@ import { currentAccessContext, assertComplaintAccess } from '../auth/accessScope
 //      所以"入纠偏队列但暂不入分析库"是正常状态，不是 bug。
 //   4) 待查报告只做待办入口，报告正文与发布规则后置。
 //
-// ★ 本文件最关键的一条：**未纠偏不得进入分析库**（maybeEnterAnalysis 是唯一入库入口）。
+// 2026-10-12 当前流程：最新交办最终结果已应用，再核验处置结果并完成纠偏，才可入分析库。
+// 纠偏仍覆盖全部诉求；提前完成资料纠偏不能跳过结果回传与结果核验。
 import type {
   CorrectionBatchResult,
   CorrectionGenerateResult,
@@ -49,10 +50,10 @@ import {
 } from '../repositories/correctionRepo';
 import {
   findAnalysisByComplaint,
-  hasDispatchOrder,
   insertAnalysisIfAbsent,
 } from '../repositories/analysisRepo';
 import { insertTodoIfAbsent } from '../repositories/reportTodoRepo';
+import { readFinalReportingResult } from '../repositories/finalReportingResultRepo';
 import { confirmResponsibleEnterpriseInTx } from './assignmentService';
 import { GQXQ_APP_CODE } from './intakeService';
 import { optionalText, type OperatorContext } from './dispatchService';
@@ -264,50 +265,13 @@ async function loadDisposalResult(
   complaintId: string,
   assignmentId: string | null
 ): Promise<string | null> {
-  const taskId = await loadReportingTaskId(db, assignmentId);
-  const [rows] = await db.query(
-    "select payload from business_event where (task_id = ? or source_business_id = ?)" +
-      " and event_type = 'task_approved' order by id desc limit 1",
-    [taskId ?? '', complaintId]
-  );
-  const row = (rows as unknown as Array<{ payload: unknown }>)[0];
-  if (!row || row.payload === null || row.payload === undefined) return null;
-  let parsed: unknown = row.payload;
-  if (typeof parsed === 'string') {
-    try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      return String(parsed);
-    }
-  }
-  if (typeof parsed !== 'object' || parsed === null) return null;
-  const disposal = (parsed as Record<string, unknown>).enterpriseDisposalResult;
-  if (disposal === null || disposal === undefined) return null;
-  if (typeof disposal === 'string') return disposal;
-  try {
-    return JSON.stringify(disposal);
-  } catch {
-    return String(disposal);
-  }
-}
-
-async function loadReportingTaskId(
-  db: Tx | typeof pool,
-  assignmentId: string | null
-): Promise<string | null> {
-  if (assignmentId === null) return null;
-  const [rows] = await db.query(
-    'select reporting_task_id as taskId from dispatch_order where assignment_id = ? limit 1',
-    [assignmentId]
-  );
-  const row = (rows as unknown as Array<{ taskId: string | null }>)[0];
-  return row && row.taskId !== null && row.taskId !== undefined ? String(row.taskId) : null;
+  return (await readFinalReportingResult(db, complaintId, assignmentId))?.value ?? null;
 }
 
 /** 取该诉求最近一条交办（纠偏项要记录来源交办，便于回查是哪个任务触发的） */
 async function loadLatestAssignmentId(db: Tx | typeof pool, complaintId: string): Promise<string | null> {
   const [rows] = await db.query(
-    'select assignment_id as assignmentId from dispatch_order where complaint_id = ? order by id desc limit 1',
+    'select assignment_id as assignmentId from dispatch_order where complaint_id = ? order by id desc limit 1 for update',
     [complaintId]
   );
   const row = (rows as unknown as Array<{ assignmentId: string }>)[0];
@@ -327,7 +291,7 @@ export interface GenerateCorrectionInput {
 
 /**
  * 生成纠偏清单（逐字段一行）。
- * **幂等**：已生成过则不再插入，直接返回既有清单（created=false）。
+ * 已有清单不重复插入；如存在已生效但尚未对应核验的历史最终结果，仅刷新处置结果项。
  *
  * 前置条件（2026-09-20 裁定，替代旧口径）：**只要是诉求就能生成**——不再有
  * "reporting_status=approved" 与"必须有交办单"两道闸，也不因为没有交办而抛错。
@@ -338,7 +302,8 @@ export interface GenerateCorrectionInput {
  */
 export async function generateCorrectionsInTx(
   tx: Tx,
-  input: GenerateCorrectionInput
+  input: GenerateCorrectionInput,
+  refreshFinalResult = false,
 ): Promise<CorrectionGenerateResult> {
   const complaint = await lockComplaintFull(tx, input.complaintId);
 
@@ -346,6 +311,7 @@ export async function generateCorrectionsInTx(
 
   const existingCount = await countByComplaint(tx, input.complaintId);
   if (existingCount > 0) {
+    await reconcileFinalResultReview(tx, {...input, assignmentId}, refreshFinalResult);
     const items = await listByComplaint(tx, input.complaintId);
     return {
       complaintId: input.complaintId,
@@ -392,8 +358,51 @@ export async function generateCorrectionsInTx(
     createdAt: input.now,
   });
 
+  if (refreshFinalResult) await reconcileFinalResultReview(tx, {...input, assignmentId}, true);
   const items = await listByComplaint(tx, input.complaintId);
   return { complaintId: input.complaintId, assignmentId, created: true, total: items.length, items };
+}
+
+/** Called once for a newly APPLIED final callback, in that same transaction. */
+export async function refreshFinalResultCorrectionsInTx(tx: Tx, input: GenerateCorrectionInput): Promise<void> {
+  await generateCorrectionsInTx(tx, input, true);
+}
+
+async function reconcileFinalResultReview(tx: Tx, input: GenerateCorrectionInput, force: boolean): Promise<void> {
+  // Published analysis/report snapshots remain frozen; reconciliation only repairs waiting cases.
+  if (await findAnalysisByComplaint(tx, input.complaintId)) return;
+  const finalResult = await readFinalReportingResult(tx, input.complaintId, input.assignmentId);
+  if (!finalResult) {
+    if (force) throw AppError.conflict('本次交办最终结果尚未生效，不能更新结果纠偏');
+    return;
+  }
+  const [rows] = await tx.query(
+    "select correction_id, assignment_id, status, old_value, new_value, basis, confirmer_id, confirmed_at" +
+    " from correction_item where complaint_id = ? and field_name = 'disposal_result' for update",
+    [input.complaintId],
+  );
+  const previous = rows as Array<Record<string,unknown>>;
+  if (!force && previous.length === 1 && previous[0].assignment_id === input.assignmentId &&
+      previous[0].old_value === finalResult.value) return;
+  if (previous.length === 0) {
+    await insertCorrections(tx, [{complaintId:input.complaintId, assignmentId:input.assignmentId,
+      fieldName:'disposal_result', oldValue:finalResult.value, createdAt:input.now}]);
+  } else {
+    await tx.execute(
+      "update correction_item set assignment_id = ?, old_value = ?, new_value = null, basis = null," +
+      " status = 'pending', confirmer_id = null, confirmer_name = null, confirmed_at = null" +
+      " where complaint_id = ? and field_name = 'disposal_result'",
+      [input.assignmentId, finalResult.value, input.complaintId],
+    );
+  }
+  // A result callback changes the review evidence: stale browser decisions must receive 409.
+  await tx.execute('update complaint set edit_version = edit_version + 1, updated_at = ? where complaint_id = ?',
+    [input.now, input.complaintId]);
+  await insertAudit(tx, {userId:input.operatorId, appCode:GQXQ_APP_CODE, resourceCode:null,
+    action:'CORRECTION_RESULT_REFRESH', bizType:'complaint', bizId:input.complaintId, result:'success',
+    clientIp:null, createdAt:input.now,
+    detail:{assignmentId:input.assignmentId, eventId:finalResult.eventId, source:force?'callback':'reconcile', previous},
+  });
 }
 
 /** 手工/回调入口：解析 idOrNo 后开事务 */
@@ -500,9 +509,10 @@ export interface AnalysisEntryOutcome {
 /**
  * 判断并执行"进入分析库"。
  *
- * 两道门：
+ * 入库门槛：
  *   1) 该诉求**所有**纠偏项都不再 pending —— 这就是"未纠偏不得进入分析库"；
- *   2) 该诉求走过督办链路（有交办单）—— 未交办 / 误报归库的诉求不纳入分析口径。
+ *   2) 最新交办已有精确匹配且已应用的最终审批通过事件。
+ *   3) 本轮处置结果已由人工核验；无交办、旧轮次或待回传结果均不得入库。
  *
  * 并发说明：MySQL 没有跨表 CHECK，无法把门规写成数据库约束。
  * 因此用"锁诉求行 + 事务内计数"来串行化，再用 analysis_record.uk_ar_complaint
@@ -514,12 +524,18 @@ export async function maybeEnterAnalysis(
 ): Promise<AnalysisEntryOutcome> {
   const complaint = await lockComplaintFull(tx, input.complaintId);
 
-  const pending = await countPendingByComplaint(tx, input.complaintId);
+  const [correctionRows] = await tx.query(
+    'select assignment_id, field_name, status, old_value, new_value from correction_item' +
+    ' where complaint_id = ? order by id for update', [input.complaintId],
+  );
+  const decisions = correctionRows as Array<{assignment_id:string|null; field_name:string; status:string; old_value:string|null; new_value:string|null}>;
+  const pending = decisions.filter(row => !['confirmed','rejected'].includes(row.status)).length;
   if (pending > 0) {
     return { entered: false, analysisId: null, reason: '仍有 ' + pending + ' 项待纠偏，未纠偏不得进入分析库' };
   }
 
-  if (!(await hasDispatchOrder(tx, input.complaintId))) {
+  const assignmentId = await loadLatestAssignmentId(tx, input.complaintId);
+  if (assignmentId === null) {
     return {
       entered: false,
       analysisId: null,
@@ -532,8 +548,14 @@ export async function maybeEnterAnalysis(
     return { entered: false, analysisId: already.analysisId, reason: '该诉求已在分析库中' };
   }
 
-  const assignmentId = await loadLatestAssignmentId(tx, input.complaintId);
-  const disposalResult = await loadDisposalResult(tx, input.complaintId, assignmentId);
+  const finalResult = await readFinalReportingResult(tx, input.complaintId, assignmentId);
+  if (!finalResult) return {entered:false, analysisId:null, reason:'最新交办尚未收到并应用最终审批通过的处理结果，暂不进入分析库'};
+  const resultDecisions = decisions.filter(row => row.field_name === 'disposal_result');
+  const decision = resultDecisions[0];
+  if (resultDecisions.length !== 1 || decision.assignment_id !== assignmentId || decision.old_value !== finalResult.value) {
+    return {entered:false, analysisId:null, reason:'本轮回传处理结果尚未完成对应的人工核验，请重新生成纠偏清单后核验处置结果'};
+  }
+  const disposalResult = decision.status === 'confirmed' ? decision.new_value ?? finalResult.value : finalResult.value;
 
   const outcome = await insertAnalysisIfAbsent(tx, {
     complaintId: input.complaintId,
@@ -550,6 +572,7 @@ export async function maybeEnterAnalysis(
       source: 'correction_confirmed',
       supervisionStatus: complaint.supervision_status,
       reportingStatus: complaint.reporting_status,
+      finalResultEventId: finalResult.eventId,
     },
     confirmedAt: input.now,
     createdAt: input.now,

@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 // v2 增加签收与中间节点进度；事务内入库后 ACK，缺关联/缺前序保留 pending 并补偿。
 import { env } from '../config/env';
 import { withTransaction } from '../db/tx';
-import { generateCorrectionsInTx } from './correctionService';
+import { refreshFinalResultCorrectionsInTx } from './correctionService';
 import { pool } from '../db/pool';
 import { AppError, type FieldError } from '../http/errors';
 import type { ApprovalConclusion, BusinessEventType, CallbackAcceptedResult } from '../types/api';
@@ -506,24 +506,6 @@ async function applyStoredEvent(tx: import('../db/tx').Tx,event:ParsedEvent,pars
         );
         processedResult = 'applied';
 
-        // ---------- G5：审批通过后顺手补挂/刷新一次纠偏待办 ----------
-        // 注意（2026-09-20 裁定）：这**不再是纠偏的唯一入口**——纠偏是覆盖全部诉求的数据质量轴，
-        // 与是否交办、是否审批通过无关，另有单条手工与批量补挂两个入口。
-        // 这里保留调用的意义：把这次交办记进清单（assignmentId 由 ref 显式传入），
-        // 让"走过督办链路的诉求"其纠偏项能回查到触发它的那个任务。
-        // 放在**同一事务内**的理由：要么"审批通过 + 纠偏清单已生成"一起成立，
-        // 要么一起回滚、由对方按同一 eventId 重投。若放到事务外，
-        // 就会留下"已批准却没有纠偏待办"的中间态。
-        // generateCorrectionsInTx 内部幂等：重复触发只返回既有清单，不会重复插入。
-        if (plan.toDispatchStatus === 'completed') {
-          await generateCorrectionsInTx(tx, {
-            complaintId: ref.complaintId,
-            assignmentId: ref.assignmentId,
-            operatorId: null,
-            operatorName: null,
-            now,
-          });
-        }
       }
       await updateEventProcessing(tx, eventId, processedResult, plan.reason ?? plan.summary);
       if (processedResult === 'pending') return {processedResult,message:plan.reason ?? plan.summary,eventType:event.eventType as BusinessEventType};
@@ -550,6 +532,15 @@ async function applyStoredEvent(tx: import('../db/tx').Tx,event:ParsedEvent,pars
         },
         createdAt: now,
       });
+
+      // Resolve final evidence through the applied event's trace in this same transaction.
+      // Reopen result review only; other decisions survive and duplicate events never reach here.
+      if (processedResult === 'applied' && plan.toDispatchStatus === 'completed') {
+        await refreshFinalResultCorrectionsInTx(tx, {
+          complaintId: ref.complaintId, assignmentId: ref.assignmentId,
+          operatorId: null, operatorName: null, now,
+        });
+      }
 
       // 9e) 审计
       const auditBase = {

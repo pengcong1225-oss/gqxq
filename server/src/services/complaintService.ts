@@ -319,6 +319,7 @@ const ACTION_LABELS: Record<string, string> = {
   COMPLAINT_CLOSE: '办结诉求',
   CATEGORY_REVISE: '调整诉求分类',
   CORRECTION_GENERATE: '生成纠偏项',
+  CORRECTION_RESULT_REFRESH: '更新最终处置结果核验',
   CORRECTION_CONFIRM: '确认纠偏',
   CORRECTION_REJECT: '拒绝纠偏',
   CORRECTION_RESOLVE: '完成纠偏',

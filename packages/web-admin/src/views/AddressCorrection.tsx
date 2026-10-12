@@ -416,7 +416,7 @@ const AddressCorrection: React.FC = () => {
 
   /** 确认/无需纠偏之后：刷新该诉求的纠偏项与左侧队列；若已闭环则提示进入分析库 */
   const afterDecision = useCallback(
-    async (complaintId: string, analysisEntered?: boolean) => {
+    async (complaintId: string, analysisEntered?: boolean, analysisReason?: string | null) => {
       await loadItems(complaintId);
       await loadQueue(page, size, dispatched);
       // 「是否已进入分析库」用**后端返回的判定**（confirm/reject 响应里的 analysisEntered），
@@ -425,6 +425,7 @@ const AddressCorrection: React.FC = () => {
         message.success('该项已处置，且该诉求纠偏已全部闭环——已进入分析库（可在「分析库」页查到）');
       } else {
         message.success('已处置该项纠偏');
+        if (analysisReason) message.info(analysisReason, 6);
       }
     },
     [loadItems, loadQueue, page, size, dispatched]
@@ -442,7 +443,7 @@ const AddressCorrection: React.FC = () => {
       if (res.created) {
         message.success('已生成 ' + res.total + ' 项纠偏待办');
       } else {
-        message.info('该诉求已有纠偏项（共 ' + res.total + ' 项），未重复生成');
+        message.info('已核对现有纠偏清单（共 ' + res.total + ' 项）；如有新的回传结果，请继续核验处置结果');
       }
       setGenId('');
       selectComplaint(res.complaintId);
@@ -499,7 +500,7 @@ const AddressCorrection: React.FC = () => {
         delete remaining[item.correctionId];
         return remaining;
       });
-      await afterDecision(item.complaintId, res.analysisEntered === true);
+      await afterDecision(item.complaintId, res.analysisEntered === true, res.analysisReason);
     } catch (err) {
       if (isCorrectionVersionConflict(err)) { setVersionConflict(true); message.warning(CORRECTION_CONFLICT_MESSAGE); }
       else message.error('保存纠偏失败：' + errText(err));
@@ -530,7 +531,7 @@ const AddressCorrection: React.FC = () => {
       const complaintId = verifyTarget.complaintId;
       setVerifyTarget(null);
       verifyForm.resetFields();
-      await afterDecision(complaintId, res.analysisEntered === true);
+      await afterDecision(complaintId, res.analysisEntered === true, res.analysisReason);
     } catch (err) {
       if (isCorrectionVersionConflict(err)) { setVersionConflict(true); message.warning(CORRECTION_CONFLICT_MESSAGE); }
       else message.error('核验未完成：' + errText(err));
