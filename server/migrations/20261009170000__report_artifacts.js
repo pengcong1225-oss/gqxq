@@ -6,6 +6,7 @@ const tables = {
     report_job: { columns: { report_id: 'varchar(64)', snapshot_id: 'varchar(64)', creator_id: 'varchar(64)', request_id: 'varchar(64)', request_hash: 'char(64)', execution_actor: 'varchar(64)', format: 'varchar(8)', state: 'varchar(16)', fence: 'bigint', owner_token: 'varchar(64)', lease_until: 'datetime', failure_reason: 'varchar(64)', created_at: 'datetime' }, keys: [['report_id'], ['creator_id', 'request_id'], ['snapshot_id']], ddl: 'report_id varchar(64) primary key,snapshot_id varchar(64) not null unique,creator_id varchar(64) not null,request_id varchar(64) not null,request_hash char(64) not null,execution_actor varchar(64) not null,format varchar(8) not null,state varchar(16) not null,fence bigint not null default 0,owner_token varchar(64) null,lease_until datetime(3) null,failure_reason varchar(64) null,created_at datetime(3) not null,unique key uk_report_request(creator_id,request_id),key idx_report_work(state,lease_until)' },
     report_artifact: { columns: { report_id: 'varchar(64)', format: 'varchar(8)', content_bytes: 'longblob', content_hash: 'char(64)', content_type: 'varchar(128)', byte_length: 'int' }, keys: [['report_id']], ddl: 'report_id varchar(64) primary key,format varchar(8) not null,content_bytes longblob not null,content_hash char(64) not null,content_type varchar(128) not null,byte_length int not null' }
 };
+function isGeneratedColumn(extra) { return /\b(VIRTUAL|STORED)\s+GENERATED\b/i.test(String(extra)); }
 async function columns(k, t) { const [r] = await k.raw('show full columns from ??', [t]); return r; }
 async function fullUnique(k, t, cols) { const [rows] = await k.raw('show index from ??', [t]); const names = [...new Set(rows.filter(r => Number(r.Non_unique) === 0).map(r => r.Key_name))]; return names.some(n => { const key = rows.filter(r => r.Key_name === n).sort((a, b) => a.Seq_in_index - b.Seq_in_index); return key.length === cols.length && key.every((r, i) => r.Column_name === cols[i] && r.Sub_part == null && r.Expression == null); }); }
 async function insertUniqueContract(k, t, keys, supplied, cols) {
@@ -15,7 +16,7 @@ async function insertUniqueContract(k, t, keys, supplied, cols) {
         // A complete already-unique identity inside a composite unique is harmless.
         if (keys.some(expected => expected.every(field => key.some(r => r.Column_name === field && r.Sub_part == null))))
             continue;
-        if (key.some(r => { const c = cols.find(c => c.Field === r.Column_name); return c && !supplied.includes(c.Field) && (String(c.Extra).includes('auto_increment') || c.Null === 'YES' && c.Default == null && !String(c.Extra).includes('GENERATED')); }))
+        if (key.some(r => { const c = cols.find(c => c.Field === r.Column_name); return c && !supplied.includes(c.Field) && (String(c.Extra).includes('auto_increment') || c.Null === 'YES' && c.Default == null && !isGeneratedColumn(c.Extra)); }))
             continue;
         throw Error('D3 unsupported insert unique constraint ' + t + '.' + name);
     }
@@ -45,7 +46,7 @@ exports.ensureReportTables = async (k) => {
             throw Error('D3 unsupported legacy report_record column ' + name);
         // The existing id is deliberately omitted from INSERT. Every other listed
         // legacy field receives an explicit value, which generated columns reject.
-        if (name !== 'id' && /GENERATED|auto_increment/i.test(String(c.Extra))) {
+        if (name !== 'id' && (isGeneratedColumn(c.Extra) || /auto_increment/i.test(String(c.Extra)))) {
             throw Error('D3 incompatible generated insert column report_record.' + name);
         }
     }
@@ -55,16 +56,16 @@ exports.ensureReportTables = async (k) => {
     // identities and supply them for new jobs; do not change old report rows.
     for (const [name, type] of [['report_id', 'varchar(64)'], ['report_type', 'varchar(32)']]) {
         const c = old.find(c => c.Field === name);
-        if (c && (!typeMatches(c.Type, type) || /GENERATED|auto_increment/i.test(String(c.Extra))))
+        if (c && (!typeMatches(c.Type, type) || (isGeneratedColumn(c.Extra) || /auto_increment/i.test(String(c.Extra)))))
             throw Error('D3 incompatible legacy identity report_record.' + name);
     }
     const supplied = ['report_id', 'report_type', 'report_title', 'preview_content', 'date_from', 'date_to', 'template_version', 'd3_report_id'];
     await insertUniqueContract(k, 'report_record', [['id'], ['d3_report_id'], ['report_id']], supplied, old);
     for (const c of old)
-        if (c.Null === 'NO' && c.Default == null && !String(c.Extra).includes('auto_increment') && !String(c.Extra).includes('GENERATED') && !supplied.includes(c.Field))
+        if (c.Null === 'NO' && c.Default == null && !String(c.Extra).includes('auto_increment') && !isGeneratedColumn(c.Extra) && !supplied.includes(c.Field))
             throw Error('D3 cannot supply extra mandatory legacy column ' + c.Field);
     const ext = old.find(c => c.Field === 'd3_report_id');
-    if (ext && /GENERATED|auto_increment/i.test(String(ext.Extra))) {
+    if (ext && (isGeneratedColumn(ext.Extra) || /auto_increment/i.test(String(ext.Extra)))) {
         throw Error('D3 incompatible generated insert column report_record.d3_report_id');
     }
     if (ext && (!typeMatches(ext.Type, 'varchar(64)') || ext.Null !== 'YES' || !await fullUnique(k, 'report_record', ['d3_report_id']))) {
@@ -81,7 +82,7 @@ exports.ensureReportTables = async (k) => {
                     throw Error('D3 incompatible ' + name + '.' + field);
                 if (c.Null !== (nullable.includes(field) ? 'YES' : 'NO'))
                     throw Error('D3 incompatible nullability ' + name + '.' + field);
-                if (String(c.Extra).includes('GENERATED') || String(c.Extra).includes('auto_increment'))
+                if (isGeneratedColumn(c.Extra) || String(c.Extra).includes('auto_increment'))
                     throw Error('D3 incompatible generated column ' + name + '.' + field);
             }
             if (name === 'report_job' && String(rows.find(r => r.Field === 'fence').Default) !== '0')
@@ -117,11 +118,11 @@ exports.up = async (k) => {
             // The deployed audit log stores JSON.stringify output in TEXT. It
             // does not need conversion to a native JSON column to accept writes.
             const legacyAuditText = name === 'operation_audit_log' && field === 'detail' && c && ['text', 'longtext'].includes(c.Type);
-            if (!c || !typeMatches(c.Type, type) && !legacyAuditText || String(c.Extra).includes('GENERATED'))
+            if (!c || !typeMatches(c.Type, type) && !legacyAuditText || isGeneratedColumn(c.Extra))
                 throw Error('D3 unsupported shared insert ' + name + '.' + field);
         }
         for (const c of rows)
-            if (!Object.hasOwn(supplied, c.Field) && c.Null === 'NO' && c.Default == null && !String(c.Extra).includes('auto_increment') && !String(c.Extra).includes('GENERATED'))
+            if (!Object.hasOwn(supplied, c.Field) && c.Null === 'NO' && c.Default == null && !String(c.Extra).includes('auto_increment') && !isGeneratedColumn(c.Extra))
                 throw Error('D3 extra mandatory shared column ' + name + '.' + c.Field);
         const keys = name === 'platform_permission' ? [['permission_code']] : name === 'platform_role_permission' ? [['role_code', 'permission_code']] : [['audit_id']];
         await insertUniqueContract(k, name, keys, Object.keys(supplied), rows);

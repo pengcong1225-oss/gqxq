@@ -86,6 +86,12 @@ test('D3 actual isolated SQL, immutable artifacts and independent report-only re
    await db('report_job').whereNull('owner_token').update({owner_token:'synthetic-metadata'});await db.raw('alter table report_job modify owner_token varchar(64) not null');await assert.rejects(()=>migration.up(db),/nullability/);await db.raw('alter table report_job modify owner_token varchar(64) null');
    await db.schema.dropTable('report_artifact');await db.raw('alter table report_record add column extra_identity varchar(5) null default null, add unique key uk_extra_identity(extra_identity)');await db.raw("alter table report_record alter column extra_identity set default 'fixed'");await assert.rejects(()=>migration.up(db),/unique constraint/);assert.equal(await db.schema.hasTable('report_artifact'),false);await db.raw('alter table report_record drop column extra_identity');
    await db.raw('alter table report_record add column unknown_required varchar(5) not null');await assert.rejects(()=>migration.up(db),/mandatory/);assert.equal(await db.schema.hasTable('report_artifact'),false);await db.raw('alter table report_record drop column unknown_required');await migration.up(db);
+   // Real M13 audit storage: TEXT JSON plus a generated DEFAULT expression,
+   // which remains writable and must not be mistaken for a computed column.
+   await db.raw('alter table operation_audit_log modify detail text null, modify created_at datetime null default current_timestamp');
+   const [auditColumns]=await db.raw('show full columns from operation_audit_log');
+   assert.match(auditColumns.find((c:any)=>c.Field==='created_at').Extra,/DEFAULT_GENERATED/);
+   await migration.up(db);
    await db('platform_role_permission').where({role_code:'readonly',permission_code:'report.download'}).delete();await migration.up(db);assert.equal((await db('platform_role_permission').where({role_code:'readonly',permission_code:'report.download'})).length,0);
   });
   // Actual frozen synthetic artifacts only, with complete production renderer.
