@@ -16,7 +16,7 @@ export async function findReportRequest(db:SqlExecutor,user:string,request:strin
 export async function authorizedReport(db:SqlExecutor,id:string,access:AccessContext,codes:readonly string[]):Promise<Record<string,unknown>|null>{const scope=reportAuthorizationSql(access,codes,'j.report_id');return (await rowsIn(db,'select '+columns+joins+' where j.report_id=? and '+scope.sql,[id,...scope.params]))[0]??null;}
 export async function listReportRows(db:SqlExecutor,access:AccessContext,codes:readonly string[],size:number,before:string|null){const scope=reportAuthorizationSql(access,codes,'j.report_id');return rowsIn(db,'select '+columns+joins+' where '+scope.sql+(before?' and j.report_id<?':'')+' order by j.report_id desc limit ?',[...scope.params,...(before?[before]:[]),size]);}
 export async function insertReportJob(db:SqlExecutor,id:string,snapshotId:string,user:string,hash:string,s:ReportSnapshot){
- await db.query('insert into report_record(report_title,preview_content,date_from,date_to,template_version,d3_report_id) values(?,?,?,?,?,?)',['诉求统计报告草稿','工程草稿，统计政策待业务确认',s.input.query.from,s.input.query.to,'v1',id]);
+ await db.query('insert into report_record(report_id,report_type,report_title,preview_content,date_from,date_to,template_version,d3_report_id) values(?,?,?,?,?,?,?,?)',[id,'statistics','诉求统计报告草稿','工程草稿，统计政策待业务确认',s.input.query.from,s.input.query.to,'v1',id]);
  await db.query("insert into report_job(report_id,snapshot_id,creator_id,request_id,request_hash,execution_actor,format,state,created_at) values(?,?,?,?,?,?,?,'pending',current_timestamp(3))",[id,snapshotId,user,s.input.requestId,hash,user,s.input.format]);
 }
 export interface ReportClaim {reportId:string;owner:string;fence:number;actor:string;snapshot:ReportSnapshot}

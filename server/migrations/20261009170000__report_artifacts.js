@@ -51,8 +51,15 @@ exports.ensureReportTables = async (k) => {
     }
     if (!old.find(c => c.Field === 'id' && c.Key === 'PRI' && String(c.Extra).includes('auto_increment')) || !await fullUnique(k, 'report_record', ['id']))
         throw Error('D3 requires full existing auto id primary key');
-    const supplied = ['report_title', 'preview_content', 'date_from', 'date_to', 'template_version', 'd3_report_id'];
-    await insertUniqueContract(k, 'report_record', [['id'], ['d3_report_id']], supplied, old);
+    // The deployed baseline also requires report_id/report_type. Preserve these
+    // identities and supply them for new jobs; do not change old report rows.
+    for (const [name, type] of [['report_id', 'varchar(64)'], ['report_type', 'varchar(32)']]) {
+        const c = old.find(c => c.Field === name);
+        if (c && (!typeMatches(c.Type, type) || /GENERATED|auto_increment/i.test(String(c.Extra))))
+            throw Error('D3 incompatible legacy identity report_record.' + name);
+    }
+    const supplied = ['report_id', 'report_type', 'report_title', 'preview_content', 'date_from', 'date_to', 'template_version', 'd3_report_id'];
+    await insertUniqueContract(k, 'report_record', [['id'], ['d3_report_id'], ['report_id']], supplied, old);
     for (const c of old)
         if (c.Null === 'NO' && c.Default == null && !String(c.Extra).includes('auto_increment') && !String(c.Extra).includes('GENERATED') && !supplied.includes(c.Field))
             throw Error('D3 cannot supply extra mandatory legacy column ' + c.Field);
@@ -87,6 +94,8 @@ exports.ensureReportTables = async (k) => {
                 if (!Object.hasOwn(spec.columns, c.Field) && c.Null === 'NO' && c.Default == null && !String(c.Extra).includes('auto_increment'))
                     throw Error('D3 extra mandatory column ' + name + '.' + c.Field);
         }
+    for (const [name, type] of [['report_id', 'varchar(64)'], ['report_type', 'varchar(32)']])
+        if (!old.some(c => c.Field === name)) await k.raw('alter table report_record add column ?? ' + type + ' null', [name]);
     if (!ext)
         await k.raw('alter table report_record add column d3_report_id varchar(64) null, add unique key uk_d3_report_id(d3_report_id)');
     for (const [name, spec] of Object.entries(tables))
