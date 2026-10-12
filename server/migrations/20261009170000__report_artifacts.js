@@ -114,7 +114,10 @@ exports.up = async (k) => {
         const rows = await columns(k, name);
         for (const [field, type] of Object.entries(supplied)) {
             const c = rows.find(r => r.Field === field);
-            if (!c || !typeMatches(c.Type, type) || String(c.Extra).includes('GENERATED'))
+            // The deployed audit log stores JSON.stringify output in TEXT. It
+            // does not need conversion to a native JSON column to accept writes.
+            const legacyAuditText = name === 'operation_audit_log' && field === 'detail' && c && ['text', 'longtext'].includes(c.Type);
+            if (!c || !typeMatches(c.Type, type) && !legacyAuditText || String(c.Extra).includes('GENERATED'))
                 throw Error('D3 unsupported shared insert ' + name + '.' + field);
         }
         for (const c of rows)
