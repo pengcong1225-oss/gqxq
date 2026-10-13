@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { writeCategoryInTx, parseCategoryRef, validateCategoryInTx } from './categoryService';
 import {snapshotFactsFromComplaint} from '../domain/statisticsFacts';
 import { readDictionaryType, readDictionaryItems } from './dictService';
@@ -170,6 +171,38 @@ export async function locationCorrectionOptions(complaintId:string,ctx:MasterDat
   return readLocationOptionsIn(tx,row,ctx,type?.published&&type.status==='enabled'?items.filter(i=>i.published&&i.status==='enabled').map(i=>({code:i.code,name:i.label})):[]);
  });
 }
+const deferLocationSchema = z.object({
+    complaintId: z.string().trim().min(1).max(64),
+    expectedVersion: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    basis: z.string().trim().min(1).max(500),
+}).strict();
+
+/** A deferred review is still pending: no effective value or confirmation is written. */
+export async function deferLocationGroup(raw: unknown, ctx: MasterDataContext, clock: LocationClock = () => new Date()): Promise<{version:number}> {
+    assertLocationPermission(ctx);
+    const parsed = deferLocationSchema.safeParse(raw);
+    if (!parsed.success) throw AppError.validation('暂无法确认参数无效', parsed.error.issues.map(e => ({field:e.path.join('.'), message:e.message})));
+    const input = parsed.data, now = clock();
+    return withTransaction(async tx => {
+        const numeric = /^\d+$/.test(input.complaintId);
+        const [rows] = await tx.query('select ' + COMPLAINT_FULL_COLUMNS + LOCATION_EXTRA_COLUMNS + ' from complaint where ' + (numeric ? 'id=?' : '(complaint_id=? or complaint_no=?)') + ' for update', numeric ? [Number(input.complaintId)] : [input.complaintId,input.complaintId]);
+        const row = (rows as ComplaintFullRow[])[0];
+        if (!row) throw AppError.notFound('诉求不存在');
+        assertComplaintAccess(row as unknown as Record<string,unknown>, ctx.access);
+        if (Number(row.edit_version) !== input.expectedVersion) throw AppError.conflict('该诉求已被其它窗口修改；请刷新核对后重新提交');
+        const items = await lockLocationCorrections(tx, row.complaint_id);
+        if (!LOCATION_CORRECTION_FIELDS.every(field => items.some(i => i.fieldName === field))) throw AppError.validation('位置组纠偏清单不完整，请先补齐纠偏待办');
+        if (items.some(i => !['pending','confirmed','rejected'].includes(i.status)) || !items.some(i => i.status === 'pending')) throw new AppError('INVALID_STATE_TRANSITION', '位置组已全部处理或状态无效，不能暂缓核验');
+        const pending = items.filter(i => i.status === 'pending');
+        for (const item of pending) await tx.execute('update correction_item set basis=? where correction_id=? and status=\'pending\'', [input.basis,item.correctionId]);
+        const version = Number(row.edit_version) + 1;
+        await tx.execute('update complaint set edit_version=?,updated_at=? where complaint_id=?', [version,now,row.complaint_id]);
+        await insertAudit(tx, {userId:ctx.userId,appCode:GQXQ_APP_CODE,resourceCode:row.complaint_no,action:'CORRECTION_LOCATION_DEFER',bizType:'complaint',bizId:row.complaint_id,result:'success',clientIp:ctx.clientIp,createdAt:now,
+            detail:{editVersion:version,basis:input.basis,items:pending.map(i => ({correctionId:i.correctionId,fieldName:i.fieldName,basisBefore:i.basis})),analysisEntered:false}});
+        return {version};
+    });
+}
+
 export async function confirmLocationGroup(raw: unknown, ctx: MasterDataContext, clock: LocationClock = () => new Date()): Promise<LocationCorrectionResult> {
     assertLocationPermission(ctx);
     const input = parseLocationCorrectionInput(raw), now = clock(), validationDate = locationValidationDate(() => now);
@@ -248,7 +281,7 @@ export async function confirmLocationGroup(raw: unknown, ctx: MasterDataContext,
         const analysis = await maybeEnterAnalysis(tx, { complaintId: input.complaintId, operatorId: ctx.userId, operatorName: ctx.userName, now });
         await insertAudit(tx, { userId: ctx.userId, appCode: GQXQ_APP_CODE, resourceCode: row.complaint_no, action: 'CORRECTION_LOCATION_GROUP', bizType: 'complaint', bizId: input.complaintId, result: 'success', clientIp: ctx.clientIp, createdAt: now,
             detail: { editVersion: nextVersion, basis: input.basis, coordinateSystem: input.coordinateSystem, coordinateSource: input.coordinateSource, provenanceKind: input.longitude === null ? 'absent' : 'operator_declared', changes, decisions, ...validation, analysisEntered: analysis.entered } });
-        return { ...validation, version: nextVersion, analysisEntered: analysis.entered, location };
+        return { ...validation, version: nextVersion, analysisEntered: analysis.entered, analysisReason: analysis.reason, location };
     });
 }
 
@@ -282,6 +315,7 @@ async function loadLatestAssignmentId(db: Tx | typeof pool, complaintId: string)
 
 export interface GenerateCorrectionInput {
   complaintId: string;
+  source?: 'intake';
   /** 触发来源交办；为空时按该诉求最近一条交办回填，确实没有交办则为 null */
   assignmentId: string | null;
   operatorId: string | null;
@@ -297,7 +331,7 @@ export interface GenerateCorrectionInput {
  * "reporting_status=approved" 与"必须有交办单"两道闸，也不因为没有交办而抛错。
  * 纠偏是覆盖全部诉求的数据质量轴，与交办轴并行；assignmentId 只是回查线索。
  *
- * 触发点：G4 回调（task_approved 进入 completed 后仍会调一次，用于刷新/补挂，但不再是唯一入口）、
+ * 触发点：新诉求入站/导入事务、G4 回调（task_approved 进入 completed 后仍会调一次，用于刷新/补挂，但不再是唯一入口）、
  * 单条手工入口、批量补挂入口。
  */
 export async function generateCorrectionsInTx(
@@ -354,7 +388,7 @@ export async function generateCorrectionsInTx(
     bizId: input.complaintId,
     result: 'success',
     clientIp: null,
-    detail: { assignmentId, itemCount: insertItems.length, source: input.operatorName === null ? 'callback' : 'manual' },
+    detail: { assignmentId, itemCount: insertItems.length, source: input.source ?? (input.operatorName === null ? 'callback' : 'manual') },
     createdAt: input.now,
   });
 

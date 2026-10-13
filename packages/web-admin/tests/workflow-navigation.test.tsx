@@ -47,12 +47,12 @@ function renderWithRouter(node: React.ReactNode, route: string): string {
   );
 }
 
-test('整体纠偏页用覆盖全部字段的名称呈现', async () => {
+test('诉求核验页用覆盖全部字段的名称呈现', async () => {
   const { default: AddressCorrection } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
   const html = renderWithRouter(<AddressCorrection />, '/address-correction');
 
-  assert.match(html, />整体纠偏</);
-  assert.match(html, /待纠偏诉求/);
+  assert.match(html, />诉求核验</);
+  assert.match(html, /待核验诉求/);
   assert.doesNotMatch(html, />纠偏待办</);
 });
 
@@ -142,7 +142,7 @@ test('地址搜索返回可供人工选择的候选位置', async () => {
     }), { status: 200 });
   };
   const places = await search('宜昌市人民政府', 'test-key', request as typeof fetch);
-  assert.deepEqual(places, [{ name: '宜昌市人民政府', address: '湖北省宜昌市西陵区沿江大道', lng: '111.286000', lat: '30.691000' }]);
+  assert.deepEqual(places, [{ name: '宜昌市人民政府', address: '湖北省宜昌市西陵区沿江大道', lng: '111.286000', lat: '30.691000', coordinateSystem:'unknown', coordinateSource:'天地图地址搜索候选，坐标系未核实' }]);
   const url = new URL(requestedUrl);
   assert.equal(url.hostname, 'api.tianditu.gov.cn');
   assert.equal(url.searchParams.get('type'), 'query');
@@ -396,7 +396,7 @@ test('真实详情页把接口位置冲突传到只读线索区域', async () =>
   } finally { ui.unmount(); cleanup(); axiosRequest.defaults.adapter = originalAdapter; }
 });
 
-test('真实整体纠偏抽屉和位置窗体不允许带入有冲突的地址候选', async () => {
+test('真实诉求核验抽屉内联位置组件不自动带入冲突地址候选', async () => {
   installDom();
   const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
   const axiosRequest = request as { defaults: { adapter: unknown } };
@@ -407,6 +407,7 @@ test('真实整体纠偏抽屉和位置窗体不允许带入有冲突的地址�
       '/enterprises': { content: [], total: 0 },
       '/complaints/CPL-TEST': locationDetailFixture,
       '/complaints/CPL-TEST/corrections': ['address', 'location_lng', 'location_lat'].map(locationCorrectionFixture),
+      '/complaints/CPL-TEST/location-correction-options': {districts:[{code:'D1',name:'合成区'}],adminGrids:[{code:'A1',name:'合成网格',districtCode:'D1'}],communities:[{code:'X1',name:'样例社区',adminGridCode:'A1'}]},
     };
     if (!(config.url && config.url in responses)) throw new Error(`Unexpected test API: ${config.url}`);
     return { data: { code: 200, data: responses[config.url] }, status: 200, statusText: 'OK', headers: {}, config };
@@ -421,13 +422,14 @@ test('真实整体纠偏抽屉和位置窗体不允许带入有冲突的地址�
   </MemoryRouter>);
   try {
     const page = within(document.body);
-    await waitFor(() => assert.match(document.body.textContent ?? '', /待核实位置线索.*样例社区20号1301/));
-    assert.match(document.body.textContent ?? '', /位置冲突/);
-    await waitFor(() => assert.equal((page.getByRole('button', { name: '打开位置组纠偏' }) as HTMLButtonElement).disabled, false));
-    fireEvent.click(page.getByRole('button', { name: '打开位置组纠偏' }));
-    assert.match(document.body.textContent ?? '', /位置组纠偏/);
+    await waitFor(() => assert.match(document.body.textContent ?? '', /原始内容.*样例社区20号1301/));
+    await waitFor(()=>assert.match(document.body.textContent ?? '', /存在冲突/));
+    await waitFor(() => assert.match(document.body.textContent ?? '', /原文区划或候选存在冲突/));
+    assert.match(document.body.textContent ?? '', /位置核验/);
     assert.equal(page.queryByRole('button', { name: '填入待核实地址' }), null);
-    assert.equal((page.getByPlaceholderText('人工核对后填写地址') as HTMLInputElement).value, '来源地址原值');
+    assert.equal((page.getByLabelText('核实后的地址') as HTMLInputElement).value, '来源地址原值');
+    assert.doesNotMatch(document.body.textContent ?? '', /系统建议：样例社区/);
+    assert.equal(page.queryByRole('button',{name:'打开位置组纠偏'}),null);
   } finally {
     ui.unmount(); cleanup(); axiosRequest.defaults.adapter = originalAdapter;
     useAppStore.setState({ userInfo: originalUser });

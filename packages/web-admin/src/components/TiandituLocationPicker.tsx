@@ -94,6 +94,7 @@ export async function searchTiandituPlaces(
 ): Promise<PlaceCandidate[]> {
   const term = keyword.trim();
   if (!term) return [];
+  if(term.length>80||/[\r\n，。！？；]|\d{7,}|停水|漏水|投诉|反映|联系|处理|解决|希望|电话/.test(term))throw new Error('请输入简短地点名称，不要输入诉求原文或电话号码');
   const query = new URLSearchParams({
     postStr: JSON.stringify({
       keyWord: term,
@@ -120,6 +121,10 @@ export async function searchTiandituPlaces(
 }
 
 export interface TiandituLocationPickerProps {
+  onSelectPlace?: (place: PlaceCandidate) => void;
+  contextKey?: string;
+  autoSearch?: string | null;
+  disabled?: boolean;
   address?: string | null;
   lng?: string | null;
   lat?: string | null;
@@ -128,7 +133,11 @@ export interface TiandituLocationPickerProps {
 }
 
 /** 地图点选只返回坐标和可选地址建议，不会直接改写地址字段。 */
-const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address, lng, lat, onPick, onUseAddressSuggestion }) => {
+const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address, lng, lat, onPick, onUseAddressSuggestion, autoSearch, disabled=false, onSelectPlace, contextKey }) => {
+  const callbacks = useRef({onPick,onUseAddressSuggestion,onSelectPlace,disabled});
+  callbacks.current={onPick,onUseAddressSuggestion,onSelectPlace,disabled};
+  const activePoint=useRef<{lng:string;lat:string}|null>(null);
+  const autoSearched=useRef(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<TiandituMap | null>(null);
   const markerRef = useRef<unknown>(null);
@@ -144,9 +153,15 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
   const [places, setPlaces] = useState<PlaceCandidate[]>([]);
   const key = import.meta.env.VITE_TIANDITU_TK?.trim() ?? '';
 
-  useEffect(() => { setSearchText(address ?? ''); }, [address]);
+  useEffect(() => { setSearchText(address ?? '');++searchIdRef.current;++requestIdRef.current;setPlaces([]);setSearching(false);setPicked(null); }, [address]);
+
+  useEffect(()=>{
+    const point=activePoint.current;
+    if(point&&(point.lng!==lng||point.lat!==lat)){++requestIdRef.current;activePoint.current=null;setPicked(null);setGeocoding(false);}
+  },[lng,lat,contextKey]);
 
   const searchAddress = async (value: string) => {
+    if(callbacks.current.disabled)return;
     const term = value.trim();
     const searchId = ++searchIdRef.current;
     setSearchError(null);
@@ -162,7 +177,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
     setSearching(true);
     try {
       const next = await searchTiandituPlaces(term, key);
-      if (searchId !== searchIdRef.current) return;
+      if (searchId !== searchIdRef.current || callbacks.current.disabled) return;
       setPlaces(next);
       if (next.length === 0) setSearchError('没有找到匹配地点，请补充区县、街道或门牌号后重试');
     } catch (cause) {
@@ -172,7 +187,11 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
     }
   };
 
+  useEffect(()=>{if(autoSearch&&!disabled&&!autoSearched.current){autoSearched.current=true;void searchAddress(autoSearch);}},[autoSearch,disabled]);
+  useEffect(()=>()=>{++searchIdRef.current;++requestIdRef.current;},[]);
+
   const selectPlace = (place: PlaceCandidate) => {
+    if(callbacks.current.disabled)return;
     const sdk = window.T;
     const map = mapRef.current;
     ++requestIdRef.current; // 废弃更早的地图点选反查，避免旧地址覆盖搜索结果。
@@ -182,9 +201,10 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
       const marker = new sdk.Marker(location);map.addOverLay(marker);markerRef.current = marker;map.centerAndZoom(location, 16);
     }
     const point = { lng: place.lng, lat: place.lat, addressSuggestion: place.address,coordinateSystem:place.coordinateSystem,coordinateSource:place.coordinateSource };
+    activePoint.current=point;
     setPicked(point);
-    onPick(point);
-    onUseAddressSuggestion?.(place.address);
+    callbacks.current.onPick(point);
+    if(callbacks.current.onSelectPlace)callbacks.current.onSelectPlace(place);else callbacks.current.onUseAddressSuggestion?.(place.address);
     setPlaces([]);
     setSearchError(null);
   };
@@ -211,7 +231,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
         markerRef.current = marker;
       }
       map.addEventListener('click', (event) => {
-        if (!active || !event.lnglat) return;
+        if (!active || callbacks.current.disabled || !event.lnglat) return;
         const requestId = ++requestIdRef.current;
         const pickedLng = event.lnglat.getLng();
         const pickedLat = event.lnglat.getLat();
@@ -222,18 +242,19 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
         map.addOverLay(marker);
         markerRef.current = marker;
         map.panTo(new sdk.LngLat(pickedLng, pickedLat));
+        activePoint.current=point;
         setPicked(point);
-        onPick(point);
+        callbacks.current.onPick(point);
         setGeocoding(true);
         void reverseGeocode(key, pickedLng, pickedLat).then((address) => {
-          if (!active || requestId !== requestIdRef.current) return;
+          if (!active || callbacks.current.disabled || requestId !== requestIdRef.current) return;
           const nextPoint = { ...point, addressSuggestion: address };
           setPicked(nextPoint);
-          onPick(nextPoint);
+          // Reverse geocoding only updates the optional suggestion. Coordinate writes happen once at the click.
         }).catch(() => {
-          if (!active || requestId !== requestIdRef.current) return;
+          if (!active || callbacks.current.disabled || requestId !== requestIdRef.current) return;
           setPicked(point);
-          onPick(point);
+          // Keep the original point without a second parent write.
         }).finally(() => {
           if (active && requestId === requestIdRef.current) setGeocoding(false);
         });
@@ -255,6 +276,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
   return (
     <div>
       <Input.Search
+        disabled={disabled}
         aria-label="搜索地址并定位"
         value={searchText}
         onChange={(event) => setSearchText(event.target.value)}
@@ -267,16 +289,16 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
       {searchError ? <Alert type="warning" showIcon style={{ marginBottom: 8 }} message={searchError} /> : null}
       {places.length > 0 ? (
         <div style={{ maxHeight: 160, overflowY: 'auto', marginBottom: 8, border: '1px solid #d9d9d9', padding: 8 }}>
-          <Typography.Text type="secondary">请选择正确地点；选择后仅回填本窗体，仍需点击“保存位置组”</Typography.Text>
+          <Typography.Text type="secondary">请选择正确地点；选择后回填待确认地点，仍需人工确认保存</Typography.Text>
           {places.map((place, index) => (
             <div key={place.lng + ',' + place.lat + ':' + index}>
-              <Button type="link" onClick={() => selectPlace(place)}>{place.name} · {place.address}</Button>
+              <Button type="link" disabled={disabled} onClick={() => selectPlace(place)}>{place.name} · {place.address}</Button>
             </div>
           ))}
         </div>
       ) : null}
       {error ? <Alert type="warning" showIcon style={{ marginBottom: 8 }} message={error} /> : null}
-      {loading ? <div style={{ height: 380, display: 'grid', placeItems: 'center' }}><Spin tip="加载天地图…" /></div> : null}
+      {loading ? <div style={{ height: 380, display: 'grid', placeItems: 'center' }}><Spin aria-label="加载天地图" /></div> : null}
       <div ref={containerRef} style={{ height: 380, border: '1px solid #d9d9d9', visibility: loading || error ? 'hidden' : 'visible' }} />
       {picked ? (
         <Space direction="vertical" size={4} style={{ marginTop: 8 }}>
@@ -285,7 +307,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
           {picked.addressSuggestion ? (
             <Space wrap>
               <Typography.Text type="secondary">地址建议（请人工核对）：{picked.addressSuggestion}</Typography.Text>
-              {onUseAddressSuggestion ? <Button size="small" onClick={() => onUseAddressSuggestion(picked.addressSuggestion as string)}>填入地址字段</Button> : null}
+              {onUseAddressSuggestion ? <Button size="small" disabled={disabled} onClick={() => onUseAddressSuggestion(picked.addressSuggestion as string)}>填入地址字段</Button> : null}
             </Space>
           ) : null}
         </Space>

@@ -129,6 +129,7 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   { method: 'POST', path: new RegExp('^/complaints/' + param + '/source-sync$'), roles: W, permissionCode: 'complaint.source_sync', desc: 'W5 来源状态回填' },
   { method: 'POST', path: new RegExp('^/corrections/generate-batch$'), roles: W, permissionCode: 'complaint.correct', desc: 'W6 批量补挂纠偏待办' },
   { method: 'POST', path: new RegExp('^/corrections/' + param + '/confirm$'), roles: W, permissionCode: 'complaint.correct', desc: 'W7 纠偏确认' },
+  {method:'POST',path:new RegExp('^/complaints/'+param+'/location-corrections/defer$'),roles:W,permissionCode:'complaint.correct',desc:'暂缓位置核验'},
   {method:'POST',path:new RegExp('^/complaints/'+param+'/location-corrections$'),roles:W,permissionCode:'complaint.correct',desc:'原子位置组纠偏'},
   {method:'GET',path:new RegExp('^/complaints/'+param+'/location-correction-options$'),roles:W,permissionCode:'complaint.correct',desc:'位置组业务选择'},
   { method: 'POST', path: new RegExp('^/corrections/' + param + '/reject$'), roles: W, permissionCode: 'complaint.correct', desc: 'W8 判定无需纠偏' },

@@ -11,7 +11,7 @@ export interface LocationValidationResult {
  candidates:LocationCandidate[];
 }
 export type LocationCorrectionValue=Omit<LocationCorrectionInput,'complaintId'|'expectedVersion'|'basis'> & {districtName:string|null};
-export interface LocationCorrectionResult extends LocationValidationResult {version:number;analysisEntered:boolean;location:LocationCorrectionValue}
+export interface LocationCorrectionResult extends LocationValidationResult {version:number;analysisEntered:boolean;analysisReason:string|null;location:LocationCorrectionValue}
 export interface LocationFacts {districtName:string|null;admins:AdminGrid[];communities:Community[];coverages:GridCoverage[]}
 export interface LocationCorrectionOptions {
  districts:Array<{code:string;name:string}>;

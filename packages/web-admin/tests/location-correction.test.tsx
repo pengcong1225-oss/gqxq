@@ -23,7 +23,7 @@ for(const scenario of ['manual','conflict','denied'] as const)test('location gro
    data={version:2,analysisEntered:false,validationDate:'2026-10-09',spatialStatus:'unknown',spatialReason:'坐标系未核实',coverageEvidence:[],candidates:[]};
   }else if(config.url.endsWith('/location-correction-options'))data={districts:[{code:'D1',name:'合成区甲'}],adminGrids:[{code:'A1',name:'同名网格',districtCode:'D1'},{code:'A2',name:'同名网格',districtCode:'D1'}],communities:[{code:'X1',name:'同名小区',adminGridCode:'A1'},{code:'X2',name:'同名小区',adminGridCode:'A2'}]};
   else if(config.url==='/complaints/C1/corrections')data=['address','location_lng','location_lat','district_name'].map((fieldName,i)=>({id:i+1,correctionId:'COR-'+fieldName,complaintId:'C1',fieldName,fieldLabel:fieldName,oldValue:'old',effectiveValue:fieldName==='address'?refreshed?'winning address':'current address':fieldName==='location_lng'?'111':fieldName==='location_lat'?'30':'合成区甲',status:'pending',hasDispatch:false,editVersion:refreshed?2:1}));
-  else if(config.url==='/complaints/C1')data={complaintId:'C1',complaintNo:'LOCAL-C1',title:'Synthetic',districtCode:'D1',districtName:'合成区甲',address:'current address',locationLng:111,locationLat:30,editVersion:1,adminGridCode:null,communityCode:null,locationCoordinateSystem:'unknown',locationCoordinateSource:null,locationClues:[],locationConflict:false};
+  else if(config.url==='/complaints/C1')data={complaintId:'C1',complaintNo:'LOCAL-C1',title:'Synthetic',districtCode:'D1',districtName:'合成区甲',address:refreshed?'winning address':'current address',locationLng:111,locationLat:30,editVersion:refreshed?2:1,adminGridCode:null,communityCode:null,locationCoordinateSystem:'unknown',locationCoordinateSource:null,locationClues:[],locationConflict:false};
   else data={content:[],total:0};
   return {data:{code:200,data},status:200,headers:{},config};
  };
@@ -33,18 +33,18 @@ for(const scenario of ['manual','conflict','denied'] as const)test('location gro
  const ui=render(<MemoryRouter initialEntries={['/address-correction?complaintId=C1']}><Page/></MemoryRouter>);
  try{
   const page=within(document.body);await waitFor(()=>assert.ok(page.getAllByText('LOCAL-C1').length));
-  if(scenario==='denied'){assert.equal(Boolean(page.queryByRole('button',{name:'打开位置组纠偏'})),false);assert.equal(writes.length,0);return;}
-  fireEvent.click(await waitFor(()=>page.getByRole('button',{name:'打开位置组纠偏'})));
-  await waitFor(()=>assert.ok(page.getByRole('combobox',{name:'位置组区划'})));
+  if(scenario==='denied'){await waitFor(()=>assert.ok(page.getByRole('button',{name:'确认位置'})));assert.equal((page.getByRole('button',{name:'确认位置'}) as HTMLButtonElement).disabled,true);assert.equal(writes.length,0);return;}
+  fireEvent.click(await waitFor(()=>page.getByRole('button',{name:'调整位置'})));
+  await waitFor(()=>assert.ok(page.getByRole('combobox',{name:'核验区县'})));
   assert.match(document.body.textContent??'',/人工录入/);assert.equal((document.body.textContent??'').includes('VITE_TIANDITU'),false);
-  const address=page.getByLabelText('位置组地址') as HTMLInputElement,basis=page.getByLabelText('位置组依据') as HTMLTextAreaElement;
+  const address=page.getByLabelText('核实后的地址') as HTMLInputElement,basis=page.getByLabelText('位置核对依据') as HTMLTextAreaElement;
   await act(async()=>{address.value='manual draft B';Simulate.change(address);basis.value='Synthetic manual verification';Simulate.change(basis);});
-  fireEvent.click(page.getByRole('button',{name:'保存位置组'}));await waitFor(()=>assert.equal(writes.length,1));
-  assert.equal(writes[0].url,'/complaints/C1/location-corrections');assert.equal(writes[0].body.expectedVersion,1);assert.equal(writes[0].body.coordinateSystem,'unknown');assert.equal(writes[0].body.address,'manual draft B');assert.equal(writes[0].body.districtCode,'D1');assert.equal(writes[0].body.adminGridCode,null);assert.ok(writes[0].body.coordinateSource);
+  fireEvent.click(page.getByRole('button',{name:'确认位置'}));await waitFor(()=>assert.equal(writes.length,1));
+  assert.equal(writes[0].url,'/complaints/C1/location-corrections');assert.equal(writes[0].body.expectedVersion,1);assert.equal(writes[0].body.coordinateSystem,null);assert.equal(writes[0].body.address,'manual draft B');assert.equal(writes[0].body.districtCode,'D1');assert.equal(writes[0].body.adminGridCode,null);assert.equal(writes[0].body.coordinateSource,null);assert.equal(writes[0].body.longitude,null);
   if(scenario==='conflict'){
-   await waitFor(()=>assert.match(document.body.textContent??'',/未提交内容已保留/));assert.equal(address.value,'manual draft B');assert.equal(basis.value,'Synthetic manual verification');
+   await waitFor(()=>assert.match(document.body.textContent??'',/草稿已保留/));assert.equal(address.value,'manual draft B');assert.equal(basis.value,'Synthetic manual verification');
    fireEvent.click(page.getAllByRole('button',{name:'刷新核对（保留草稿）'}).at(-1)!);await waitFor(()=>assert.match(document.body.textContent??'',/winning address/));assert.equal(address.value,'manual draft B');assert.equal(basis.value,'Synthetic manual verification');assert.equal(writes.length,1);
-  }else await waitFor(()=>assert.equal(page.queryByLabelText('位置组地址'),null));
+  }else await waitFor(()=>assert.equal((page.getByRole('button',{name:'确认位置'}) as HTMLButtonElement).disabled,false));
  }finally{await act(async()=>{message.destroy();ui.unmount();cleanup();});request.defaults.adapter=oldAdapter;useAppStore.setState({userInfo:oldUser});}
 });
 test('Tianditu synthetic search retains same-name candidates with unknown CRS provenance',async()=>{
@@ -68,8 +68,8 @@ test('location selection guard '+scenario,async()=>{
  let aDetailReads=0,aPending=false,bPending=false;
  const conflict=()=>{const error:any=new Error('Synthetic late conflict');error.response={status:409,data:{code:'DUPLICATE_CONFLICT',message:'Synthetic late conflict'}};return error;};
  const details={
-  C1:{complaintId:'C1',complaintNo:'LOCAL-C1',title:'Synthetic A',districtCode:'D1',districtName:'合成甲',adminGridCode:'A1',communityCode:'X1',locationCoordinateSystem:'unknown',locationCoordinateSource:'source-A',sourceAddress:'source-address-A',locationClues:[],locationConflict:false},
-  C2:{complaintId:'C2',complaintNo:'LOCAL-C2',title:'Synthetic B',districtCode:'D2',districtName:'合成乙',adminGridCode:'A2',communityCode:'X2',locationCoordinateSystem:'WGS84',locationCoordinateSource:'source-B',sourceAddress:'source-address-B',locationClues:[],locationConflict:false},
+  C1:{complaintId:'C1',complaintNo:'LOCAL-C1',title:'Synthetic A',editVersion:1,address:'effective-C1',locationLng:111,locationLat:30,districtCode:'D1',districtName:'合成甲',adminGridCode:'A1',communityCode:'X1',locationCoordinateSystem:'unknown',locationCoordinateSource:'source-A',sourceAddress:'source-address-A',locationClues:[],locationConflict:false},
+  C2:{complaintId:'C2',complaintNo:'LOCAL-C2',title:'Synthetic B',editVersion:9,address:'effective-C2',locationLng:111,locationLat:30,districtCode:'D2',districtName:'合成乙',adminGridCode:'A2',communityCode:'X2',locationCoordinateSystem:'WGS84',locationCoordinateSource:'source-B',sourceAddress:'source-address-B',locationClues:[],locationConflict:false},
  };
  request.defaults.adapter=async(config:any)=>{
   let data:any;
@@ -101,37 +101,36 @@ test('location selection guard '+scenario,async()=>{
  const ui=render(<MemoryRouter initialEntries={['/address-correction?complaintId=C1']}><Page/></MemoryRouter>);
  try{
   const page=within(document.body);
-  const open=async()=>{await waitFor(()=>assert.equal((page.getByRole('button',{name:'打开位置组纠偏'}) as HTMLButtonElement).disabled,false));fireEvent.click(page.getByRole('button',{name:'打开位置组纠偏'}));};
-  const enterBasis=async(value:string)=>{const basis=page.getByLabelText('位置组依据') as HTMLTextAreaElement;await act(async()=>{basis.value=value;Simulate.change(basis);});};
-  await open();await enterBasis('basis-A');fireEvent.click(page.getByRole('button',{name:'保存位置组'}));
+  const open=async()=>{await waitFor(()=>assert.equal((page.getByRole('button',{name:'调整位置'}) as HTMLButtonElement).disabled,false));if(!page.queryByLabelText('核实后的地址'))fireEvent.click(page.getByRole('button',{name:'调整位置'}));};
+  const enterBasis=async(value:string)=>{const basis=page.getByLabelText('位置核对依据') as HTMLTextAreaElement;await act(async()=>{basis.value=value;Simulate.change(basis);});};
+  await open();await enterBasis('basis-A');fireEvent.click(page.getByRole('button',{name:'确认位置'}));
   if(scenario==='conflict-detail'||scenario==='late-refresh-error'){
    await waitFor(()=>assert.ok(page.getAllByRole('button',{name:'刷新核对（保留草稿）'}).length));
    fireEvent.click(page.getAllByRole('button',{name:'刷新核对（保留草稿）'}).at(-1)!);
   }
   await waitFor(()=>assert.equal(aPending,true));
-  const cancelA=page.queryByRole('button',{name:/^(Cancel|取消)$/});
-  if(cancelA)fireEvent.click(cancelA);
   fireEvent.click(page.getAllByRole('button',{name:'Close'}).find(button=>button.classList.contains('ant-drawer-close'))!);
   const bRow=page.getByText('LOCAL-C2').closest('tr')!;
-  fireEvent.click(within(bRow).getByRole('button',{name:'打开纠偏'}));
+  fireEvent.click(within(bRow).getByRole('button',{name:'核验信息'}));
   await open();
   if(lateSave){
-   const save=page.getByRole('button',{name:/保存位置组/});
+   const save=page.getByRole('button',{name:'确认位置'});
    assert.equal(save.classList.contains('ant-btn-loading'),false,'A pending operation must not keep B busy');
    await enterBasis('basis-B');fireEvent.click(save);
    await waitFor(()=>assert.equal(bPending,true));
-  }else fireEvent.click(page.getByRole('button',{name:/^(Cancel|取消)$/}));
+  }
   await act(async()=>{delayedA.resolve();await delayedA.promise;});
   await waitFor(()=>assert.equal((document.body.textContent??'').includes('Synthetic late refresh failure'),false));
   if(!lateSave)await open();
-  assert.equal((page.getByLabelText('位置组地址') as HTMLInputElement).value,'effective-C2');
-  assert.equal((page.getByLabelText('位置组坐标来源') as HTMLInputElement).value,'source-B');
+  assert.equal((page.getByLabelText('核实后的地址') as HTMLInputElement).value,'effective-C2');
+  assert.match(document.body.textContent??'',/乙网格/);
   assert.equal((document.body.textContent??'').includes('source-address-A'),false,'late A details must not replace B source evidence');
   assert.equal(page.queryAllByRole('button',{name:'刷新核对（保留草稿）'}).length,0,'late A conflict must not flag B');
   if(lateSave){
-   assert.equal(page.getByRole('button',{name:/保存位置组/}).classList.contains('ant-btn-loading'),true,'A finally must not clear B pending save');
+   assert.equal((page.getByRole('button',{name:'确认位置'}) as HTMLButtonElement).disabled,true,'A finally must not clear B pending save');
+   assert.equal(page.getByRole('button',{name:/确认位置并下一条/}).classList.contains('ant-btn-loading'),true);
   }else{
-   await enterBasis('basis-B');fireEvent.click(page.getByRole('button',{name:'保存位置组'}));
+   await enterBasis('basis-B');fireEvent.click(page.getByRole('button',{name:'确认位置'}));
    await waitFor(()=>assert.equal(writes.length,2));
   }
   assert.equal(writes[1].url,'/complaints/C2/location-corrections');
@@ -141,4 +140,16 @@ test('location selection guard '+scenario,async()=>{
   await act(async()=>{delayedA.resolve();delayedB.resolve();message.destroy();ui.unmount();cleanup();});
   request.defaults.adapter=originalAdapter;useAppStore.setState({userInfo:originalUser});
  }
+});
+
+
+for(const identityField of ['authorizationVersion','mustChangePassword'] as const)test('standalone location panel isolates '+identityField,async()=>{
+ const {default:request}=await vite.ssrLoadModule('/src/api/request.ts'),oldAdapter=request.defaults.adapter;
+ const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts'),oldUser=useAppStore.getState().userInfo;
+ request.defaults.adapter=async(config:any)=>({data:{code:200,data:{districts:[],adminGrids:[],communities:[]}},status:200,headers:{},config});
+ useAppStore.setState({userInfo:{userId:'actor',roles:['custom'],permissions:['complaint.correct'],authorizationVersion:1,mustChangePassword:false}});
+ const {default:Panel}=await vite.ssrLoadModule('/src/components/LocationReviewPanel.tsx');const {render,within,fireEvent,waitFor,act,cleanup}=await import('@testing-library/react');
+ const ui=render(<Panel detail={{complaintId:'C1',editVersion:1,address:'current address',title:'Synthetic',locationClues:[]} as any} items={[{fieldName:'address',status:'pending'}] as any} onSaved={()=>{}} onDeferred={()=>{}}/>);
+ try{const page=within(document.body);await waitFor(()=>assert.equal((page.getByRole('button',{name:'确认位置'}) as HTMLButtonElement).disabled,false));fireEvent.click(page.getByRole('button',{name:'调整位置'}));const address=page.getByLabelText('核实后的地址') as HTMLInputElement;await act(async()=>{address.value='old actor draft';Simulate.change(address);});assert.equal(address.value,'old actor draft');await act(async()=>useAppStore.setState({userInfo:{...useAppStore.getState().userInfo,[identityField]:identityField==='authorizationVersion'?2:true}}));assert.equal(page.queryByLabelText('核实后的地址'),null);fireEvent.click(page.getByRole('button',{name:'调整位置'}));assert.equal((page.getByLabelText('核实后的地址') as HTMLInputElement).value,'current address');}
+ finally{ui.unmount();cleanup();request.defaults.adapter=oldAdapter;useAppStore.setState({userInfo:oldUser});}
 });

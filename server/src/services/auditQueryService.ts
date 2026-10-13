@@ -76,6 +76,7 @@ function safeDetail(row:AuditRow):Record<string,unknown> {
  if(row.biz_type==='heat_rule'&&['HEAT_DRAFT_SAVE','HEAT_RULE_PUBLISH'].includes(action))return pick(data,['ruleId','majorCode','minorCode','dictionaryVersion','version','policyId','policyVersion','effectiveFrom','publishedVersion']);
  if(row.biz_type==='dictionary'&&['DICTIONARY_TYPE_SAVE','DICTIONARY_ITEM_SAVE','DICTIONARY_TYPE_DELETE','DICTIONARY_ITEM_DELETE'].includes(action))return pick(data,['typeCode','itemCode','label','parentCode','status','version','dictionaryVersion','published']);
  if(row.biz_type==='complaint'&&action==='CATEGORY_REVISE')return pick(data,['oldMajorCode','oldMinorCode','oldDictionaryVersion','majorCode','minorCode','dictionaryVersion','editVersion']);
+ if(row.biz_type==='complaint'&&action==='CORRECTION_LOCATION_DEFER')return pick(data,['editVersion','basis','analysisEntered']);
  if(row.biz_type==='complaint'&&action==='CORRECTION_LOCATION_GROUP'){
   const out=pick(data,['editVersion','basis','validationDate','spatialStatus','spatialReason','coordinateSystem','coordinateSource','provenanceKind','analysisEntered']);
   out.changes=Array.isArray(data.changes)?data.changes.flatMap(value=>{

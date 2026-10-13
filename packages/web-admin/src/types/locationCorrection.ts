@@ -10,7 +10,7 @@ export interface LocationCorrectionOptions {
 }
 export interface LocationCorrectionResult {
  location:Omit<LocationCorrectionInput,'complaintId'|'expectedVersion'|'basis'> & {districtName:string|null};
- version:number;analysisEntered:boolean;validationDate:string;spatialStatus:'verified'|'unknown';spatialReason:string;
+ version:number;analysisEntered:boolean;analysisReason?:string|null;validationDate:string;spatialStatus:'verified'|'unknown';spatialReason:string;
  coverageEvidence:Array<{code:string;version:string;validFrom:string;validTo:string|null;sources:string[]}>;
  candidates:Array<{adminGridCode:string;adminGridName:string;districtCode:string;communityCodes:string[]}>;
 }

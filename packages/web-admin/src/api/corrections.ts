@@ -3,6 +3,9 @@ import type {LocationCorrectionInput,LocationCorrectionOptions,LocationCorrectio
 export async function confirmLocationGroup(body:LocationCorrectionInput):Promise<LocationCorrectionResult>{
  return request.post<never,LocationCorrectionResult>('/complaints/'+encodeURIComponent(body.complaintId)+'/location-corrections',body);
 }
+export async function deferLocationGroup(body:{complaintId:string;expectedVersion:number;basis:string}):Promise<{version:number}>{
+ return request.post<never,{version:number}>('/complaints/'+encodeURIComponent(body.complaintId)+'/location-corrections/defer',body);
+}
 export async function getLocationCorrectionOptions(complaintId:string):Promise<LocationCorrectionOptions>{
  return request.get<never,LocationCorrectionOptions>('/complaints/'+encodeURIComponent(complaintId)+'/location-correction-options');
 }

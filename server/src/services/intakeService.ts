@@ -1,3 +1,4 @@
+import { generateCorrectionsInTx } from './correctionService';
 // 宜接就办入站接收服务。
 // 职责：落库 + 幂等（同报文不重复落库）+ 重传留痕 + 人工字段保护 + 审计，全部在**单个事务**内完成。
 //
@@ -370,6 +371,7 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
     throw err;
   }
 
+  await generateCorrectionsInTx(tx, { complaintId, assignmentId: null, operatorId: null, operatorName: null, now: receivedAt, source: 'intake' });
   await syncAddressCandidate(tx, complaintId, { title: cmd.title, content: cmd.content });
   await syncLocationClues(tx, complaintId, { title: cmd.title, content: cmd.content });
 

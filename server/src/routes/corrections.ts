@@ -13,6 +13,7 @@ import {
   listPendingCorrections,
   rejectCorrection,
   confirmLocationGroup,
+  deferLocationGroup,
   locationCorrectionOptions,
 } from '../services/correctionService';
 import { closeComplaint } from '../services/closureService';
@@ -21,7 +22,7 @@ import { closeComplaint } from '../services/closureService';
 //
 // 关键设计（业主 2026-09-20 裁定：纠偏与交办是并行两条轴）：
 //   * 纠偏是**数据质量轴**，覆盖**所有**诉求，与是否交办、是否审批通过无关；
-//     清单入口有三条——G4 回调（审批通过后补挂/刷新一次）、单条手工、批量补挂（存量与新入站都靠它收敛）；
+//     清单入口包括新诉求入站/导入事务、G4 回调、单条手工与存量批量补挂；
 //   * 确认 / 判定无需纠偏都会检查"是否可入分析库"，那个判断唯一收敛在 correctionService.maybeEnterAnalysis；
 //     分析库口径未变（未交办 / 误报归库不纳入），所以"进了纠偏队列但没进分析库"是正常状态；
 //   * 责任单位在纠偏里确认：编码走企业主数据校验，code + name 成对写回（见 assignmentService）；
@@ -30,6 +31,9 @@ export const correctionsRouter = Router();
 
 correctionsRouter.get('/complaints/:idOrNo/location-correction-options',async(req,res,next)=>{
  try{ok(res,await locationCorrectionOptions(String(req.params.idOrNo),ctxOf(req)));}catch(err){next(err);}
+});
+correctionsRouter.post('/complaints/:idOrNo/location-corrections/defer',async(req,res,next)=>{
+ try{ok(res,await deferLocationGroup({...req.body,complaintId:String(req.params.idOrNo)},ctxOf(req)));}catch(err){next(err);}
 });
 correctionsRouter.post('/complaints/:idOrNo/location-corrections',async(req,res,next)=>{
  try{ok(res,await confirmLocationGroup({...req.body,complaintId:String(req.params.idOrNo)},ctxOf(req)));}catch(err){next(err);}

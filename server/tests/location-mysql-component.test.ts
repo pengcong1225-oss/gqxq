@@ -53,6 +53,38 @@ test('C2 real SQL location-group component on explicitly declared legacy contrac
   };
   const save=(id:string,extra:any={},actor:any=ctx)=>runWithAccessContext(actor.access,()=>service.confirmLocationGroup(input(id,extra),actor,clock));
   const snapshot=async(id:string)=>({row:await db('complaint').where('complaint_id',id).first(),items:await db('correction_item').where('complaint_id',id).orderBy('id'),versions:await db('complaint_field_version').where('complaint_id',id).orderBy('id'),audits:await db('operation_audit_log').where({biz_id:id}).orderBy('id'),analysis:await db('analysis_record').where('complaint_id',id)});
+  await t.test('intake and import create pending reviews atomically; retries preserve completed manual decisions',async()=>{
+   const {intakeAppeal,importNewAppealInTx}=await import('../src/services/intakeService');const {withTransaction}=await import('../src/db/tx');
+   const command=(id:string)=>({sourceSystem:'synthetic',sourceId:id,channel:'test',title:'合成新诉求',content:'合成正文',address:'来源地址',districtCode:'D1',districtName:'合成区甲',longitude:null,latitude:null,explicitBusinessType:'water',explicitComplaintType:'other',explicitUrgencyLevel:null,sourceReportedAt:null,payload:{},payloadHash:'initial',warnings:[],remoteIp:null,requestId:null});
+   for(const imported of [false,true]){
+    const cmd=command(imported?'auto-import':'auto-intake');
+    const created=await runWithAccessContext(access,()=>imported?withTransaction(tx=>importNewAppealInTx(tx,cmd,new Date())):intakeAppeal(cmd));assert.ok(created);
+    const id=created.complaintId;const initial=await snapshot(id);assert.equal(initial.items.length,9);assert.ok(initial.items.every((i:any)=>i.status==='pending'));assert.equal(initial.analysis.length,0);assert.equal(json(initial.audits.find((a:any)=>a.action==='CORRECTION_GENERATE').detail).source,'intake');
+    await save(id,{longitude:null,latitude:null,coordinateSystem:null,coordinateSource:null,adminGridCode:null,communityCode:null});const confirmed=await snapshot(id);
+    await runWithAccessContext(access,()=>intakeAppeal(cmd));await runWithAccessContext(access,()=>intakeAppeal({...cmd,address:'重传地址',payloadHash:'changed'}));
+    const after=await snapshot(id);assert.equal(after.row.address,'人工地址B');assert.deepEqual(after.items,confirmed.items);
+   }
+  });
+  await t.test('defer leaves effective location and completed decisions intact, records reason and audit, and advances version',async()=>{
+   await seed('defer');await db('correction_item').where({complaint_id:'defer',field_name:'district_name'}).update({status:'confirmed',basis:'old',confirmer_name:'Old'});
+   const before=await snapshot('defer');const result=await runWithAccessContext(access,()=>service.deferLocationGroup({complaintId:'defer',expectedVersion:1,basis:'缺少现场依据'},ctx,clock));assert.equal(result.version,2);
+   const after=await snapshot('defer');for(const field of ['address','district_code','district_name','location_lng','location_lat','effective_field_state'])assert.deepEqual(after.row[field],before.row[field]);
+   assert.deepEqual(after.items.find((i:any)=>i.field_name==='district_name'),before.items.find((i:any)=>i.field_name==='district_name'));
+   for(const field of ['address','location_lng','location_lat']){const item=after.items.find((i:any)=>i.field_name===field);assert.equal(item.status,'pending');assert.equal(item.basis,'缺少现场依据');assert.equal(item.confirmer_id,null);assert.equal(item.confirmed_at,null);}
+   assert.equal(after.versions.length,0);assert.equal(after.analysis.length,0);assert.equal(after.audits.filter((a:any)=>a.action==='CORRECTION_LOCATION_DEFER').length,1);
+   for(const patch of [{expectedVersion:1},{basis:' '},{expectedVersion:'2'},{address:'bad'}])await assert.rejects(()=>service.deferLocationGroup({complaintId:'defer',expectedVersion:2,basis:'原因',...patch},ctx));
+   await assert.rejects(()=>service.deferLocationGroup({complaintId:'defer',expectedVersion:2,basis:'原因'},{...ctx,permissionCodes:[]}),{status:403});
+   await assert.rejects(()=>service.deferLocationGroup({complaintId:'defer',expectedVersion:2,basis:'原因'},{...ctx,access:{...access,rules:[]}}),{status:404});assert.deepEqual(await snapshot('defer'),after);
+   await db('correction_item').where({complaint_id:'defer'}).update({status:'confirmed'});await assert.rejects(()=>service.deferLocationGroup({complaintId:'defer',expectedVersion:2,basis:'原因'},ctx),(e:any)=>e.errorCode==='INVALID_STATE_TRANSITION');
+  });
+  await t.test('defer audit failure rolls back pending reasons and version; concurrent stale requests cannot overwrite reason',async()=>{
+   await seed('defer-rollback');const before=await snapshot('defer-rollback');
+   await db.raw("create trigger c2_fail_defer before insert on operation_audit_log for each row begin if new.action='CORRECTION_LOCATION_DEFER' then signal sqlstate '45000' set message_text='synthetic defer audit failure'; end if; end");
+   const defer=(basis:string)=>runWithAccessContext(access,()=>service.deferLocationGroup({complaintId:'defer-rollback',expectedVersion:1,basis},ctx,clock));
+   try{await assert.rejects(()=>defer('原因'),/synthetic defer audit failure/);}finally{await db.raw('drop trigger c2_fail_defer');}assert.deepEqual(await snapshot('defer-rollback'),before);
+   const outcomes=await Promise.allSettled([defer('原因甲'),defer('原因乙')]);assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);const rejected=outcomes.find(r=>r.status==='rejected') as PromiseRejectedResult;assert.equal(rejected.reason.status,409);
+   assert.equal((await snapshot('defer-rollback')).audits.length,1);
+  });
   await t.test('actual assignment and responsibility correction contention roll back C2 and recover',async()=>{
    for(const table of ['complaint_assignment','complaint_disposition'])await db.schema.dropTableIfExists(table);
    await require('../migrations/20260917100600__m6_g2_dispatch_and_assignment.js').up(db);
@@ -85,7 +117,7 @@ test('C2 real SQL location-group component on explicitly declared legacy contrac
    }
   });
   await t.test('one version settles the four related fields and protects complete group with proven coverage',async()=>{
-   await seed('atomic');const result=await save('atomic');assert.equal(result.version,2);assert.equal(result.validationDate,'2026-10-09');assert.equal(result.spatialStatus,'verified');assert.equal(result.analysisEntered,false);
+   await seed('atomic');const result=await save('atomic');assert.equal(result.version,2);assert.equal(result.validationDate,'2026-10-09');assert.equal(result.spatialStatus,'verified');assert.equal(result.analysisEntered,false);assert.match(result.analysisReason!,/待纠偏/);
    const after=await snapshot('atomic');assert.equal(after.row.address,'人工地址B');assert.equal(after.row.district_name,'合成区甲');assert.equal(after.row.admin_grid_code,'A1');assert.equal(after.row.community_code,'X1');assert.equal(after.row.location_coordinate_system,'WGS84');assert.equal(after.row.edit_version,2);assert.equal(after.items.filter((i:any)=>i.status==='confirmed').length,4);assert.equal(after.items.find((i:any)=>i.field_name==='summary').status,'pending');
    const state=json(after.row.effective_field_state);for(const name of ['district_code','district_name','address','location_lng','location_lat','admin_grid_code','community_code','location_coordinate_system','location_coordinate_source'])assert.equal(state[name].resolution,'confirmed');
    assert.deepEqual(result.coverageEvidence.map((e:any)=>[e.code,e.version]),[['G1','1']]);assert.equal(after.audits.filter((a:any)=>a.action==='CORRECTION_LOCATION_GROUP').length,1);
@@ -129,11 +161,15 @@ test('C2 real SQL location-group component on explicitly declared legacy contrac
   await t.test('direct API denies revoked custom role; legacy changed single address directs to atomic group',async()=>{
    await seed('api');const {correctionsRouter}=await import('../src/routes/corrections');const {enforceRolePolicy}=await import('../src/middleware/requireRole');const {errorHandler}=await import('../src/middleware/errorHandler');
    const app=express();app.use(express.json());app.use((req,_res,next)=>{req.user={id:'synthetic',username:'Synthetic',roles:['custom'],permissionCodes:req.headers['x-denied']?['complaint.read']:ctx.permissionCodes};req.accessContext=access;runWithAccessContext(access,()=>next());});app.use(enforceRolePolicy(),correctionsRouter,errorHandler);
+   assert.equal((await request(app).post('/complaints/api/location-corrections/defer').set('x-denied','yes').send({expectedVersion:1,basis:'无法核实'})).status,403);
+   assert.equal((await request(app).post('/complaints/LOCAL-api/location-corrections/defer').send({expectedVersion:1,basis:'无法核实'})).status,200);
+   assert.equal((await request(app).post('/complaints/api/location-corrections/defer').send({expectedVersion:1,basis:'无法核实'})).status,409);
    assert.equal((await request(app).post('/complaints/api/location-corrections').set('x-denied','yes').send(input('api'))).status,403);assert.equal((await request(app).get('/complaints/api/location-correction-options').set('x-denied','yes')).status,403);
-   assert.equal((await request(app).post('/corrections/api-address/confirm').send({expectedVersion:1,newValue:'separate change'})).status,400);assert.equal((await request(app).post('/complaints/api/location-corrections').send(input('api'))).status,200);
+   assert.equal((await request(app).post('/corrections/api-address/confirm').send({expectedVersion:2,newValue:'separate change'})).status,400);assert.equal((await request(app).post('/complaints/api/location-corrections').send(input('api',{expectedVersion:2}))).status,200);
   });
   await t.test('A6 links new group action to actual complaint scope and exposes only approved typed details',async()=>{
    await prepareFollowupAuditFixture(db);const {queryAuditLogs}=await import('../src/repositories/auditLogRepo');const {projectAuditLog}=await import('../src/services/auditQueryService');
+   const deferred=await queryAuditLogs(pool,{action:'CORRECTION_LOCATION_DEFER'},{page:1,size:100},scoped.access);assert.ok(deferred.total>0);const deferredAudit=projectAuditLog(deferred.content[0]);assert.ok(deferredAudit.detail.basis);assert.equal(deferredAudit.detail.analysisEntered,false);
    const rows=await queryAuditLogs(pool,{action:'CORRECTION_LOCATION_GROUP'},{page:1,size:100},scoped.access);assert.ok(rows.total>0);const row=rows.content.find((r:any)=>r.biz_id==='atomic')!;assert.equal(row.business_no,'LOCAL-atomic');const projected=projectAuditLog(row);assert.equal(projected.detail.validationDate,'2026-10-09');assert.ok(Array.isArray(projected.detail.changes));assert.equal(JSON.stringify(projected).includes('basisBefore'),false);
    await db('complaint').where('complaint_id','atomic').update({district_code:'D2'});const denied=await queryAuditLogs(pool,{action:'CORRECTION_LOCATION_GROUP',businessNo:'LOCAL-atomic'},{page:1,size:100},scoped.access);assert.equal(denied.total,0);await db('complaint').where('complaint_id','atomic').update({district_code:'D1'});
    await db('business_event').insert({event_id:'atomic',source_business_id:'hidden'});await db('operation_audit_log').insert({audit_id:'collision',biz_type:'business_event',biz_id:'atomic',action:'CORRECTION_LOCATION_GROUP',result:'success',created_at:new Date()});assert.equal((await queryAuditLogs(pool,{action:'CORRECTION_LOCATION_GROUP',businessNo:'LOCAL-atomic'},{page:1,size:100},scoped.access)).content.some((r:any)=>r.audit_id==='collision'),false);

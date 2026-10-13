@@ -29,7 +29,7 @@ const menuEntries: MenuEntry[] = [
   {key:'/master-data/imports',icon:<DatabaseOutlined/>,label:'导入批次',permission:'masterdata.import'},
   { key: '/dashboard', icon: <DashboardOutlined />, label: '数据概览', permission: 'dashboard.read' },
   { key: '/complaints', icon: <FileTextOutlined />, label: '诉求管理', permission: 'complaint.read' },
-  { key: '/address-correction', icon: <AuditOutlined />, label: '整体纠偏', permission: 'complaint.correct' },
+  { key: '/address-correction', icon: <AuditOutlined />, label: '诉求核验', permission: 'complaint.correct' },
   { key: '/analysis', icon: <BarChartOutlined />, label: '数据分析', permission: 'analysis.read' },
   { key: '/dispatch', icon: <WarningOutlined />, label: '敏感交办', permission: 'dispatch.read' },
   { key: '/dispatch/archive', icon: <FolderOpenOutlined />, label: '交办归档', permission: 'dispatch.read' },

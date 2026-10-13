@@ -7,18 +7,20 @@ class MemoryConnection {
   complaint: Record<string, unknown> | null = null;
   candidate: Record<string, unknown> | null = null;
   clues: Array<Record<string, unknown>> = [];
+  corrections: Array<Record<string, unknown>> = [];
   sequence = 0;
   candidateWrites = 0;
   clueWrites = 0;
   failCandidateWrite = false;
   failClueWriteAfterMutation = false;
-  snapshot: { complaint: Record<string, unknown> | null; candidate: Record<string, unknown> | null; clues: Array<Record<string, unknown>> } | null = null;
+  snapshot: { complaint: Record<string, unknown> | null; candidate: Record<string, unknown> | null; clues: Array<Record<string, unknown>>; corrections: Array<Record<string, unknown>> } | null = null;
 
   async beginTransaction(): Promise<void> {
     this.snapshot = {
       complaint: this.complaint ? { ...this.complaint } : null,
       candidate: this.candidate ? { ...this.candidate } : null,
       clues: this.clues.map((clue) => ({ ...clue })),
+      corrections: this.corrections.map(item => ({...item})),
     };
   }
 
@@ -29,6 +31,7 @@ class MemoryConnection {
       this.complaint = this.snapshot.complaint;
       this.candidate = this.snapshot.candidate;
       this.clues = this.snapshot.clues;
+      this.corrections = this.snapshot.corrections;
       this.snapshot = null;
     }
   }
@@ -41,6 +44,12 @@ class MemoryConnection {
       const row = this.complaint;
       return [row && row.source_system === values[0] && row.source_id === values[1] ? [{ ...row }] : [], []];
     }
+    if (sql.includes('from complaint where complaint_id = ? for update')) return [this.complaint ? [{...this.complaint}] : [], []];
+    if (sql.includes('from dispatch_order')) return [[], []];
+    if (sql.includes('from correction_item')) {
+      const items=this.corrections.filter(item=>item.complaintId===values[0]);
+      return [sql.includes('count(*)') ? [{total:items.length}] : items, []];
+    }
     if (sql.includes('from complaint_address_candidate')) return [this.candidate ? [{ ...this.candidate }] : [], []];
     if (sql.includes('from complaint_location_clue')) return [this.clues.map((clue) => ({ ...clue })), []];
     if (sql.includes('from dict_item')) return [[], []];
@@ -48,6 +57,10 @@ class MemoryConnection {
   }
 
   async execute(sql: string, values: unknown[] = []): Promise<unknown> {
+    if (sql.startsWith('insert into correction_item ')) {
+      this.corrections.push({correctionId:values[0],complaintId:values[1],assignmentId:values[2],fieldName:values[3],fieldLabel:values[4],oldValue:values[5],createdAt:values[6],status:'pending',newValue:null,basis:null});
+      return [{affectedRows:1},[]];
+    }
     if (sql.startsWith('insert into complaint (')) {
       const columns = sql.match(/insert into complaint \(([^)]+)\)/)?.[1].split(', ') ?? [];
       this.complaint = Object.fromEntries(columns.map((column, index) => [column, values[index]]));
