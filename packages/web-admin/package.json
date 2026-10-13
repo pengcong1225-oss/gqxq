@@ -8,7 +8,8 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:production": "node scripts/build-production.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
