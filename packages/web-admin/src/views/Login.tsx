@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Card, Alert } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Card, Alert, Tag, Typography } from 'antd';
+import { UserOutlined, LockOutlined, CustomerServiceOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { login as loginApi } from '../api/auth';
 import { useAppStore } from '../stores/appStore';
@@ -46,25 +46,47 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f0f2f5' }}>
-      <Card title="宜昌市供水燃气行业诉求分析平台" style={{ width: 400 }}>
-        {error !== null && (
-          <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />
-        )}
-        <Form onFinish={onFinish} disabled={submitting}>
-          <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
-            <Input prefix={<UserOutlined />} placeholder="用户名" size="large" autoComplete="username" />
-          </Form.Item>
-          <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password prefix={<LockOutlined />} placeholder="密码" size="large" autoComplete="current-password" />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" block size="large" loading={submitting}>
-              登录
-            </Button>
-          </Form.Item>
-        </Form>
-      </Card>
+    <div className="login-page">
+      <header className="login-brand">
+        <span className="brand-symbol"><CustomerServiceOutlined /></span>
+        <div>
+          <strong>宜昌市供水燃气行业诉求分析平台</strong>
+          <p>城镇供水 · 燃气服务 · 诉求管理</p>
+        </div>
+      </header>
+      <main className="login-main">
+        <section className="login-intro">
+          <Tag color="blue">供水燃气诉求管理</Tag>
+          <h1>诉求有回应<br />处置可追溯</h1>
+          <p>连接诉求接收、敏感交办与结果核验，<br />让每一条诉求的流转和分析有据可查。</p>
+          <div className="login-features">
+            <span><CheckCircleOutlined /> 诉求信息统一管理</span>
+            <span><CheckCircleOutlined /> 交办结果协同跟踪</span>
+            <span><CheckCircleOutlined /> 纠偏分析完整留痕</span>
+          </div>
+        </section>
+        <Card className="login-card" bordered={false}>
+          <Typography.Title level={3}>登录管理平台</Typography.Title>
+          <Typography.Text type="secondary">请使用已授权的账号登录</Typography.Text>
+          {error !== null && (
+            <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />
+          )}
+          <Form layout="vertical" requiredMark={false} onFinish={onFinish} disabled={submitting}>
+            <Form.Item name="username" label="账号" rules={[{ required: true, message: '请输入用户名' }]}>
+              <Input prefix={<UserOutlined />} placeholder="用户名" size="large" autoComplete="username" />
+            </Form.Item>
+            <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
+              <Input.Password prefix={<LockOutlined />} placeholder="密码" size="large" autoComplete="current-password" />
+            </Form.Item>
+            <Form.Item className="login-submit">
+              <Button type="primary" htmlType="submit" block size="large" loading={submitting}>
+                登录
+              </Button>
+            </Form.Item>
+          </Form>
+        </Card>
+      </main>
+      <footer className="login-footer">宜昌市供水燃气行业诉求分析平台</footer>
     </div>
   );
 };

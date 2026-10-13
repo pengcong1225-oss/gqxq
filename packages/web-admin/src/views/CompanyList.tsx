@@ -121,7 +121,7 @@ const CompanyList:React.FC=()=>{
  return <Card title="企业档案" extra={<Space><MasterDataImportDialog kinds={['enterprise','department_mapping','household']} onImported={()=>setReload(v=>v+1)}/>{write.can&&<Button type="primary" onClick={()=>void edit()}>新增企业</Button>}</Space>}>
 
   {error&&<Alert type="error" showIcon message={error} style={{marginBottom:16}}/>}
-  <Space style={{marginBottom:16}}><Input aria-label="企业搜索" value={search} onChange={e=>setSearch(e.target.value)} placeholder="登记编码或名称"/><Button onClick={()=>{setPage(1);setKeyword(search);}}>查询</Button><Button onClick={()=>setReload(v=>v+1)}>刷新</Button></Space>
+  <Space className="filter-bar" wrap><Input aria-label="企业搜索" value={search} onChange={e=>setSearch(e.target.value)} placeholder="登记编码或名称"/><Button onClick={()=>{setPage(1);setKeyword(search);}}>查询</Button><Button onClick={()=>setReload(v=>v+1)}>刷新</Button></Space>
   <Table<EnterpriseListItem> rowKey="enterpriseCode" dataSource={items} loading={loading} pagination={{current:page,pageSize:20,total,onChange:setPage}} locale={{emptyText:error?'查询失败':'当前范围暂无企业'}} columns={[
    {title:'登记编码',dataIndex:'enterpriseCode'},{title:'企业名称',dataIndex:'enterpriseName'},{title:'业务类型',dataIndex:'businessTypeName',render:(v,r)=>namedLabel(r.businessType,v,'business_type')},{title:'联系人',dataIndex:'contactPerson',render:v=>v??'—'},{title:'电话',dataIndex:'contactPhone',render:v=>v??'—'},
    {title:'状态',dataIndex:'status',render:v=><Tag color={v==='enabled'?'green':'default'}>{v==='enabled'?'启用':'停用'}</Tag>},

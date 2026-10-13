@@ -411,7 +411,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
     <>
     <Card>
 
-      <Space style={{ marginBottom: 16 }} wrap>
+      <Space className="filter-bar" wrap>
         <Input.Search
           placeholder="搜索诉求编号、标题或内容"
           prefix={<SearchOutlined />}
@@ -1076,7 +1076,7 @@ const DispatchOrders: React.FC = () => {
           )}
 
           <Card>
-            <Space style={{ marginBottom: 16 }} wrap>
+            <Space className="filter-bar" wrap>
               <Input.Search
                 placeholder="搜索交办单号/诉求编号/标题"
                 prefix={<SearchOutlined />}

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Avatar, Dropdown, Tag, theme } from 'antd';
+import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Layout, Menu, Button, Avatar, Breadcrumb, Dropdown, Tag } from 'antd';
 import { useAppStore } from '../stores/appStore';
 import { getUserInfo } from '../api/auth';
 import { useRoleLabel } from '../stores/roleAccess';
@@ -9,7 +9,7 @@ import {
   TeamOutlined, AppstoreOutlined, FireOutlined, PauseCircleOutlined,
   ToolOutlined, FilePdfOutlined, DatabaseOutlined, SettingOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined, LogoutOutlined, UserOutlined,
-  AuditOutlined, FolderOpenOutlined
+  AuditOutlined, FolderOpenOutlined, CustomerServiceOutlined, SafetyCertificateOutlined
 } from '@ant-design/icons';
 
 const NavigatePassword=()=>{const navigate=useNavigate();useEffect(()=>{navigate('/change-password',{replace:true});},[navigate]);return null;};
@@ -51,7 +51,6 @@ const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { token } = theme.useToken();
   const logout = useAppStore((s) => s.logout);
   const userInfo = useAppStore((s) => s.userInfo);
   const setUserInfo = useAppStore((s) => s.setUserInfo);
@@ -73,7 +72,10 @@ const MainLayout: React.FC = () => {
     return ()=>{cancelled=true;window.removeEventListener('focus',refreshIdentity);};
   }, [tokenValue,setUserInfo,location.pathname]);
 
-  const selectedKey = '/' + location.pathname.split('/').filter(Boolean).slice(0, 2).join('/');
+  const currentEntry = menuEntries
+    .filter(entry => location.pathname === entry.key || location.pathname.startsWith(entry.key + '/'))
+    .sort((a, b) => b.key.length - a.key.length)[0];
+  const selectedKey = currentEntry?.key;
 
   const menuItems = useMemo(
     () =>
@@ -89,22 +91,29 @@ const MainLayout: React.FC = () => {
   ];
 
   return (
-    <Layout style={{ height: '100vh' }}>
-      <Sider trigger={null} collapsible collapsed={collapsed} width={220}
-        style={{ background: token.colorBgContainer, borderRight: '1px solid #f0f0f0' }}>
-        <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          borderBottom: '1px solid #f0f0f0', fontWeight: 700, fontSize: collapsed ? 14 : 16, color: token.colorPrimary }}>
-          {collapsed ? '水燃' : '宜昌水燃诉求分析平台'}
-        </div>
-        <Menu mode="inline" selectedKeys={[selectedKey]} items={menuItems}
+    <Layout className="app-layout">
+      <Sider trigger={null} collapsible collapsed={collapsed} width={220} collapsedWidth={72}
+        theme="light" className="app-sider" breakpoint="lg" onBreakpoint={setCollapsed}>
+        <Link to="/dashboard" className="app-brand" aria-label="诉求平台首页">
+          <span className="brand-mark"><CustomerServiceOutlined /></span>
+          {!collapsed && <span>宜昌水燃诉求分析</span>}
+        </Link>
+        {!collapsed && <div className="nav-caption">业务工作台</div>}
+        <nav className="app-navigation" aria-label="业务导航">
+        <Menu mode="inline" selectedKeys={selectedKey ? [selectedKey] : []} items={menuItems}
           onClick={({ key }) => navigate(key)}
-          style={{ borderRight: 0, marginTop: 8 }} />
+        />
+        </nav>
+        {!collapsed && <div className="sider-footer"><SafetyCertificateOutlined /> 诉求 · 协同 · 分析</div>}
       </Sider>
-      <Layout>
-        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0', height: 64 }}>
+      <Layout className="main-layout">
+        <Header className="app-header">
+          <div className="header-left">
           <Button type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            aria-label={collapsed ? '展开导航' : '收起导航'}
             onClick={() => setCollapsed(!collapsed)} style={{ fontSize: 16 }} />
+          <Breadcrumb items={[{ title: '供水燃气诉求' }, { title: currentEntry?.label ?? '工作台' }]} />
+          </div>
           <Dropdown
             menu={{
               items: userMenuItems,
@@ -117,16 +126,20 @@ const MainLayout: React.FC = () => {
               },
             }}
           >
-            <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Avatar icon={<UserOutlined />} style={{ backgroundColor: token.colorPrimary }} />
+            <button type="button" className="user-menu" aria-label="账户菜单">
+              <Avatar size="small" icon={<UserOutlined />} />
               {/* 显示真实登录用户与档位：按钮为什么是灰的，这里给得出答案 */}
               <span>{userInfo !== null && userInfo !== undefined ? userInfo.realName : '未登录'}</span>
               <Tag color="blue">{roleLabel}</Tag>
-            </div>
+            </button>
           </Dropdown>
         </Header>
-        <Content style={{ margin: 16, padding: 24, background: '#fff', borderRadius: 8, overflow: 'auto' }}>
+        <Content className="workspace">
+          <div className="workspace-heading"><span>供水燃气行业诉求管理</span><span>业务管理端</span></div>
+          <section className="page-content" aria-label={currentEntry?.label ?? '工作台'}>
           {userInfo?.mustChangePassword ? <NavigatePassword/> : <Outlet />}
+          </section>
+          <footer className="workspace-footer">宜昌市供水燃气行业诉求分析平台</footer>
         </Content>
       </Layout>
     </Layout>

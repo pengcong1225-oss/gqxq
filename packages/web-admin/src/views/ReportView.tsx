@@ -109,7 +109,7 @@ const ReportView: React.FC = () => {
 
 
       <Card>
-        <Space style={{ marginBottom: 16 }} wrap>
+        <Space className="filter-bar" wrap>
           <Select
             placeholder="全部状态"
             allowClear

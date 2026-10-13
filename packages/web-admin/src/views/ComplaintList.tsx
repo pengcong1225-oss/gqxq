@@ -705,33 +705,33 @@ const ComplaintList: React.FC = () => {
 
       {sourceStatusAlert}
 
-      <Row gutter={12} style={{ marginBottom: 16 }}>
-        <Col span={4}>
+      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="总诉求" value={stats ? stats.total : '—'} loading={firstLoading} prefix={<FileTextOutlined />} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="未交办" value={stats ? stats.notDispatchedCount : '—'} loading={firstLoading} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="待匹配" value={stats ? stats.pendingMatchCount : '—'} loading={firstLoading} valueStyle={{ color: '#faad14' }} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="已交办" value={stats ? stats.activeDispatchCount : '—'} loading={firstLoading} prefix={<ClockCircleOutlined />} valueStyle={{ color: '#1677ff' }} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="敏感诉求" value={stats ? stats.sensitiveCount : '—'} loading={firstLoading} prefix={<WarningOutlined />} valueStyle={{ color: '#ff4d4f' }} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="本系统办结" value={stats ? stats.closedInSystemCount : '—'} loading={firstLoading} prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} />
           </Card>
@@ -739,7 +739,7 @@ const ComplaintList: React.FC = () => {
       </Row>
 
       <Card>
-        <Space style={{ marginBottom: 16 }} wrap>
+        <Space className="filter-bar" wrap>
           <Input.Search
             placeholder="搜索编号/来源公文号/标题/内容/地址"
             prefix={<SearchOutlined />}
