@@ -21,7 +21,43 @@ test('reports enforce detail gates and discard old actor/list responses',async()
 test('real create uses fixed template/query and explicit heat selection, no fake success',async()=>{
  const {default:Page}=await vite.ssrLoadModule('/src/views/FixedReportPanel.tsx');const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');useAppStore.setState({userInfo:{userId:'A',authorizationVersion:1,roles:['custom'],permissions:['report.read','report.generate','statistics.read','dashboard.read','complaint.read']}});
  const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');const original=client.defaults.adapter;let input:any;client.defaults.adapter=async(config:any)=>{if(config.method==='post'){input=JSON.parse(config.data);throw Error('合成限额：请缩小选择');}return {status:200,statusText:'OK',headers:{},config,data:{code:200,data:{content:[],hasMore:false,continuation:null}}};};
- const {render,within,waitFor,fireEvent,cleanup}=await import('@testing-library/react');const ui=render(<Page todoIds={['T1']}/>);try{
+ const {render,within,waitFor,fireEvent,cleanup}=await import('@testing-library/react');const ui=render(<Page todoIds={[]}/>);try{
   await waitFor(()=>assert.equal((within(ui.container).getByRole('button',{name:'生成报告草稿'}) as HTMLButtonElement).disabled,false));assert.equal(within(ui.container).queryByLabelText('包含热力数据'),null);fireEvent.click(within(ui.container).getByRole('button',{name:'生成报告草稿'}));await waitFor(()=>assert.ok(input));assert.equal(input.templateCode,'statistics-draft');assert.equal(input.templateVersion,'v1');assert.equal(input.query.dataset,'ledger');assert.equal(input.query.projection,'current');assert.deepEqual(input.todoIds,[]);assert.equal(input.includeHeat,false);await waitFor(()=>assert.match(ui.container.textContent??'',/请缩小选择/));assert.equal(ui.container.textContent?.includes('succeeded'),false);
+ }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
+});
+
+test('selected todos are never silently omitted and report filters have no inert apply button',async()=>{
+ const {default:Page}=await vite.ssrLoadModule('/src/views/FixedReportPanel.tsx');const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');useAppStore.setState({userInfo:{userId:'A',roles:['custom'],permissions:['report.read','report.generate','statistics.read','dashboard.read','analysis.read','complaint.read']}});
+ const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');const original=client.defaults.adapter;const inputs:any[]=[],completed:string[][]=[];let state='pending';client.defaults.adapter=async(config:any)=>{if(config.method==='post')inputs.push(JSON.parse(config.data));return {status:200,statusText:'OK',headers:{},config,data:{code:200,data:config.method==='post'?{reportId:'R1',state:'pending'}:{content:inputs.length?[{reportId:'R1',state,format:'docx'}]:[],hasMore:false,continuation:null}}};};
+ const {render,within,waitFor,fireEvent,act,cleanup}=await import('@testing-library/react');const ui=render(<Page todoIds={['T1']} onTodosCompleted={(ids:string[])=>completed.push(ids)}/>);try{
+ await waitFor(()=>assert.ok(within(ui.container).getByRole('button',{name:'生成报告草稿'})));assert.ok(!within(ui.container).queryByRole('button',{name:'应用统计筛选'}));
+ assert.equal((within(ui.container).getByRole('button',{name:'生成报告草稿'}) as HTMLButtonElement).disabled,true);assert.match(ui.container.textContent??'',/分析库/);
+ fireEvent.mouseDown(within(ui.container).getByRole('combobox',{name:'统计数据集'}));fireEvent.click(await within(document.body).findByText('已入分析库诉求',{selector:'.ant-select-item-option-content'}));
+ assert.equal((within(ui.container).getByRole('button',{name:'生成报告草稿'}) as HTMLButtonElement).disabled,true);
+ fireEvent.mouseDown(within(ui.container).getByRole('combobox',{name:'统计取值方式'}));fireEvent.click(await within(document.body).findByText('按最新信息统计',{selector:'.ant-select-item-option-content'}));
+ fireEvent.click(within(ui.container).getByRole('button',{name:'生成报告草稿'}));await waitFor(()=>assert.equal(inputs.length,1));assert.deepEqual(inputs[0].todoIds,['T1']);assert.equal(inputs[0].query.dataset,'analysis');await waitFor(()=>assert.match(ui.container.textContent??'',/R1/));assert.deepEqual(completed,[]);
+ ui.rerender(<Page todoIds={['T1','T2']} onTodosCompleted={(ids:string[])=>completed.push(ids)}/>);state='succeeded';fireEvent.click(within(ui.container).getByRole('button',{name:'刷新报告'}));await waitFor(()=>assert.deepEqual(completed,[['T1']]));fireEvent.click(within(ui.container).getByRole('button',{name:'刷新报告'}));await waitFor(()=>assert.equal((within(ui.container).getByRole('button',{name:'刷新报告'}) as HTMLButtonElement).disabled,false));assert.deepEqual(completed,[['T1']]);
+ await act(async()=>Simulate.change(within(ui.container).getByLabelText('开始日期'),{target:{value:'2099-01-01'}} as any));assert.equal((within(ui.container).getByRole('button',{name:'生成报告草稿'}) as HTMLButtonElement).disabled,true);
+ }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
+});
+
+test('report cursor pages allow returning to the previous page',async()=>{
+ const {default:Page}=await vite.ssrLoadModule('/src/views/FixedReportPanel.tsx');const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');useAppStore.setState({userInfo:{userId:'A',roles:['readonly'],permissions:['report.read','statistics.read','dashboard.read','complaint.read']}});
+ const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');const original=client.defaults.adapter;const cursors:any[]=[];client.defaults.adapter=async(config:any)=>{cursors.push(config.params?.continuation);return {status:200,statusText:'OK',headers:{},config,data:{code:200,data:{content:[{reportId:config.params?.continuation?'SECOND':'FIRST',state:'succeeded',format:'docx'}],hasMore:!config.params?.continuation,continuation:'page-2'}}};};
+ const {render,within,waitFor,fireEvent,cleanup}=await import('@testing-library/react');const ui=render(<Page todoIds={[]}/>);try{
+ await waitFor(()=>assert.match(ui.container.textContent??'',/FIRST/));fireEvent.click(within(ui.container).getByRole('button',{name:'下一页'}));await waitFor(()=>assert.match(ui.container.textContent??'',/SECOND/));fireEvent.click(within(ui.container).getByRole('button',{name:'上一页'}));await waitFor(()=>assert.match(ui.container.textContent??'',/FIRST/));assert.deepEqual(cursors,[undefined,'page-2',undefined]);
+ }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
+});
+
+
+
+
+test('report completion refreshes todos while preserving unrelated new selections',async()=>{
+ const {default:Page}=await vite.ssrLoadModule('/src/views/ReportView.tsx');const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');useAppStore.setState({token:'selection-test',userInfo:{userId:'A',roles:['custom'],permissions:['report.read','report.generate','statistics.read','dashboard.read','analysis.read','complaint.read']}});
+ const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');const original=client.defaults.adapter;let succeeded=false,todoReads=0;
+ client.defaults.adapter=async(config:any)=>{let data:any;if(config.url==='/report-todos'){todoReads++;data={content:['T1','T2'].map(todoId=>({todoId,complaintId:'C'+todoId,analysisId:'A'+todoId,status:succeeded&&todoId==='T1'?'done':'pending',reportId:succeeded&&todoId==='T1'?'R1':null})),total:2,page:1,size:10};}else data={content:[{reportId:'R1',state:succeeded?'succeeded':'pending',format:'docx'}],hasMore:false,continuation:null};return {status:200,statusText:'OK',headers:{},config,data:{code:200,data}};};
+ const {render,within,waitFor,fireEvent,cleanup}=await import('@testing-library/react');const ui=render(<MemoryRouter><Page/></MemoryRouter>);const checkbox=(id:string)=>ui.container.querySelector('tr[data-row-key="'+id+'"] input[type="checkbox"]') as HTMLInputElement;
+ try{await waitFor(()=>assert.ok(checkbox('T1')));fireEvent.click(checkbox('T1'));fireEvent.click(checkbox('T2'));assert.equal(checkbox('T2').checked,true);fireEvent.click(within(ui.container).getByRole('button',{name:'刷新待办'}));await waitFor(()=>assert.equal(todoReads,2));assert.equal(checkbox('T1').checked,true);assert.equal(checkbox('T2').checked,true);
+ succeeded=true;fireEvent.click(within(ui.container).getByRole('button',{name:'刷新报告'}));await waitFor(()=>assert.equal(checkbox('T1').disabled,true));assert.equal(checkbox('T1').checked,false);assert.equal(checkbox('T2').checked,true);assert.equal(todoReads,3);fireEvent.click(within(ui.container).getByRole('button',{name:'刷新报告'}));await waitFor(()=>assert.equal((within(ui.container).getByRole('button',{name:'刷新报告'}) as HTMLButtonElement).disabled,false));assert.equal(todoReads,3);
  }finally{ui.unmount();cleanup();client.defaults.adapter=original;}
 });

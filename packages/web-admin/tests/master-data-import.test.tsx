@@ -44,3 +44,18 @@ test('B4 batch UI follows server continuation through empty and partial authoriz
  }
  client.defaults.adapter=original;
 });
+
+test('failed batch details show the actual failure reason and never offer commit', async()=>{
+ const {default:View}=await vite.ssrLoadModule('/src/views/ImportBatchList.tsx');
+ const {default:client}=await vite.ssrLoadModule('/src/api/request.ts');
+ const {useAppStore}=await vite.ssrLoadModule('/src/stores/appStore.ts');
+ useAppStore.setState({userInfo:{roles:['custom'],permissions:['masterdata.import','enterprise.manage'],mustChangePassword:false}});
+ const batch={kind:'enterprise',preview:{batchId:'FAILED',canCommit:false},result:{state:'failed',created:0,updated:0,unchanged:0,failureReason:'企业编码重复，请核对第3行'},details:[],page:1,size:20,total:0};
+ const original=client.defaults.adapter;
+ client.defaults.adapter=async(config:any)=>({status:200,statusText:'OK',headers:{},config,data:{code:200,data:config.url==='/master-data/imports'?{content:[batch],hasMore:false,continuation:null}:batch}});
+ const testing=await import('@testing-library/react');const ui=testing.render(<View/>);
+ try {await testing.waitFor(()=>assert.ok(ui.getByRole('button',{name:'批次详情'})));testing.fireEvent.click(ui.getByRole('button',{name:'批次详情'}));
+ await testing.waitFor(()=>assert.ok(testing.within(document.body).getByText('企业编码重复，请核对第3行')));
+ assert.equal(testing.within(document.body).queryByRole('button',{name:'确认整批导入'}),null);
+ }finally {ui.unmount();testing.cleanup();client.defaults.adapter=original;}
+});

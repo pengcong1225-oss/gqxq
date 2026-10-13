@@ -69,3 +69,10 @@ test('import navigation still requires an authorized target domain', async () =>
   const allowed = await shell('/master-data/imports', ['masterdata.import', 'enterprise.manage']);
   assert.equal(allowed.querySelector('.ant-menu-item-selected')?.textContent, '导入批次');
 });
+
+test('unconnected demo modules do not appear as business menu entries', async () => {
+  const doc = await shell('/dashboard', ['dashboard.read', 'shutdown.read', 'pipeline.read']);
+  assert.equal(doc.querySelectorAll('[role="menuitem"]').length, 1);
+  assert.equal(doc.querySelector('.ant-menu-item-selected')?.textContent, '数据概览');
+  assert.doesNotMatch(doc.querySelector('nav')?.textContent ?? '', /停供管理|管道施工/);
+});

@@ -472,7 +472,7 @@ const ComplaintDetail: React.FC = () => {
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/complaints')}>
         返回列表
       </Button>
-      <Tooltip title="从宜接就办同步该诉求的来源处置状态（只读）。适配器未启用时会如实返回未实现，不会展示模拟进度。">
+      <Tooltip title="查询宜接就办最新处置状态。来源对接未开通时暂不可用。">
         <Button disabled={!sourceAccess.can} loading={sourceSyncing} onClick={() => void handleSyncSource()}>
           同步来源状态
         </Button>
@@ -841,13 +841,6 @@ const ComplaintDetail: React.FC = () => {
 
             <Divider />
             <Space wrap>
-              <Tooltip title="暂不可用">
-                <span>
-                  <Button type="primary" size="small" icon={<CheckCircleOutlined />} disabled>
-                    标记办结
-                  </Button>
-                </span>
-              </Tooltip>
               {activeDispatchId !== null ? (
                 <Tooltip title="已有进行中交办；同一诉求同一轮只能有一条有效交办">
                   <span>
@@ -942,9 +935,7 @@ const ComplaintDetail: React.FC = () => {
                 </Tooltip>
               </Descriptions.Item>
             </Descriptions>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              「—」表示所需数据尚未接入：接收耗时 = 系统接收时间 − 来源上报时间。
-            </Typography.Text>
+
           </Card>
         </Col>
       </Row>

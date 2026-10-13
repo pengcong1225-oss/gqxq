@@ -6,8 +6,8 @@ import { getUserInfo } from '../api/auth';
 import { useRoleLabel } from '../stores/roleAccess';
 import {
   DashboardOutlined, FileTextOutlined, BarChartOutlined, WarningOutlined,
-  TeamOutlined, AppstoreOutlined, FireOutlined, PauseCircleOutlined,
-  ToolOutlined, FilePdfOutlined, DatabaseOutlined, SettingOutlined,
+  TeamOutlined, AppstoreOutlined, FireOutlined,
+  FilePdfOutlined, DatabaseOutlined, SettingOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined, LogoutOutlined, UserOutlined,
   AuditOutlined, FolderOpenOutlined, CustomerServiceOutlined, SafetyCertificateOutlined
 } from '@ant-design/icons';
@@ -27,7 +27,7 @@ interface MenuEntry {
  * the server always independently validates access. */
 const menuEntries: MenuEntry[] = [
   {key:'/master-data/imports',icon:<DatabaseOutlined/>,label:'导入批次',permission:'masterdata.import'},
-  { key: '/dashboard', icon: <DashboardOutlined />, label: '数据大屏', permission: 'dashboard.read' },
+  { key: '/dashboard', icon: <DashboardOutlined />, label: '数据概览', permission: 'dashboard.read' },
   { key: '/complaints', icon: <FileTextOutlined />, label: '诉求管理', permission: 'complaint.read' },
   { key: '/address-correction', icon: <AuditOutlined />, label: '整体纠偏', permission: 'complaint.correct' },
   { key: '/analysis', icon: <BarChartOutlined />, label: '数据分析', permission: 'analysis.read' },
@@ -37,8 +37,6 @@ const menuEntries: MenuEntry[] = [
   { key: '/grids', icon: <AppstoreOutlined />, label: '网格管理', permission: 'grid.read' },
   {key:'/heat-rules',icon:<FireOutlined/>,label:'五档热力规则',permission:'heatmap.manage'},
   { key: '/heatmap', icon: <FireOutlined />, label: '热力图', permission: 'heatmap.read' },
-  { key: '/shutdowns', icon: <PauseCircleOutlined />, label: '停供管理', permission: 'shutdown.read' },
-  { key: '/pipelines', icon: <ToolOutlined />, label: '管道施工', permission: 'pipeline.read' },
   { key: '/reports', icon: <FilePdfOutlined />, label: '分析报告', permission: 'report.read' },
   { key: '/dicts', icon: <DatabaseOutlined />, label: '字典管理', permission: 'system.dict.manage' },
   { key: '/system/users', icon: <SettingOutlined />, label: '账号管理', permission: 'system.users.manage' },
@@ -77,16 +75,23 @@ const MainLayout: React.FC = () => {
     .sort((a, b) => b.key.length - a.key.length)[0];
   const selectedKey = currentEntry?.key;
 
-  const menuItems = useMemo(
-    () =>
-      menuEntries
-        .filter(e=>permissions.includes(e.permission)&&!userInfo?.mustChangePassword&&(e.key!=='/master-data/imports'||['enterprise.manage','grid.manage','system.dict.manage'].some(code=>permissions.includes(code))))
-        .map(({ key, icon, label }) => ({ key, icon, label })),
-    [permissions,userInfo]
-  );
+  const menuItems = useMemo(() => {
+    const available = menuEntries.filter(e => permissions.includes(e.permission) && !userInfo?.mustChangePassword &&
+      (e.key !== '/master-data/imports' || ['enterprise.manage', 'grid.manage', 'system.dict.manage'].some(code => permissions.includes(code))));
+    const groups = [
+      { label: '诉求办理', keys: ['/complaints', '/dispatch', '/address-correction', '/dispatch/archive'] },
+      { label: '统计与报告', keys: ['/dashboard', '/analysis', '/heatmap', '/reports'] },
+      { label: '基础资料', keys: ['/companies', '/grids', '/heat-rules', '/master-data/imports', '/dicts'] },
+      { label: '系统管理', keys: ['/system/users', '/system/roles', '/system/audit-logs'] },
+    ];
+    const visible = groups.map(group => ({ key: group.label, type: 'group' as const, label: group.label,
+      children: group.keys.flatMap(key => available.filter(entry => entry.key === key).map(({key, icon, label}) => ({key, icon, label})))
+    })).filter(group => group.children.length);
+    return collapsed ? visible.flatMap(group => group.children) : visible;
+  }, [permissions, userInfo, collapsed]);
 
   const userMenuItems = [
-    { key: 'password', icon: <UserOutlined />, label: '修改口令' },
+    { key: 'password', icon: <UserOutlined />, label: '修改密码' },
     { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true },
   ];
 
@@ -114,7 +119,7 @@ const MainLayout: React.FC = () => {
             onClick={() => setCollapsed(!collapsed)} style={{ fontSize: 16 }} />
           <Breadcrumb items={[{ title: '供水燃气诉求' }, { title: currentEntry?.label ?? '工作台' }]} />
           </div>
-          <Dropdown
+          <Dropdown trigger={['click']}
             menu={{
               items: userMenuItems,
               onClick: ({ key }) => {

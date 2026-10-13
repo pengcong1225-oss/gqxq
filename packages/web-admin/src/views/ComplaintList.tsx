@@ -1,3 +1,4 @@
+import { downloadCsv } from '../utils/csvExport';
 import {namedLabel,sourceLabel} from '../utils/chineseDisplay';
 import {useWriteAccess} from '../stores/roleAccess';
 import ComplaintImportDialog from '../components/ComplaintImportDialog';
@@ -258,7 +259,7 @@ const ComplaintList: React.FC = () => {
   const stats = data?.stats;
   const firstLoading = loading && data === null;
 
-  /* ---------- G2：发起交办 / 归库（匹配单位已收敛进纠偏入口，见 AddressCorrection） ---------- */
+  /* ---------- G2：发起交办 / 不交办处理（匹配单位已收敛进纠偏入口，见 AddressCorrection） ---------- */
   const [dispatchTarget, setDispatchTarget] = useState<ComplaintListItem | null>(null);
   const [dispositionTarget, setDispositionTarget] = useState<{
     row: ComplaintListItem;
@@ -466,13 +467,13 @@ const ComplaintList: React.FC = () => {
         reason: values.reason.trim(),
       });
       message.success(
-        target.kind === 'false_positive' ? '已按误报归库' : '已按无需交办归库'
+        target.kind === 'false_positive' ? '已按标记误报' : '已按无需交办'
       );
       setDispositionTarget(null);
       dispositionForm.resetFields();
       reload();
     } catch (err) {
-      message.error('归库失败：' + ((err as ApiError)?.message ?? '未知错误'));
+      message.error('不交办处理失败：' + ((err as ApiError)?.message ?? '未知错误'));
     } finally {
       setSubmitting(false);
     }
@@ -622,7 +623,7 @@ const ComplaintList: React.FC = () => {
               详情
             </Button>
             {/* 责任单位不再在这里改：2026-09-20 裁定「匹配责任单位」收敛进纠偏入口，
-                总账只留详情 / 交办 / 归库——enterprise_code 与 enterprise_name 由纠偏成对写回。 */}
+                总账只留详情 / 交办 / 不交办处理——enterprise_code 与 enterprise_name 由纠偏成对写回。 */}
             {r.activeDispatchId ? (
               // 已有进行中交办：不再提供第二次交办，只能查看
               <Button
@@ -656,11 +657,11 @@ const ComplaintList: React.FC = () => {
               </Button>
             )}
             {r.activeDispatchId ? (
-              // 后端状态机要求：有进行中交办时归库会被拒（409 INVALID_STATE_TRANSITION）
-              <Tooltip title="该诉求已有进行中交办，请先到「敏感交办」受控撤销后再归库">
+              // 后端状态机要求：有进行中交办时不交办处理会被拒（409 INVALID_STATE_TRANSITION）
+              <Tooltip title="该诉求已有进行中交办，请先到「敏感交办」受控撤销后再不交办处理">
                 <span>
                   <Button type="link" size="small" icon={<InboxOutlined />} disabled>
-                    归库
+                    不交办处理
                   </Button>
                 </span>
               </Tooltip>
@@ -668,8 +669,8 @@ const ComplaintList: React.FC = () => {
               <Dropdown
                 menu={{
                   items: [
-                    { key: 'no_dispatch_needed', label: '无需交办归库' },
-                    { key: 'false_positive', label: '误报归库' },
+                    { key: 'no_dispatch_needed', label: '无需交办' },
+                    { key: 'false_positive', label: '标记误报' },
                   ],
                   onClick: ({ key }) => {
                     dispositionForm.resetFields();
@@ -678,7 +679,7 @@ const ComplaintList: React.FC = () => {
                 }}
               >
                 <Button type="link" size="small" icon={<InboxOutlined />} disabled={!dispositionAccess.can}>
-                  归库
+                  不交办处理
                 </Button>
               </Dropdown>
             )}
@@ -836,10 +837,13 @@ const ComplaintList: React.FC = () => {
               applyFilter({ range: next });
             }}
           />
-          <Tooltip title="暂不可用">
-            <Button icon={<ExportOutlined />} disabled>
-              导出Excel
-            </Button>
+          <Tooltip title="导出当前页已加载的诉求，可用 Excel 打开">
+            <Button icon={<ExportOutlined />} disabled={loading || !!error || !data?.content.length}
+              onClick={() => downloadCsv([
+                ['诉求编号','诉求标题','业务类型','诉求类别','所属区县','交办单位','敏感诉求','纠偏状态','受理时间'],
+                ...(data?.content ?? []).map(row => [row.complaintNo,row.title,row.businessTypeName,row.complaintTypeName,
+                  row.districtName,row.enterpriseName,row.isSensitive?'是':'否',row.correctionStatusName,row.receivedAt])
+              ], '诉求列表-本页.csv')}>导出本页</Button>
           </Tooltip>
           <ComplaintImportDialog onImported={reload}/>
         </Space>
@@ -957,13 +961,13 @@ const ComplaintList: React.FC = () => {
         </Form>
       </Modal>
 
-      {/* ---------- G2：归库（无需交办 / 误报） ---------- */}
+      {/* ---------- G2：不交办处理（无需交办 / 误报） ---------- */}
       <Modal
         title={
           dispositionTarget
-            ? (dispositionTarget.kind === 'false_positive' ? '误报归库 - ' : '无需交办归库 - ') +
+            ? (dispositionTarget.kind === 'false_positive' ? '标记误报 - ' : '无需交办 - ') +
               dispositionTarget.row.complaintNo
-            : '归库'
+            : '不交办处理'
         }
         open={dispositionTarget !== null}
         onCancel={() => {
@@ -972,7 +976,7 @@ const ComplaintList: React.FC = () => {
         }}
         okButtonProps={{disabled:!dispositionAccess.can}} onOk={() => void handleDisposition()}
         confirmLoading={submitting}
-        okText="确认归库"
+        okText="确认不交办处理"
         width={520}
       >
         <Alert
@@ -981,16 +985,16 @@ const ComplaintList: React.FC = () => {
           style={{ marginBottom: 12 }}
           message={
             dispositionTarget?.kind === 'false_positive'
-              ? '误报归库会取消该诉求的敏感标记'
-              : '无需交办归库不产生交办记录'
+              ? '标记误报会取消该诉求的敏感标记'
+              : '无需交办不产生交办记录'
           }
-          description="两种归库都会写入留痕（操作者、时间、原因），都不产生交办、不推送企业。此操作不可撤销，如需交办请重新发起。"
+          description="处理后仍保留在诉求总账，不会直接进入分析库，也不会推送企业。系统会记录处理人、时间和原因；后续需要交办时可重新发起。"
         />
         <Form form={dispositionForm} layout="vertical">
           <Form.Item
             name="reason"
-            label="归库原因"
-            rules={[{ required: true, message: '必须填写归库原因' }]}
+            label="不交办处理原因"
+            rules={[{ required: true, message: '必须填写不交办处理原因' }]}
           >
             <Input.TextArea rows={3} placeholder="例如：经人工复核为一般咨询，无需交办" />
           </Form.Item>

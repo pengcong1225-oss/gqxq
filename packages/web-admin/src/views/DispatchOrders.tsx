@@ -903,20 +903,8 @@ const DispatchOrders: React.FC = () => {
                   </span>
                 </Tooltip>
               )}
-              <Tooltip title="审批进度自动更新，可在详情中查看">
-                <span>
-                  <Button type="link" size="small" disabled>
-                    同步
-                  </Button>
-                </span>
-              </Tooltip>
-              <Tooltip title="暂不可用">
-                <span>
-                  <Button type="link" size="small" disabled>
-                    归档
-                  </Button>
-                </span>
-              </Tooltip>
+              <Button type="link" size="small" onClick={() => void openDetail(r.assignmentId)}>查看进度</Button>
+              <Button type="link" size="small" onClick={() => navigate('/dispatch/archive')}>前往归档</Button>
               {terminal ? (
                 <Tooltip title={'已是终态（' + r.statusName + '），不可撤销'}>
                   <span>
@@ -1342,7 +1330,7 @@ const DispatchOrders: React.FC = () => {
                 disabled={!pushAccess.can} loading={pushBusyId === pushOutcome.order.assignmentId}
                 onClick={() => void handlePush(pushOutcome.order, true)}
               >
-                重试（同一请求号、同一报文、新 nonce）
+                重试推送
               </Button>
             )}
             {pushOutcome?.kind === 'result' && pushOutcome.result.retryable && (
@@ -1351,7 +1339,7 @@ const DispatchOrders: React.FC = () => {
                 disabled={!pushAccess.can} loading={pushBusyId === pushOutcome.order.assignmentId}
                 onClick={() => void handlePush(pushOutcome.order, true)}
               >
-                重推（同一请求号、同一报文、新 nonce）
+                重新推送
               </Button>
             )}
           </Space>

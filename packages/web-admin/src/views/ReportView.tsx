@@ -39,8 +39,8 @@ function fmt(iso: string | null): React.ReactNode {
 
 const ReportView: React.FC = () => {
   const navigate = useNavigate();
-  const user=useAppStore(s=>s.userInfo),generate=useWriteAccess('report.generate');
-  const authKey=JSON.stringify([user?.userId,user?.authorizationVersion,user?.roles,user?.permissions,user?.mustChangePassword]);
+  const user=useAppStore(s=>s.userInfo),token=useAppStore(s=>s.token),generate=useWriteAccess('report.generate');
+  const authKey=JSON.stringify([token,user?.userId,user?.authorizationVersion,user?.roles,user?.permissions,user?.mustChangePassword]);
   const canTodos=Boolean(user&&!user.mustChangePassword&&['report.read','analysis.read','complaint.read'].every(c=>user.permissions.includes(c)));
   const [selectedTodoIds,setSelectedTodoIds]=useState<string[]>([]);
 
@@ -53,6 +53,7 @@ const ReportView: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [firstLoaded, setFirstLoaded] = useState(false);
   const seqRef = useRef(0);
+  const currentAuth=useRef(authKey);currentAuth.current=authKey;
 
   /**
    * 优先使用服务端中文名称，缺项时使用中文状态兜底。
@@ -67,9 +68,11 @@ const ReportView: React.FC = () => {
       setLoadError(null);
       try {
         const res = await listReportTodos({ status: s, page: p, size: n });
-        if (seq !== seqRef.current) return;
+        if (seq !== seqRef.current||currentAuth.current!==authKey) return;
         setRows(res.content);
-        setSelectedTodoIds([]);
+        const completed=new Set(res.content.filter(row=>row.status==='done').map(row=>row.todoId));
+        setSelectedTodoIds(current=>current.filter(id=>!completed.has(id)));
+
         setTotal(res.total);
         setObservedLabels((prev) => {
           const next = { ...prev };
@@ -79,12 +82,12 @@ const ReportView: React.FC = () => {
           return next;
         });
       } catch (err) {
-        if (seq !== seqRef.current) return;
+        if (seq !== seqRef.current||currentAuth.current!==authKey) return;
         setLoadError(errText(err));
         setRows([]);
         setTotal(0);
       } finally {
-        if (seq === seqRef.current) {
+        if (seq === seqRef.current&&currentAuth.current===authKey) {
           setLoading(false);
           setFirstLoaded(true);
         }
@@ -94,16 +97,17 @@ const ReportView: React.FC = () => {
   );
 
   useEffect(() => {
-    seqRef.current++;setRows([]);setTotal(0);setSelectedTodoIds([]);setLoadError(null);
+    seqRef.current++;setRows([]);setTotal(0);setLoadError(null);
     if(canTodos)void load(status, page, size);
     return()=>{seqRef.current++;};
   }, [load, status, page, size,canTodos]);
 
+  useEffect(()=>{setSelectedTodoIds([]);},[authKey]);
   const label = (code: ReportTodoStatus): string => namedLabel(code,observedLabels[code],'report_todo_status');
 
   return (
     <div>
-      <FixedReportPanel todoIds={selectedTodoIds}/>
+      <FixedReportPanel todoIds={selectedTodoIds} onTodosCompleted={ids=>{setSelectedTodoIds(current=>current.filter(id=>!ids.includes(id)));if(canTodos)void load(status,page,size);}}/>
       {canTodos&&<>
       <h2 style={{ marginBottom: 8 }}>待查报告待办</h2>
 
@@ -121,7 +125,7 @@ const ReportView: React.FC = () => {
             }}
             options={STATUS_CODES.map((code) => ({ value: code, label: label(code) }))}
           />
-          <Button icon={<ReloadOutlined />} onClick={() => void load(status, page, size)}>
+          <Button aria-label="刷新待办" icon={<ReloadOutlined />} onClick={() => void load(status, page, size)}>
             刷新
           </Button>
           <span style={{ color: '#8c8c8c' }}>
@@ -142,7 +146,7 @@ const ReportView: React.FC = () => {
           />
         ) : (
           <Table<ReportTodoItem>
-            rowSelection={generate.can?{selectedRowKeys:selectedTodoIds,onChange:keys=>setSelectedTodoIds(keys.map(String))}:undefined}
+            rowSelection={generate.can?{preserveSelectedRowKeys:true,selectedRowKeys:selectedTodoIds,onChange:keys=>setSelectedTodoIds(keys.map(String)),getCheckboxProps:r=>({disabled:r.status==='done'})}:undefined}
             rowKey="todoId"
             size="middle"
             loading={loading}

@@ -1,6 +1,7 @@
 import {namedLabel,chineseLabel} from '../utils/chineseDisplay';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Drawer, Empty, Input, Result, Space, Table } from 'antd';
+import { Alert, Button, Card, Collapse, Descriptions, Drawer, Empty, Input, Result, Select, Space, Table, Typography } from 'antd';
+import {useStatisticsOptions,statisticsFieldStyle} from './StatisticsFilters';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../stores/appStore';
 import { listAnalysisRecords, getAnalysisRecord, type AnalysisRecordParams, type AnalysisRecordDetail } from '../api/analysis';
@@ -10,6 +11,7 @@ const display = (value: string | null | undefined) => value ?? '—';
 /** Legacy membership browser: stored entry fields, server filters/order, no dates. */
 export default function AnalysisRecordBrowser() {
     const user = useAppStore(s => s.userInfo), token = useAppStore(s => s.token), navigate = useNavigate();
+    const options = useStatisticsOptions(false);
     const canRead = Boolean(user && !user.mustChangePassword && user.permissions.includes('analysis.read'));
     const actorKey = JSON.stringify([token, user?.userId, user?.authorizationVersion, user?.roles, user?.permissions, user?.mustChangePassword]);
     const [draft, setDraft] = useState({ districtCode: '', businessType: '', enterpriseCode: '' }), [filters, setFilters] = useState<AnalysisRecordParams>({});
@@ -79,9 +81,15 @@ export default function AnalysisRecordBrowser() {
         return <Result status="403" title="当前账号无分析入库记录查询权限"/>;
     return <Card title="入库记录浏览">
 
-  <Space wrap style={{ margin: '16px 0' }}>{(['districtCode', 'businessType', 'enterpriseCode'] as const).map((field, i) => <label key={field}>{['入库区域编码', '入库业务类型', '入库企业编码'][i]}{field==='businessType'?<select aria-label="入库业务类型" multiple value={draft.businessType?draft.businessType.split(','):[]} onChange={event=>setDraft({...draft,businessType:Array.from(event.target.selectedOptions).map(option=>option.value).join(',')})}>{['water','gas','lpg'].map(code=><option key={code} value={code}>{chineseLabel(code,'business_type')}</option>)}</select>:<Input aria-label={['入库区域编码', '入库业务类型', '入库企业编码'][i]} value={draft[field]} onChange={event => setDraft({ ...draft, [field]: event.target.value })}/>}</label>)}
-   <Button onClick={() => { setPage(1); setFilters({ districtCode: draft.districtCode.trim() || undefined, businessType: (draft.businessType.trim() || undefined) as BusinessType | undefined, enterpriseCode: draft.enterpriseCode.trim() || undefined }); }}>应用入库筛选</Button><Button onClick={() => setRefresh(value => value + 1)}>刷新记录</Button>
+  <Typography.Paragraph type="secondary">显示入库时保存的记录，包括未留存日期的历史记录；此列表不按日期统计，也不计算同比、环比。企业和区县选项来自现行名录，历史记录仍保留原有名称。</Typography.Paragraph>
+  <Space wrap align="end" style={{ margin: '16px 0' }}>
+   <label style={statisticsFieldStyle}>入库时所属区县<Select aria-label="入库时所属区县" showSearch optionFilterProp="label" allowClear placeholder="全部" value={draft.districtCode||undefined} options={options.districts} onChange={value=>setDraft({...draft,districtCode:value??''})}/></label>
+   <label style={{...statisticsFieldStyle,minWidth:220}}>入库业务类型<Select aria-label="入库业务类型" mode="multiple" allowClear placeholder="全部，可多选" value={draft.businessType?draft.businessType.split(','):[]} onChange={values=>setDraft({...draft,businessType:values.join(',')})} options={['water','gas','lpg'].map(code=>({value:code,label:chineseLabel(code,'business_type')}))}/></label>
+   <label style={{...statisticsFieldStyle,minWidth:260}}>入库时责任企业<Select aria-label="入库时责任企业" showSearch filterOption={false} onSearch={options.searchEnterprise} allowClear placeholder="全部，可搜索名称" value={draft.enterpriseCode||undefined} options={options.enterprises} onChange={value=>setDraft({...draft,enterpriseCode:value??''})}/></label>
+   <Button type="primary" onClick={() => { setPage(1); setFilters({ districtCode: draft.districtCode || undefined, businessType: (draft.businessType || undefined) as BusinessType | undefined, enterpriseCode: draft.enterpriseCode || undefined }); }}>应用入库筛选</Button><Button onClick={()=>{setDraft({districtCode:'',businessType:'',enterpriseCode:''});setFilters({});setPage(1);}}>重置入库筛选</Button><Button onClick={() => setRefresh(value => value + 1)}>刷新记录</Button>
   </Space>
+  <Collapse ghost items={[{key:'codes',label:'按已知编码筛选入库记录',children:<><Typography.Paragraph type="secondary">历史企业或区县不在现行名录时，可输入入库时的真实编码；结果仍按当前账号的数据权限展示。</Typography.Paragraph><Space wrap>{(['districtCode','enterpriseCode'] as const).map((field,i)=><label key={field} style={statisticsFieldStyle}>{['入库区县编码','入库企业编码'][i]}<Input aria-label={['入库区县编码','入库企业编码'][i]} maxLength={64} value={draft[field]} placeholder="可选，输入已知编码" onChange={e=>setDraft({...draft,[field]:e.target.value.trim()})}/></label>)}</Space></>}]} />
+  {options.errors.length>0&&<Alert type="warning" showIcon message="部分筛选选项不可用" description={options.errors.join(' ')} action={<Button onClick={options.retry}>重试选项</Button>}/>}
   {error && <Alert type="error" message="入库记录加载失败" description={error} action={<Button onClick={() => setRefresh(value => value + 1)}>重试</Button>}/>}
   <Table<AnalysisRecordItem> rowKey="analysisId" loading={loading} dataSource={data?.content ?? []} locale={{ emptyText: <Empty description="当前筛选条件下暂无入库记录"/> }} pagination={{ current: page, pageSize: size, total: data?.total ?? 0, showSizeChanger: true, onChange: (p, n) => { setPage(p); setSize(n); } }} scroll={{ x: 1100 }} columns={[
             { title: '诉求', dataIndex: 'complaintId', render: (value: string) => user?.permissions.includes('complaint.read') ? <Button type="link" onClick={() => navigate('/complaints/' + encodeURIComponent(value))}>{value}</Button> : value },
