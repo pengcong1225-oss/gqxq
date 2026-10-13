@@ -48,3 +48,40 @@ for(const clearBeforeReverse of [false,true])test('map reverse suggestion never 
  try{await waitFor(()=>assert.ok(click));await act(async()=>click({lnglat:{getLng:()=>111,getLat:()=>30}}));assert.equal(writes,1);if(clearBeforeReverse)ui.rerender(<Harness cleared/>);await act(async()=>{resolve({ok:true,json:async()=>({result:{formatted_address:'合成反查地址'}})});await pending;});assert.equal(writes,1);if(clearBeforeReverse)assert.equal(within(document.body).queryByText(/合成反查地址/),null);else await waitFor(()=>assert.ok(within(document.body).getByText(/合成反查地址/)));}
  finally{ui.unmount();cleanup();globalThis.fetch=originalFetch;delete (window as any).T;await mapVite.close();}
 });
+
+test('existing map address and changed address automatically resolve district and community parents',async()=>{
+ const {default:request}=await vite.ssrLoadModule('/src/api/request.ts'),old=request.defaults.adapter;
+ const writes:any[]=[];
+ const options={districts:[{code:'420504',name:'点军区'},{code:'D1',name:'甲区'}],adminGrids:[{code:'A1',name:'甲网格',districtCode:'D1'}],communities:[{code:'C1',name:'秋实小区',adminGridCode:'A1'}]};
+ request.defaults.adapter=async(config:any)=>{let data:any=options;if(config.method==='post'){writes.push(JSON.parse(config.data));data={version:2};}return {data:{code:200,data},status:200,headers:{},config};};
+ const {default:Panel}=await vite.ssrLoadModule('/src/components/LocationReviewPanel.tsx');
+ const {render,within,fireEvent,waitFor,act,cleanup}=await import('@testing-library/react');const {Simulate}=await import('react-dom/test-utils');
+ const ui=render(<Panel detail={{complaintId:'address-auto',editVersion:1,title:'合成核验',address:'湖北省宜昌市点军区联棚乡卢家冲东南约62米',locationClues:[]} as any} items={[{fieldName:'address',status:'pending'}] as any} onSaved={()=>{}} onDeferred={()=>{}}/>);
+ try{
+ const page=within(document.body);
+ await waitFor(()=>assert.ok(page.getByText(/区县：点军区；网格：待核实/)));
+ fireEvent.click(page.getByRole('button',{name:'调整位置'}));
+ assert.ok(page.getByText(/乡镇／街道线索：联棚乡/));
+ const input=page.getByLabelText('核实后的地址') as HTMLInputElement;
+ await act(async()=>{input.value='甲区秋实小区3号';Simulate.change(input);});
+ await waitFor(()=>assert.ok(page.getByText(/区县：甲区；网格：甲网格；小区：秋实小区/)));
+ const basis=page.getByLabelText('位置核对依据') as HTMLTextAreaElement;
+ await act(async()=>{basis.value='现场核对';Simulate.change(basis);});
+ fireEvent.click(page.getByRole('button',{name:'确认位置'}));
+ await waitFor(()=>assert.equal(writes.length,1));
+ assert.equal(writes[0].districtCode,'D1');assert.equal(writes[0].adminGridCode,'A1');assert.equal(writes[0].communityCode,'C1');assert.equal(writes[0].address,'甲区秋实小区3号');assert.equal(writes[0].longitude,null);
+ }finally{ui.unmount();cleanup();request.defaults.adapter=old;}
+});
+
+test('address edited before dictionary load resolves the latest draft when options arrive',async()=>{
+ const {default:request}=await vite.ssrLoadModule('/src/api/request.ts'),old=request.defaults.adapter;
+ let release!:(v:any)=>void;const pending=new Promise<any>(r=>release=r);
+ request.defaults.adapter=async(config:any)=>({data:{code:200,data:await pending},status:200,headers:{},config});
+ const {default:Panel}=await vite.ssrLoadModule('/src/components/LocationReviewPanel.tsx');
+ const {render,within,fireEvent,waitFor,act,cleanup}=await import('@testing-library/react');const {Simulate}=await import('react-dom/test-utils');
+ const ui=render(<Panel detail={{complaintId:'slow-address',editVersion:1,title:'合成核验',address:'旧地点',locationClues:[]} as any} items={[{fieldName:'address',status:'pending'}] as any} onSaved={()=>{}} onDeferred={()=>{}}/>);
+ try{const page=within(document.body);fireEvent.click(page.getByRole('button',{name:'调整位置'}));const input=page.getByLabelText('核实后的地址') as HTMLInputElement;
+ await act(async()=>{input.value='湖北省宜昌市点军区联棚乡卢家冲东南约62米';Simulate.change(input);release({districts:[{code:'420504',name:'点军区'}],adminGrids:[],communities:[]});await pending;});
+ await waitFor(()=>assert.ok(page.getByText(/区县：点军区；网格：待核实/)));assert.equal(input.value,'湖北省宜昌市点军区联棚乡卢家冲东南约62米');
+ }finally{release({districts:[],adminGrids:[],communities:[]});ui.unmount();cleanup();request.defaults.adapter=old;}
+});

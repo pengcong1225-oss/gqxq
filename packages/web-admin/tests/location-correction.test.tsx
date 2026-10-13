@@ -40,7 +40,8 @@ for(const scenario of ['manual','conflict','denied'] as const)test('location gro
   const address=page.getByLabelText('核实后的地址') as HTMLInputElement,basis=page.getByLabelText('位置核对依据') as HTMLTextAreaElement;
   await act(async()=>{address.value='manual draft B';Simulate.change(address);basis.value='Synthetic manual verification';Simulate.change(basis);});
   fireEvent.click(page.getByRole('button',{name:'确认位置'}));await waitFor(()=>assert.equal(writes.length,1));
-  assert.equal(writes[0].url,'/complaints/C1/location-corrections');assert.equal(writes[0].body.expectedVersion,1);assert.equal(writes[0].body.coordinateSystem,null);assert.equal(writes[0].body.address,'manual draft B');assert.equal(writes[0].body.districtCode,'D1');assert.equal(writes[0].body.adminGridCode,null);assert.equal(writes[0].body.coordinateSource,null);assert.equal(writes[0].body.longitude,null);
+  assert.equal(writes[0].url,'/complaints/C1/location-corrections');assert.equal(writes[0].body.expectedVersion,1);assert.equal(writes[0].body.coordinateSystem,null);assert.equal(writes[0].body.address,'manual draft B');assert.equal(writes[0].body.districtCode,null); // New unrecognized address must not inherit the old district.
+  assert.equal(writes[0].body.adminGridCode,null);assert.equal(writes[0].body.coordinateSource,null);assert.equal(writes[0].body.longitude,null);
   if(scenario==='conflict'){
    await waitFor(()=>assert.match(document.body.textContent??'',/草稿已保留/));assert.equal(address.value,'manual draft B');assert.equal(basis.value,'Synthetic manual verification');
    fireEvent.click(page.getAllByRole('button',{name:'刷新核对（保留草稿）'}).at(-1)!);await waitFor(()=>assert.match(document.body.textContent??'',/winning address/));assert.equal(address.value,'manual draft B');assert.equal(basis.value,'Synthetic manual verification');assert.equal(writes.length,1);
