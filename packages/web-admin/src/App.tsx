@@ -17,6 +17,14 @@ import HeatmapView from './views/HeatmapView';
 import HeatRuleManager from './views/HeatRuleManager';
 import ShutdownList from './views/ShutdownList';
 import PipelineList from './views/PipelineList';
+import ShutdownFeedback from './views/ShutdownFeedback';
+import SynchronizedFollowups from './components/SynchronizedFollowups';
+import GridComparison from './views/GridComparison';
+import AppealAssessment from './views/AppealAssessment';
+import SeasonalAssessment from './views/SeasonalAssessment';
+import DataAlerts from './views/DataAlerts';
+import BusinessRuleManager from './views/BusinessRuleManager';
+import BusinessSourceStatus from './views/BusinessSourceStatus';
 import ReportView from './views/ReportView';
 import DictManager from './views/DictManager';
 import UserManager from './views/UserManager';
@@ -83,8 +91,16 @@ const App: React.FC = () => {
         <Route path="grids" element={<GridManager />} />
         <Route path="heatmap" element={<HeatmapView />} />
         <Route path="heat-rules" element={<RequireRole permission="heatmap.manage"><HeatRuleManager/></RequireRole>} />
-        <Route path="shutdowns" element={<ShutdownList />} />
-        <Route path="pipelines" element={<PipelineList />} />
+        <Route path="shutdowns" element={<RequireRole permission="shutdown.read"><ShutdownList /></RequireRole>} />
+        <Route path="pipelines" element={<RequireRole permission="pipeline.read"><PipelineList /></RequireRole>} />
+        <Route path="shutdown-feedback" element={<RequireRole permission="shutdown.read"><ShutdownFeedback/></RequireRole>}/>
+        <Route path="followups" element={<RequireRole permission="complaint.read"><SynchronizedFollowups/></RequireRole>}/>
+        <Route path="grid-comparison" element={<RequireRole permission="assessment.read"><GridComparison/></RequireRole>}/>
+        <Route path="appeal-assessment" element={<RequireRole permission="assessment.read"><AppealAssessment/></RequireRole>}/>
+        <Route path="seasonal-assessment" element={<RequireRole permission="assessment.read"><SeasonalAssessment/></RequireRole>}/>
+        <Route path="data-alerts" element={<RequireRole permission="alert.read"><DataAlerts/></RequireRole>}/>
+        <Route path="business-rules" element={<RequireRole permission="business.rules.manage"><BusinessRuleManager/></RequireRole>}/>
+        <Route path="business-source-status" element={<RequireRole permission="source_status.read"><BusinessSourceStatus/></RequireRole>}/>
         <Route path="reports" element={<ReportView />} />
         <Route path="dicts" element={<RequireRole permission="system.dict.manage"><DictManager /></RequireRole>} />
         <Route path="system/roles" element={<RequireRole permission="system.roles.manage"><RoleManager/></RequireRole>} />

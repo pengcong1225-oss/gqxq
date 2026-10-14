@@ -1,5 +1,7 @@
 /** Stable endpoint capabilities. Only registered codes can be stored on a role. */
 export const PERMISSION_CATALOG = [
+  ['assessment.read','行政网格对比与研判'],['business.rules.manage','联动、保障季和预警规则'],
+  ['shutdown.feedback.manage','停供关联核算与反馈'],['alert.read','数据预警查询'],['alert.handle','预警核算及处理'],
   ['complaint.read', '诉求查询'], ['complaint.assign', '责任单位匹配'],
   ['complaint.import', '诉求 Excel 导入（另需诉求查询及全域范围）'],
   ['complaint.disposition', '诉求归库'], ['complaint.correct', '诉求纠偏'],

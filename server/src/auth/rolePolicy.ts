@@ -47,6 +47,18 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
+  {method:'GET',path:/^\/business-rules$/,roles:A,permissionCode:'business.rules.manage',desc:'全域配置草稿与已发布版本'},
+  {method:'POST',path:/^\/business-rules(?:\/[^/]+\/publish)?$/,roles:A,permissionCode:'business.rules.manage',desc:'配置草稿及正式分类核验发布'},
+  {method:'GET',path:/^\/shutdown-feedback$/,roles:R,permissionCode:'shutdown.read',desc:'停供关联，另需complaint.read'},
+  {method:'GET',path:/^\/shutdown-feedback\/[^/]+\/history$/,roles:R,permissionCode:'shutdown.read',desc:'授权关联版本及发送历史'},
+  {method:'POST',path:/^\/shutdown-feedback\/(?:recompute|[^/]+\/(?:send|reconcile))$/,roles:W,permissionCode:'shutdown.feedback.manage',desc:'当前范围联动核算及反馈'},
+  {method:'GET',path:/^\/assessment\/(?:admin-grids|grid-comparison|historical|seasonal)$/,roles:R,permissionCode:'assessment.read',desc:'授权快照对比与研判；统计另核数据集权限'},
+  {method:'GET',path:/^\/business-alerts(?:\/[^/]+\/history)?$/,roles:R,permissionCode:'alert.read',desc:'对象及全部证据授权预警'},
+  {method:'POST',path:/^\/business-alerts\/(?:evaluate|[^/]+\/actions)$/,roles:W,permissionCode:'alert.handle',desc:'预警核算、确认及处理'},
+  {method:'GET',path:/^\/business-source-status$/,roles:R,permissionCode:'source_status.read',desc:'业务来源接入配置与授权快照状态'},
+  {method:'GET',path:/^\/shutdowns\/[^/]+$/,roles:R,permissionCode:'shutdown.read',desc:'版本化来源停供详情'},
+  {method:'GET',path:/^\/pipeline-projects\/[^/]+$/,roles:R,permissionCode:'pipeline.read',desc:'版本化来源施工详情'},
+  {method:'GET',path:/^\/synchronized-followups(?:\/[^/]+)?$/,roles:R,permissionCode:'complaint.read',desc:'当前诉求范围内的外部回访事实'},
   {method:'POST',path:/^\/complaint-imports\/preview$/,roles:A,permissionCode:'complaint.import',desc:'诉求文件校验预览'},
   {method:'POST',path:/^\/complaint-imports\/[^/]+\/commit$/,roles:A,permissionCode:'complaint.import',desc:'诉求整批事务确认'},
   {method:'GET',path:/^\/complaint-imports(?:\/[^/]+)?$/,roles:A,permissionCode:'complaint.import',desc:'本人诉求导入批次'},

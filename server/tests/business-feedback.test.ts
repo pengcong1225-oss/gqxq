@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {existsSync} from 'node:fs';
+test('restoration window, official categories and verified administrative location',async()=>{
+ assert.ok(existsSync(new URL('../src/domain/businessFeedback.ts',import.meta.url)),'feedback domain implemented');
+ const {matchRestoration}=await import('../src/domain/businessFeedback');
+ const event={businessType:'water',restoredAt:'2026-10-14T00:00:00Z',adminGridCodes:['A','B'],state:'ended',approvalState:'approved'};
+ const rule={version:1,majorCodes:['W'],minorCodes:[],dictionaryVersion:'5'};
+ const row={businessType:'water',sourceReportedAt:'2026-10-14T00:00:00Z',majorCode:'W',minorCode:null,dictionaryVersion:'5',adminGridCode:'A',locationVerified:true};
+ assert.equal(matchRestoration(event,row,rule).state,'matched');
+ assert.equal(matchRestoration(event,{...row,sourceReportedAt:'2026-10-15T00:00:00Z'},rule).state,'excluded');
+ assert.equal(matchRestoration(event,{...row,sourceReportedAt:'2026-10-13T23:59:59Z'},rule).state,'excluded');
+ assert.equal(matchRestoration({...event,restoredAt:null},row,rule).reason,'RESTORATION_UNKNOWN');
+ assert.equal(matchRestoration(event,{...row,sourceReportedAt:null},rule).reason,'SOURCE_TIME_UNKNOWN');
+ assert.equal(matchRestoration(event,{...row,locationVerified:false},rule).reason,'LOCATION_UNVERIFIED');
+ assert.equal(matchRestoration(event,{...row,dictionaryVersion:'4'},rule).reason,'CATEGORY_VERSION_UNMAPPED');
+ assert.equal(matchRestoration(event,{...row,majorCode:null},rule).state,'review');
+ assert.equal(matchRestoration({...event,state:'cancelled'},row,rule).state,'excluded');
+ assert.equal(matchRestoration(event,row,null).reason,'RULE_UNPUBLISHED');
+});

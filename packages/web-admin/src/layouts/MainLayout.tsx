@@ -26,6 +26,16 @@ interface MenuEntry {
 /** Menus reflect backend permissions. Buttons use their endpoint capability;
  * the server always independently validates access. */
 const menuEntries: MenuEntry[] = [
+  {key:'/shutdowns',icon:<WarningOutlined/>,label:'停供管理',permission:'shutdown.read'},
+  {key:'/pipelines',icon:<AppstoreOutlined/>,label:'管道施工',permission:'pipeline.read'},
+  {key:'/shutdown-feedback',icon:<SafetyCertificateOutlined/>,label:'停供诉求联动',permission:'shutdown.read'},
+  {key:'/followups',icon:<CustomerServiceOutlined/>,label:'回访记录',permission:'complaint.read'},
+  {key:'/grid-comparison',icon:<BarChartOutlined/>,label:'行政网格对比',permission:'assessment.read'},
+  {key:'/appeal-assessment',icon:<BarChartOutlined/>,label:'诉求研判',permission:'assessment.read'},
+  {key:'/seasonal-assessment',icon:<BarChartOutlined/>,label:'数据研判',permission:'assessment.read'},
+  {key:'/data-alerts',icon:<WarningOutlined/>,label:'数据预警',permission:'alert.read'},
+  {key:'/business-rules',icon:<SettingOutlined/>,label:'联动与研判规则',permission:'business.rules.manage'},
+  {key:'/business-source-status',icon:<DatabaseOutlined/>,label:'业务接入状态',permission:'source_status.read'},
   {key:'/master-data/imports',icon:<DatabaseOutlined/>,label:'导入批次',permission:'masterdata.import'},
   { key: '/dashboard', icon: <DashboardOutlined />, label: '数据概览', permission: 'dashboard.read' },
   { key: '/complaints', icon: <FileTextOutlined />, label: '诉求管理', permission: 'complaint.read' },
@@ -79,10 +89,10 @@ const MainLayout: React.FC = () => {
     const available = menuEntries.filter(e => permissions.includes(e.permission) && !userInfo?.mustChangePassword &&
       (e.key !== '/master-data/imports' || ['enterprise.manage', 'grid.manage', 'system.dict.manage'].some(code => permissions.includes(code))));
     const groups = [
-      { label: '诉求办理', keys: ['/complaints', '/dispatch', '/address-correction', '/dispatch/archive'] },
-      { label: '统计与报告', keys: ['/dashboard', '/analysis', '/heatmap', '/reports'] },
+      { label: '诉求办理', keys: ['/complaints', '/dispatch', '/address-correction', '/dispatch/archive','/followups','/shutdowns','/pipelines','/shutdown-feedback'] },
+      { label: '统计与报告', keys: ['/dashboard', '/analysis', '/heatmap', '/reports','/grid-comparison','/appeal-assessment','/data-alerts','/seasonal-assessment'] },
       { label: '基础资料', keys: ['/companies', '/grids', '/heat-rules', '/master-data/imports', '/dicts'] },
-      { label: '系统管理', keys: ['/system/users', '/system/roles', '/system/audit-logs'] },
+      { label: '系统管理', keys: ['/system/users', '/system/roles', '/system/audit-logs','/business-rules','/business-source-status'] },
     ];
     const visible = groups.map(group => ({ key: group.label, type: 'group' as const, label: group.label,
       children: group.keys.flatMap(key => available.filter(entry => entry.key === key).map(({key, icon, label}) => ({key, icon, label})))

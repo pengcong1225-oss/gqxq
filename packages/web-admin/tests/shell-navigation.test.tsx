@@ -9,7 +9,10 @@ import { fileURLToPath } from 'node:url';
 globalThis.localStorage = { getItem: () => null } as unknown as Storage;
 let vite: ViteDevServer;
 const documents: JSDOM[] = [];
+const originalChannel=globalThis.MessageChannel;
+const channels:MessageChannel[]=[];
 before(async () => {
+  Object.defineProperty(globalThis,'MessageChannel',{configurable:true,writable:true,value:class extends originalChannel{constructor(){super();channels.push(this);}}});
   const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
   documents.push(dom);
   for (const key of ['window', 'document', 'navigator', 'Element', 'HTMLElement', 'SVGElement', 'ShadowRoot', 'Node', 'MutationObserver'] as const) {
@@ -21,12 +24,15 @@ before(async () => {
   ({ MemoryRouter } = await import('react-router-dom'));
   vite = await createServer({
     root: fileURLToPath(new URL('..', import.meta.url)), appType: 'custom',
+    cacheDir:fileURLToPath(new URL('../node_modules/.vite-shell-test',import.meta.url)),
     server: { port: 0, middlewareMode: true, hmr: false },
   });
 });
 after(async () => {
   for (const dom of documents) dom.window.close();
   await vite.close();
+  for(const channel of channels){channel.port1.close();channel.port2.close();}
+  Object.defineProperty(globalThis,'MessageChannel',{configurable:true,writable:true,value:originalChannel});
 });
 
 async function shell(route: string, permissions: string[], mustChangePassword = false) {
@@ -48,7 +54,7 @@ async function shell(route: string, permissions: string[], mustChangePassword = 
 test('complaint detail keeps its parent menu selected and permission filtering intact', async () => {
   const doc = await shell('/complaints/CPL-123', ['complaint.read']);
   assert.equal(doc.querySelector('.ant-menu-item-selected')?.textContent, '诉求管理');
-  assert.equal(doc.querySelectorAll('[role="menuitem"]').length, 1);
+  assert.equal(doc.querySelectorAll('[role="menuitem"]').length, 2);
   assert.match(doc.querySelector('.ant-breadcrumb')?.textContent ?? '', /诉求管理/);
 });
 
@@ -70,9 +76,10 @@ test('import navigation still requires an authorized target domain', async () =>
   assert.equal(allowed.querySelector('.ant-menu-item-selected')?.textContent, '导入批次');
 });
 
-test('unconnected demo modules do not appear as business menu entries', async () => {
+test('connected source business modules appear with their own capabilities', async () => {
   const doc = await shell('/dashboard', ['dashboard.read', 'shutdown.read', 'pipeline.read']);
-  assert.equal(doc.querySelectorAll('[role="menuitem"]').length, 1);
+  assert.equal(doc.querySelectorAll('[role="menuitem"]').length, 4);
   assert.equal(doc.querySelector('.ant-menu-item-selected')?.textContent, '数据概览');
-  assert.doesNotMatch(doc.querySelector('nav')?.textContent ?? '', /停供管理|管道施工/);
+  assert.match(doc.body.textContent ?? '', /停供管理/);
+  assert.match(doc.body.textContent ?? '', /管道施工/);
 });

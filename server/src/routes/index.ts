@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import {businessEventsRouter,businessSourceRouter} from './businessEvents';
+import {businessFeaturesRouter} from './businessFeatures';
 import { healthRouter } from './health';
 import { complaintsRouter } from './complaints';
 import { dashboardRouter } from './dashboard';
@@ -48,6 +50,7 @@ export function buildRouter(): Router {
 
   root.use(healthRouter);
   root.use(authRouter);
+  root.use('/external/business-source',businessSourceRouter);
   root.use('/external', externalRouter);
   // 回调靠签名鉴权，必须挂在 requireAuth 之前
   root.use('/external/public-utility', publicUtilityCallbackRouter);
@@ -55,6 +58,8 @@ export function buildRouter(): Router {
   root.use(requireAuth);
   // 全局角色闸门：必须在 requireAuth 之后、所有业务 router 之前
   root.use(enforceRolePolicy());
+  root.use(businessEventsRouter);
+  root.use(businessFeaturesRouter);
   root.use(addressCandidatesRouter);
   root.use(complaintsRouter);
   root.use(complaintActionsRouter);

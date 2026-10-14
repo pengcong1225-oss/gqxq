@@ -24,6 +24,9 @@ function optRaw(name: string): string {
 }
 
 export const env = {
+  businessSources: optRaw('GQXQ_BUSINESS_SOURCES_JSON'),
+  businessWorkerUserId:opt('GQXQ_BUSINESS_WORKER_USER_ID',''),
+  shutdownFeedback: {url:opt('GQXQ_SHUTDOWN_FEEDBACK_URL',''),statusUrl:opt('GQXQ_SHUTDOWN_FEEDBACK_STATUS_URL',''),secret:optRaw('GQXQ_SHUTDOWN_FEEDBACK_SECRET')},
   nodeEnv: opt('NODE_ENV', 'development'),
   port: Number(opt('PORT', '3100')),
   /**
