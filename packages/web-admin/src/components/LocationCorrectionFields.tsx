@@ -16,7 +16,7 @@ export const LocationCorrectionFields:React.FC<{form:FormInstance;options:Locati
  const district=Form.useWatch('districtCode',form),admin=Form.useWatch('adminGridCode',form),lng=Form.useWatch('lng',form),lat=Form.useWatch('lat',form),crs=Form.useWatch('coordinateSystem',form);
  const numericRule=(min:number,max:number)=>({validator:async(_:unknown,value:string)=>{coordinate(value,min,max);}});
  return <>
-  <Alert type="info" showIcon message="区划、地址、坐标、行政网格和小区一起核对" description="地图不可用时可人工录入。坐标系未核实仍可凭人工依据保存，但不会标为已完成空间复核；清空坐标时须同时清空经纬度。" style={{marginBottom:12}}/>
+  
   {optionsError&&<Alert type="warning" message={'区划及关联选择加载失败：'+optionsError+'。可保留现有关系，稍后重试。'}/>}
   <Form.Item name="districtCode" label="归属区划"><Select aria-label="位置组区划" allowClear options={options?.districts.map(d=>({value:d.code,label:d.name+'（'+d.code+'）'}))} onChange={()=>form.setFieldsValue({adminGridCode:null,communityCode:null})}/></Form.Item>
   <Form.Item name="address" label="核实后的地址"><Input aria-label="位置组地址" maxLength={500} placeholder="人工核对后填写地址；留空表示清空"/></Form.Item>

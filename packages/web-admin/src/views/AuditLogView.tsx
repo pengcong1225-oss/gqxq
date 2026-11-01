@@ -44,20 +44,20 @@ const AuditLogView:React.FC=()=>{
    <Form.Item name="action" label="动作"><Select allowClear showSearch optionFilterProp="label" style={{width:200}} placeholder="请选择操作" options={Object.entries(actionLabels).map(([value,label])=>({value,label}))}/></Form.Item>
    <Form.Item name="result" label="结果"><Select allowClear style={{width:110}} options={Object.entries(resultLabels).map(([value,label])=>({value,label}))}/></Form.Item>
    <Form.Item name="businessNo" label="业务编号"><Input maxLength={128} placeholder="诉求编号或业务键"/></Form.Item>
-   <Form.Item><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{form.resetFields();setPage(1);setFilter({});}}>重置</Button></Space></Form.Item>
+   <Form.Item><Space wrap><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{form.resetFields();setPage(1);setFilter({});}}>重置</Button></Space></Form.Item>
   </Form>
   {error&&<Alert type="error" showIcon message={error} style={{marginBottom:16}}/>}
-  <Table<AuditLogView> rowKey="auditId" loading={loading} dataSource={data?.content??[]} scroll={{x:1100}} locale={{emptyText:error?'查询失败':'当前条件下无可查看日志'}}
+  <Table<AuditLogView> rowKey="auditId" loading={loading} dataSource={data?.content??[]} scroll={{x:1180}} locale={{emptyText:error?'查询失败':'当前条件下无可查看日志'}}
    pagination={{current:page,pageSize:size,total:data?.total??0,showSizeChanger:true,showTotal:total=>'共 '+total+' 条',onChange:(next,nextSize)=>{setPage(nextSize!==size?1:next);setSize(nextSize);}}}
    columns={[
     {title:'时间',dataIndex:'createdAt',render:date,width:180},
-    {title:'类别',dataIndex:'category',render:value=>value==='login'?'登录':'操作',width:70},
-    {title:'操作人编号',dataIndex:'userId',render:value=>value??'无平台用户',width:160},
-    {title:'模块',dataIndex:'module',render:value=>modules.find(([code])=>code===value)?.[1]??'其他模块'},
-    {title:'动作',dataIndex:'action',render:value=>chineseLabel(value,undefined,'其他操作')},
-    {title:'结果',dataIndex:'result',render:(value:AuditLogView['result'],row)=><Tag>{resultLabels[value]}</Tag>},
-    {title:'业务编号',render:(_,row)=>row.businessNo??row.bizId??'—'},
-    {title:'操作',render:(_,row)=><Button type="link" onClick={()=>void openDetail(row.auditId)}>查看详情</Button>},
+    {title:'类别',dataIndex:'category',render:value=>value==='login'?'登录':'操作',width:80},
+    {title:'操作人编号',dataIndex:'userId',render:value=>value??'无平台用户',width:180},
+    {width:160,title:'模块',dataIndex:'module',render:value=>modules.find(([code])=>code===value)?.[1]??'其他模块'},
+    {width:180,title:'动作',dataIndex:'action',render:value=>chineseLabel(value,undefined,'其他操作')},
+    {width:90,title:'结果',dataIndex:'result',render:(value:AuditLogView['result'],row)=><Tag>{resultLabels[value]}</Tag>},
+    {width:200,title:'业务编号',render:(_,row)=>row.businessNo??row.bizId??'—'},
+    {width:110,title:'操作',render:(_,row)=><Button type="link" onClick={()=>void openDetail(row.auditId)}>查看详情</Button>},
    ]}/>
   <Drawer title="安全详情" open={detailOpen} width={640} loading={detailLoading} onClose={()=>{detailRequest.current++;setDetailOpen(false);setDetail(null);}}>
    {detailError&&<Alert type="error" showIcon message={detailError}/>}

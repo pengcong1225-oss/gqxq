@@ -310,13 +310,13 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
       {
         title: '诉求编号',
         dataIndex: 'complaintNo',
-        width: 160,
+        width: 180,
         fixed: 'left',
         render: (value: string, row) => (
           <a onClick={() => navigate('/complaints/' + row.id)}>{value}</a>
         ),
       },
-      {
+      {width:320,
         title: '诉求标题',
         dataIndex: 'title',
         ellipsis: true,
@@ -348,7 +348,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
       {
         title: '责任企业',
         dataIndex: 'enterpriseName',
-        width: 180,
+        width: 200,
         ellipsis: true,
         render: (value: string | null) =>
           value ? <Tooltip title={value}>{value}</Tooltip> : <Tag color="warning">待匹配</Tag>,
@@ -356,7 +356,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
       {
         title: '督办状态',
         dataIndex: 'supervisionStatusName',
-        width: 120,
+        width: 150,
         render: (value: string, row) => (
           <Tag color={row.supervisionStatusCode === 'pending_match' ? 'warning' : 'processing'}>
             {namedLabel(row.supervisionStatusCode,value,'supervision_status')}
@@ -366,12 +366,12 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
       {
         title: '受理时间',
         dataIndex: 'sourceReportedAt',
-        width: 165,
+        width: 180,
         render: (value: string | null, row) => fmtDateTime(value ?? row.receivedAt),
       },
       {
         title: '操作',
-        width: 250,
+        width: 270,
         fixed: 'right',
         render: (_: unknown, row) => (
           <Space size={4} wrap>
@@ -387,7 +387,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
                 <Button
                   type="link"
                   size="small"
-                  onClick={() => navigate('/address-correction?complaintId=' + encodeURIComponent(row.complaintId))}
+                  onClick={() => navigate('/complaints/corrections?complaintId=' + encodeURIComponent(row.complaintId))}
                 >
                   整体纠偏
                 </Button>
@@ -449,7 +449,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
           dataSource={data?.content ?? []}
           loading={loading}
           size="middle"
-          scroll={{ x: 1420 }}
+          scroll={{ x: 1620 }}
           locale={{ emptyText: firstLoading ? <span /> : <Empty description="暂无规则命中的敏感诉求" /> }}
           pagination={{
             current: page,
@@ -764,18 +764,18 @@ const DispatchOrders: React.FC = () => {
       {
         title: '交办单号',
         dataIndex: 'orderNo',
-        width: 160,
+        width: 180,
         fixed: 'left',
         render: (v: string, r) => <a onClick={() => void openDetail(r.assignmentId)}>{v}</a>,
       },
       {
         title: '诉求编号',
         dataIndex: 'complaintNo',
-        width: 160,
+        width: 180,
         render: (v: string | null, r) =>
           v ? <a onClick={() => navigate('/complaints/' + r.complaintId)}>{v}</a> : DASH,
       },
-      {
+      {width:320,
         title: '诉求标题',
         dataIndex: 'complaintTitle',
         ellipsis: true,
@@ -784,58 +784,58 @@ const DispatchOrders: React.FC = () => {
       {
         title: '目标企业',
         dataIndex: 'targetEnterpriseName',
-        width: 170,
+        width: 200,
         ellipsis: true,
         render: (v: string | null) => (v ? <Tooltip title={v}>{v}</Tooltip> : DASH),
       },
       {
         title: '交办方式',
         dataIndex: 'dispatchType',
-        width: 100,
+        width: 110,
         // 内部方式和触发编码仅用于接口，界面显示中文。
         render: (v: string | null) => (v ? <Tag color={v === 'auto' ? 'blue' : 'purple'}>{chineseLabel(v,'dispatch_type')}</Tag> : DASH),
       },
       {
         title: '触发类型',
         dataIndex: 'triggerType',
-        width: 120,
+        width: 150,
         render: (v: string | null) => (v ? <Tag>{chineseLabel(v,'trigger_type')}</Tag> : DASH),
       },
       {
         title: '状态',
         dataIndex: 'status',
-        width: 120,
+        width: 150,
         render: (_: unknown, r) => (
           <Tag color={STATUS_COLOR[r.status] ?? 'default'}>{namedLabel(r.status,r.statusName,'supervision_status')}</Tag>
         ),
       },
       {
-        title:'外发状态',dataIndex:'deliveryState',width:190,
+        title:'外发状态',dataIndex:'deliveryState',width:200,
         render:(value:string|undefined)=><Tag color={DELIVERY_COLOR[value??'']??'default'}>{DELIVERY_LABEL[value??'']??'尚未排队'}</Tag>,
       },
       {
         title: '截止时间',
         dataIndex: 'deadline',
-        width: 150,
+        width: 180,
         render: (v: string | null) => fmtDateTime(v),
       },
       {
         title: '创建时间',
         dataIndex: 'createdAt',
-        width: 150,
+        width: 180,
         render: (v: string | null) => fmtDateTime(v),
       },
       {
         title: '请求号',
         dataIndex: 'requestId',
-        width: 170,
+        width: 190,
         ellipsis: true,
         render: (v: string | null) => (v ? <Tooltip title={v}>{v}</Tooltip> : DASH),
       },
       {
         title: '填报任务号',
         dataIndex: 'reportingTaskId',
-        width: 150,
+        width: 180,
         ellipsis: true,
         render: (v: string | null) =>
           v ? (
@@ -848,7 +848,7 @@ const DispatchOrders: React.FC = () => {
       },
       {
         title: '操作',
-        width: 330,
+        width: 350,
         fixed: 'right',
         render: (_: unknown, r) => {
           const terminal = TERMINAL_DISPATCH_STATUSES.has(r.status);
@@ -939,43 +939,43 @@ const DispatchOrders: React.FC = () => {
   /** G3 推送记录列（一次尝试一行） */
   const pushLogColumns: ColumnsType<DispatchRequestLogItem> = useMemo(
     () => [
-      { title: '尝试', dataIndex: 'attempt', width: 60 },
+      { title: '尝试', dataIndex: 'attempt', width: 70 },
       {
         title: '结果',
         dataIndex: 'result',
-        width: 140,
+        width: 150,
         render: (v: string) => <Tag color={PUSH_RESULT_COLOR[v] ?? 'default'}>{chineseLabel(v,undefined,'推送结果待核对')}</Tag>,
       },
       {
         title: '响应状态码',
         dataIndex: 'httpStatus',
-        width: 70,
+        width: 120,
         render: (v: number | null) => (v == null ? DASH : v),
       },
       {
         title: '错误原因',
         dataIndex: 'errorCode',
-        width: 180,
+        width: 220,
         ellipsis: true,
         render: (v: string | null) => (v ? <span>{chineseLabel(v,undefined,'外部响应未成功')}</span> : DASH),
       },
       {
         title: '请求校验号',
         dataIndex: 'nonce',
-        width: 190,
+        width: 210,
         ellipsis: true,
         render: (v: string | null) => (v ? <Tooltip title={v}>{v}</Tooltip> : DASH),
       },
       {
         title: '任务号',
         dataIndex: 'taskId',
-        width: 150,
+        width: 180,
         ellipsis: true,
         render: (v: string | null) => (v ? <Tooltip title={v}>{v}</Tooltip> : DASH),
       },
       {
         title: '耗时',
-        width: 90,
+        width: 100,
         render: (_: unknown, r) => {
           if (!r.startedAt || !r.finishedAt) return DASH;
           const ms = new Date(r.finishedAt).getTime() - new Date(r.startedAt).getTime();
@@ -985,7 +985,7 @@ const DispatchOrders: React.FC = () => {
       {
         title: '时间',
         dataIndex: 'createdAt',
-        width: 160,
+        width: 180,
         render: (v: string | null) => fmtDateTime(v),
       },
     ],
@@ -1031,7 +1031,7 @@ const DispatchOrders: React.FC = () => {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 8 }}>敏感交办工作台</h2>
+      <Space wrap style={{marginBottom:8}}><h2 style={{margin:0}}>敏感交办工作台</h2><Button onClick={()=>navigate('/dispatch/archive')}>交办归档</Button></Space>
 
       <Tabs
         activeKey={activeView}
@@ -1106,7 +1106,7 @@ const DispatchOrders: React.FC = () => {
                 title="交办列表加载失败"
                 subTitle={error.message}
                 extra={
-                  <Space>
+                  <Space wrap>
                     <Button type="primary" onClick={() => void load(params)}>
                       重试
                     </Button>
@@ -1121,7 +1121,7 @@ const DispatchOrders: React.FC = () => {
                 dataSource={data?.content ?? []}
                 loading={loading}
                 size="middle"
-                scroll={{ x: 1900 }}
+                scroll={{ x: 2570 }}
                 locale={{
                   emptyText: firstLoading ? <span /> : <Empty description="暂无交办记录" />,
                 }}
@@ -1152,7 +1152,7 @@ const DispatchOrders: React.FC = () => {
         open={detailId !== null}
         onCancel={closeDetail}
         footer={
-          <Space>
+          <Space wrap>
             <Button onClick={closeDetail}>关闭</Button>
             <Button onClick={() => navigate('/complaints/' + (detail ? detail.complaintId : ''))} disabled={!detail}>
               查看关联诉求
@@ -1180,7 +1180,7 @@ const DispatchOrders: React.FC = () => {
         {!detailLoading && !detailError && detail && (
           <>
             <ReportingResultPanel assignmentId={detail.assignmentId}/>
-            <Descriptions bordered size="small" column={2}>
+            <Descriptions bordered size="small" column={1}>
             <Descriptions.Item label="交办单号">{detail.orderNo}</Descriptions.Item>
             <Descriptions.Item label="状态">
               <Tag color={STATUS_COLOR[detail.status] ?? 'default'}>{namedLabel(detail.status,detail.statusName,'supervision_status')}</Tag>
@@ -1199,7 +1199,7 @@ const DispatchOrders: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="交办方式">{chineseLabel(detail.dispatchType,'dispatch_type')}</Descriptions.Item>
             <Descriptions.Item label="触发类型">{chineseLabel(detail.triggerType,'trigger_type')}</Descriptions.Item>
-            <Descriptions.Item label="敏感词" span={2}>
+            <Descriptions.Item label="敏感词" span="filled">
               {detail.sensitiveWords.length > 0
                 ? detail.sensitiveWords.map((w) => (
                     <Tag color="red" key={w}>
@@ -1210,10 +1210,10 @@ const DispatchOrders: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="交办原因">{detail.reason ?? DASH}</Descriptions.Item>
             <Descriptions.Item label="截止时间">{fmtDateTime(detail.deadline)}</Descriptions.Item>
-            <Descriptions.Item label="交办要求" span={2}>
+            <Descriptions.Item label="交办要求" span="filled">
               {detail.requirement ?? DASH}
             </Descriptions.Item>
-            <Descriptions.Item label="请求号" span={2}>
+            <Descriptions.Item label="请求号" span="filled">
               {detail.requestId ?? DASH}
             </Descriptions.Item>
             <Descriptions.Item label="填报任务号">
@@ -1230,7 +1230,7 @@ const DispatchOrders: React.FC = () => {
             <Descriptions.Item label="推送时间">{fmtDateTime(detail.pushedAt)}</Descriptions.Item>
             <Descriptions.Item label="外发状态"><Tag color={DELIVERY_COLOR[detail.deliveryState??'']??'default'}>{DELIVERY_LABEL[detail.deliveryState??'']??'尚未排队'}</Tag></Descriptions.Item>
             <Descriptions.Item label="恢复处理次数">{detail.deliveryAttempts??0}</Descriptions.Item>
-            {detail.deliveryState==='unknown'&&<Descriptions.Item label="核验提示" span={2}>原请求号与报文已冻结。请联系管理员核验外部任务；勿另建交办或换号重发。</Descriptions.Item>}
+            {detail.deliveryState==='unknown'&&<Descriptions.Item label="核验提示" span="filled">原请求号与报文已冻结。请联系管理员核验外部任务；勿另建交办或换号重发。</Descriptions.Item>}
             <Descriptions.Item label="完成时间">{fmtDateTime(detail.completedAt)}</Descriptions.Item>
             <Descriptions.Item label="归档时间">{fmtDateTime(detail.archivedAt)}</Descriptions.Item>
             <Descriptions.Item label="模板">
@@ -1246,14 +1246,14 @@ const DispatchOrders: React.FC = () => {
                     : '')
                 : DASH}
             </Descriptions.Item>
-            <Descriptions.Item label="结果内容" span={2}>
+            <Descriptions.Item label="结果内容" span="filled">
               {detail.resultContent ?? DASH}
             </Descriptions.Item>
             <Descriptions.Item label="撤销时间">{fmtDateTime(detail.cancelledAt)}</Descriptions.Item>
             <Descriptions.Item label="撤销原因">{detail.cancelReason ?? DASH}</Descriptions.Item>
             <Descriptions.Item label="创建人">{detail.createdByName ?? DASH}</Descriptions.Item>
             <Descriptions.Item label="创建时间">{fmtDateTime(detail.createdAt)}</Descriptions.Item>
-            <Descriptions.Item label="最后更新" span={2}>
+            <Descriptions.Item label="最后更新" span="filled">
               {fmtDateTime(detail.updatedAt)}
             </Descriptions.Item>
             </Descriptions>
@@ -1282,7 +1282,7 @@ const DispatchOrders: React.FC = () => {
                 dataSource={pushLogs ?? []}
                 columns={pushLogColumns}
                 pagination={false}
-                scroll={{ x: 1040 }}
+                scroll={{ x: 1230 }}
                 locale={{ emptyText: <Empty description="尚无外发尝试记录" /> }}
               />
             )}
@@ -1322,7 +1322,7 @@ const DispatchOrders: React.FC = () => {
         open={pushOutcome !== null}
         onCancel={() => setPushOutcome(null)}
         footer={
-          <Space>
+          <Space wrap>
             <Button onClick={() => setPushOutcome(null)}>关闭</Button>
             {pushOutcome?.kind === 'error' && (
               <Button

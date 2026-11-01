@@ -1,3 +1,4 @@
+import type {FollowupBinding} from '../domain/businessSourceBinding';
 import type {SqlExecutor} from './userRepo';
 import type {Tx} from '../db/tx';
 import type {BusinessEventInput,BusinessEventView} from '../types/businessEvents';
@@ -23,8 +24,8 @@ export function eventScope(access:AccessContext):{sql:string;params:unknown[]} {
  return {sql:"((e.kind<>'followup' and ("+(rules.join(' or ')||'0=1')+")) or (e.kind='followup' and exists(select 1 from complaint c where c.complaint_id=json_unquote(json_extract(e.content,'$.payload.complaintId')) and "+complaint.sql+')))',params:[...ownParams,...complaint.params]};
 }
 export function featureOwnershipScope(access:AccessContext,alias:'a'|'e'):{sql:string;params:unknown[]}{const params:unknown[]=[];const rules=access.rules.map(r=>{if(r.kind==='all')return '1=1';const terms:string[]=[];for(const [key,values] of [['enterprise_code',r.enterpriseCodes],['district_code',r.districtCodes]] as const)if(values.length){terms.push(alias+'.'+key+' in ('+values.map(()=>'?').join(',')+')');params.push(...values);}return terms.length?'('+terms.join(' and ')+')':'0=1';});return {sql:'('+(rules.join(' or ')||'0=1')+')',params};}
-export async function writeEvent(tx:Tx,input:BusinessEventInput,id:string,hash:string,at:Date):Promise<void>{
+export async function writeEvent(tx:Tx,input:BusinessEventInput,id:string,hash:string,at:Date,binding:FollowupBinding|null=null):Promise<void>{
  const content=JSON.stringify(input);
- await tx.execute('insert into source_business_revision(event_id,source_version,payload_hash,content,received_at) values(?,?,?,?,?)',[id,input.sourceVersion,hash,content,at]);
- await tx.execute('update source_business_head set source_version=?,enterprise_code=?,district_code=?,payload_hash=?,content=?,received_at=? where event_id=?',[input.sourceVersion,input.enterpriseCode,input.districtCode,hash,content,at,id]);
+ await tx.execute('insert into source_business_revision(event_id,source_version,payload_hash,content,received_at,followup_binding) values(?,?,?,?,?,?)',[id,input.sourceVersion,hash,content,at,binding?JSON.stringify(binding):null]);
+ await tx.execute('update source_business_head set source_version=?,enterprise_code=?,district_code=?,payload_hash=?,content=?,received_at=?,followup_binding=? where event_id=?',[input.sourceVersion,input.enterpriseCode,input.districtCode,hash,content,at,binding?JSON.stringify(binding):null,id]);
 }

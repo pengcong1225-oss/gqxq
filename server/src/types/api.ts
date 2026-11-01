@@ -609,6 +609,7 @@ export interface EnterpriseListItem {
 }
 
 export interface EnterpriseDetail extends EnterpriseListItem {
+  dashboardVisible?:boolean;dashboardName?:string|null;
   version?: number;
   districtCode?: string | null;
   address?: string | null;

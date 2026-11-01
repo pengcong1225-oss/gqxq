@@ -146,6 +146,7 @@ function fmtDateTime(iso: string | null): string {
 }
 
 const ComplaintList: React.FC = () => {
+  const correctionAccess=useWriteAccess('complaint.correct');
   const createAccess=useWriteAccess('dispatch.create');
   const dispositionAccess=useWriteAccess('complaint.disposition');
   const navigate = useNavigate();
@@ -492,6 +493,7 @@ const ComplaintList: React.FC = () => {
       {
         title: '标题',
         dataIndex: 'title',
+        width: 320,
         ellipsis: true,
         render: (t: string, r) => (
           <>
@@ -622,6 +624,11 @@ const ComplaintList: React.FC = () => {
             >
               详情
             </Button>
+            {correctionAccess.can&&<>
+              <Button type="link" size="small" onClick={()=>navigate('/complaints/corrections?complaintId='+encodeURIComponent(r.complaintId))}>整体纠偏</Button>
+              <Button type="link" size="small" onClick={()=>navigate('/complaints/'+encodeURIComponent(r.id)+'?edit=address')}>完善地址</Button>
+              <Button type="link" size="small" onClick={()=>navigate('/complaints/'+encodeURIComponent(r.id)+'?edit=category')}>精准分类</Button>
+            </>}
             {/* 责任单位不再在这里改：2026-09-20 裁定「匹配责任单位」收敛进纠偏入口，
                 总账只留详情 / 交办 / 不交办处理——enterprise_code 与 enterprise_name 由纠偏成对写回。 */}
             {r.activeDispatchId ? (
@@ -687,7 +694,7 @@ const ComplaintList: React.FC = () => {
         ),
       },
     ],
-    [navigate, dispatchForm, dispositionForm, clearEnterpriseError, fetchEnterprises,createAccess.can,dispositionAccess.can]
+    [navigate, correctionAccess.can, dispatchForm, dispositionForm, clearEnterpriseError, fetchEnterprises,createAccess.can,dispositionAccess.can]
   );
 
   return (
@@ -837,6 +844,10 @@ const ComplaintList: React.FC = () => {
               applyFilter({ range: next });
             }}
           />
+        </Space>
+        <div className="list-toolbar">
+          <Typography.Text type="secondary">筛选后自动更新列表，关键词按回车搜索</Typography.Text>
+          <Space wrap>
           <Tooltip title="导出当前页已加载的诉求，可用 Excel 打开">
             <Button icon={<ExportOutlined />} disabled={loading || !!error || !data?.content.length}
               onClick={() => downloadCsv([
@@ -845,8 +856,10 @@ const ComplaintList: React.FC = () => {
                   row.districtName,row.enterpriseName,row.isSensitive?'是':'否',row.correctionStatusName,row.receivedAt])
               ], '诉求列表-本页.csv')}>导出本页</Button>
           </Tooltip>
+          {correctionAccess.can&&<Button onClick={()=>navigate('/complaints/corrections')}>整体纠偏</Button>}
           <ComplaintImportDialog onImported={reload}/>
-        </Space>
+          </Space>
+        </div>
 
 
 
@@ -856,7 +869,7 @@ const ComplaintList: React.FC = () => {
             title="诉求列表加载失败"
             subTitle={error.message}
             extra={
-              <Space>
+              <Space wrap>
                 <Button type="primary" onClick={() => void load(params)}>
                   重试
                 </Button>
@@ -871,7 +884,7 @@ const ComplaintList: React.FC = () => {
             dataSource={data?.content ?? []}
             loading={loading}
             size="middle"
-            scroll={{ x: 1810 }}
+            scroll={{ x: 2210 }}
             locale={{ emptyText: <Empty description="暂无诉求数据" /> }}
             pagination={{
               current: page,

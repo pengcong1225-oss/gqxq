@@ -6,10 +6,10 @@ export default function CategorySelector({value,onChange,disabled=false}:{value?
  const [data,setData]=useState<{dictionaryVersion:string;items:DictionaryItem[]}|null>(null);const [error,setError]=useState('');
  useEffect(()=>{let active=true;getCategoryOptions().then(v=>{if(active){setData(v);setError('');}}).catch(e=>{if(active)setError(e.message??'分类加载失败');});return()=>{active=false;};},[]);
  const majors=data?.items.filter(i=>!i.parentCode)??[];const minors=data?.items.filter(i=>i.parentCode===value?.majorCode)??[];
- const style={minWidth:160,height:32,border:'1px solid #d9d9d9',borderRadius:6,background:'#fff'};
+ const style={width:'100%',minWidth:0,height:36,padding:'4px 10px',border:'1px solid #d8e0ea',borderRadius:6,background:'#fff'};
  return <Space direction="vertical" style={{width:'100%'}}>
   {error&&<Alert type="error" message={error}/>}
-  <Space wrap>
+  <Space wrap className="category-selector-fields">
    <select aria-label="正式大类" style={style} value={value?.majorCode??''} disabled={disabled||!data||!!error} onChange={e=>onChange(e.target.value?{majorCode:e.target.value,minorCode:null,dictionaryVersion:data!.dictionaryVersion}:null)}>
     <option value="">请选择大类</option>{value?.majorCode&&!majors.some(i=>i.code===value.majorCode)&&<option value={value.majorCode} disabled>历史分类 {value.majorCode}</option>}{majors.map(i=><option key={i.code} value={i.code}>{i.label}</option>)}
    </select>

@@ -6,13 +6,14 @@ import type {SqlExecutor} from '../repositories/userRepo';
 import {rowsIn} from '../repositories/serviceGridRepo';
 import {readStatisticsRows,readStatisticsCoverage,coverageVertexCount,type CoverageEvidence,type CoverageDemand} from '../repositories/statisticsRepo';
 import {snapshotFactsFromComplaint,readStatisticsSnapshot,resolveBusinessTime,statisticsIso} from '../domain/statisticsFacts';
-import {STATISTICS_POLICY,addDays,resolveComparisonPeriods,computePeriodChange} from '../domain/statisticsQuery';
+import {PROCUREMENT_POLICY_ID,procurementExclusion,calculateSourceSatisfaction,type SatisfactionResult,type FollowupFact} from '../domain/procurementFacts';
+import {STATISTICS_POLICY,PROCUREMENT_POLICY,addDays,resolveComparisonPeriods,computePeriodChange} from '../domain/statisticsQuery';
 import {createCoveragePointMatcher} from './locationValidationService';
 import {labelOf} from '../domain/enums';
 import type {StatisticsQuery,StatisticsComplaint,StatisticsResult,DimensionBucket,BucketSelection,HouseholdEvidence,StatisticsPage} from '../types/statistics';
 import {rowToListItem,type ComplaintRow} from '../repositories/complaintMapper';
 export interface StatisticsCapture {
- version:1;summary:StatisticsResult;rows:StatisticsComplaint[];
+ version:1;summary:StatisticsResult;satisfactionEvidence?:SatisfactionResult;rows:StatisticsComplaint[];
  /** Actual facts for every counted/excluded current and comparison contribution. */
  periodFacts:{kind:'current'|'yoy'|'mom';from:string;to:string;rows:StatisticsComplaint[];excludedRows:{row:StatisticsComplaint;reason:string}[]}[];
  categoryEvidence:{code:string;dictionaryVersion:string;level:'major'|'minor';name:string;snapshot:unknown|null}[];
@@ -34,9 +35,9 @@ function toFact(row:Record<string,unknown>,q:StatisticsQuery):StatisticsComplain
  if(q.projection==='entry_snapshot'){
   const entry=readStatisticsSnapshot(row.statistics_snapshot_version,row.statistics_snapshot);
   if(entry&&entry.complaintId===facts.complaintId)facts=entry;
-  else{snapshotReason=row.statistics_snapshot==null?'旧入库记录未留存统计快照':'入库统计快照版本或内容不可用';facts={...facts,title:text(row.entry_title),businessType:text(row.entry_business_type),complaintType:text(row.entry_complaint_type),districtCode:text(row.entry_district_code),districtName:text(row.entry_district_name),enterpriseCode:text(row.entry_enterprise_code),enterpriseName:text(row.entry_enterprise_name),majorCode:null,minorCode:null,dictionaryVersion:null,sourceReportedAt:null,receivedAt:null,longitude:null,latitude:null,coordinateSystem:null,coordinateSource:null,adminGridCode:null,communityCode:null,editVersion:0,enteredAt:statisticsIso(row.confirmed_at)};}
+  else{snapshotReason=row.statistics_snapshot==null?'旧入库记录未留存统计快照':'入库统计快照版本或内容不可用';facts={...facts,title:text(row.entry_title),businessType:text(row.entry_business_type),complaintType:text(row.entry_complaint_type),districtCode:text(row.entry_district_code),districtName:text(row.entry_district_name),enterpriseCode:text(row.entry_enterprise_code),enterpriseName:text(row.entry_enterprise_name),majorCode:null,minorCode:null,dictionaryVersion:null,sourceId:null,sourceSystem:null,sourceEventStatus:null,sourceSyncedAt:null,sourceReportedAt:null,receivedAt:null,longitude:null,latitude:null,coordinateSystem:null,coordinateSource:null,adminGridCode:null,communityCode:null,editVersion:0,enteredAt:statisticsIso(row.confirmed_at)};}
  }
- return {...facts,id:Number(row.id),analysisId:text(row.analysis_id),...resolveBusinessTime(facts),grids:[],locationReason:null,snapshotReason};
+ return {...facts,id:Number(row.id),analysisId:text(row.analysis_id),...resolveBusinessTime(q.comparisonPolicyId===PROCUREMENT_POLICY_ID?{...facts,receivedAt:null}:facts),grids:[],locationReason:null,snapshotReason};
 }
 function scalarMatch(row:StatisticsComplaint,q:StatisticsQuery):boolean {
  return (['businessType','majorCode','minorCode','enterpriseCode','districtCode'] as const).every(k=>q[k]===undefined||row[k]===q[k]);
@@ -55,6 +56,7 @@ function select(rows:StatisticsComplaint[],q:StatisticsQuery){
  const content=rows.filter(r=>{
   // Missing required category is counted separately only if other noncategory filters match.
   if(!(['businessType','enterpriseCode','districtCode'] as const).every(k=>q[k]===undefined||r[k]===q[k]))return false;
+  if(q.comparisonPolicyId===PROCUREMENT_POLICY_ID){const reason=procurementExclusion(r);if(reason){if(!r.businessDay)missingDates++;if(!r.businessDay||(r.businessDay>=q.from&&r.businessDay<=q.to))increment(reason,r);return false;}}
   if(!r.businessDay){missingDates++;increment(r.snapshotReason??'业务日期不可用',r);return false;}
   if(r.businessDay<q.from||r.businessDay>q.to)return false;
   if((q.majorCode!==undefined&&r.majorCode===null)||(q.minorCode!==undefined&&r.minorCode===null)){increment('正式分类筛选所需字段不可用',r);return false;}
@@ -227,7 +229,13 @@ export async function captureStatisticsIn(db: SqlExecutor, q: StatisticsQuery, a
     const rates = [];
     for (const code of enterpriseCodes)
         rates.push(await householdRate(db, q, code, enterpriseCounts.get(code) ?? 0, access, permissions, selected.missingDates > 0, masterScopeFacts));
-    const summary: StatisticsResult = { query: q, policy: { ...STATISTICS_POLICY }, timezone: 'Asia/Shanghai', timeBasis: '规范化来源填报时间优先；缺失或无效回落平台接收时间（候选口径，非认证来源时序）', total: selected.content.length, partial: selected.missingDates > 0, dateFilterUnavailableCount: selected.missingDates, sourceTimeFallbackCount: selected.content.filter(r => r.timeSource === 'received_fallback').length, unlocatedCount: selected.content.filter(r => !r.grids.length).length, multiGridCount: selected.content.filter(r => r.grids.length > 1).length, excludedByReason: selected.excluded, dimensions: [...buckets.values()].sort((a, b) => b.count - a.count || JSON.stringify(a).localeCompare(JSON.stringify(b))), comparisons, dataCutoffAt: clock().toISOString(), projectionCapabilities: { businessDate: selected.missingDates ? '部分入库记录未留存业务日期' : null, category: q.projection === 'entry_snapshot' && rows.some(r => r.snapshotReason) ? '旧入库记录未留存正式分类快照' : null, location: q.projection === 'entry_snapshot' && rows.some(r => r.snapshotReason) ? '旧入库记录未留存位置快照' : null }, trend, rates, overallRate: { value: null, reason: '总体未证明完整无重叠企业人口 cohort；请查看具备依据的企业指标' }, satisfactionRate: { value: null, reason: '正式回访有效性与来源优先政策尚未业务确认' } };
+    let satisfaction:SatisfactionResult|undefined;
+    if(q.comparisonPolicyId===PROCUREMENT_POLICY_ID){
+      const ids=selected.content.map(r=>r.complaintId),selectedById=new Map(selected.content.map(r=>[r.complaintId,r]));const followups:FollowupFact[]=[];
+      for(let i=0;i<ids.length;i+=500){const batch=ids.slice(i,i+500);const heads=await rowsIn(db,"select event_id,content,followup_binding from source_business_head where kind='followup' and json_unquote(json_extract(content,'$.payload.complaintId')) in ("+batch.map(()=>'?').join(',')+") limit 100001",batch);if(heads.length>100000||followups.length+heads.length>100000)throw AppError.validation('回访证据超过10万条');for(const h of heads){const input=json(h.content) as Omit<FollowupFact,'eventId'>;const target=selectedById.get(input.payload.complaintId);const binding=json(h.followup_binding) as {sourceId?:string;complaintId?:string;sourceSystem?:string;sourceObjectId?:string}|null;const bindingTrusted=!!(binding&&binding.sourceId===input.sourceId&&binding.complaintId===input.payload.complaintId&&binding.sourceSystem===target?.sourceSystem&&binding.sourceObjectId===target?.sourceId);followups.push({...input,eventId:String(h.event_id),bindingTrusted,binding});}}
+      satisfaction=calculateSourceSatisfaction(ids,followups);
+    }
+    const summary: StatisticsResult = { query: q, policy: { ...(q.comparisonPolicyId===PROCUREMENT_POLICY_ID?PROCUREMENT_POLICY:STATISTICS_POLICY) }, timezone: 'Asia/Shanghai', timeBasis: q.comparisonPolicyId===PROCUREMENT_POLICY_ID?'宜接就办来源录入时间；仅来源明确办结的供水供气案件，缺时间排除':'规范化来源填报时间优先；缺失或无效回落平台接收时间（候选口径，非认证来源时序）', total: selected.content.length, partial: selected.missingDates > 0, dateFilterUnavailableCount: selected.missingDates, sourceTimeFallbackCount: selected.content.filter(r => r.timeSource === 'received_fallback').length, unlocatedCount: selected.content.filter(r => !r.grids.length).length, multiGridCount: selected.content.filter(r => r.grids.length > 1).length, excludedByReason: selected.excluded, dimensions: [...buckets.values()].sort((a, b) => b.count - a.count || JSON.stringify(a).localeCompare(JSON.stringify(b))), comparisons, dataCutoffAt: clock().toISOString(), projectionCapabilities: { businessDate: selected.missingDates ? '部分入库记录未留存业务日期' : null, category: q.projection === 'entry_snapshot' && rows.some(r => r.snapshotReason) ? '旧入库记录未留存正式分类快照' : null, location: q.projection === 'entry_snapshot' && rows.some(r => r.snapshotReason) ? '旧入库记录未留存位置快照' : null }, trend, rates, overallRate: { value: null, reason: '总体未证明完整无重叠企业人口 cohort；请查看具备依据的企业指标' }, satisfactionRate: satisfaction?{value:satisfaction.value,reason:satisfaction.reason,policyId:satisfaction.policyId,satisfiedCount:satisfaction.satisfiedCount,validCount:satisfaction.validCount}:{ value: null, reason: '旧候选政策不计算来源满意度' } };
     const selectedIds = new Set(selected.content.map(r => r.complaintId));
     const matchingSource = source.filter(r => selectedIds.has(String(r.complaint_id)));
     const legacyMetrics = { sensitive: 0, closedInSystem: 0, sourceClosed: 0, sourceKnown: 0 };
@@ -241,7 +249,7 @@ export async function captureStatisticsIn(db: SqlExecutor, q: StatisticsQuery, a
         if (row.source_event_status != null && row.source_event_status !== 'unknown')
             legacyMetrics.sourceKnown++;
     }
-    return { version: 1, summary, rows: selected.content, periodFacts, categoryEvidence, coverageEvidence: coverages, householdEvidence: rates, masterScopeFacts, scopeFacts: source.filter(r => contributing.has(String(r.complaint_id))).map(row => { const fact = contributing.get(String(row.complaint_id))!; return { complaintId: fact.complaintId, current: { enterpriseCode: text(row.enterprise_code), districtCode: text(row.district_code) }, original: { enterpriseCode: fact.enterpriseCode, districtCode: fact.districtCode } }; }), legacyListItems: matchingSource.map(r => rowToListItem(r as unknown as ComplaintRow)), legacyMetrics };
+    return { version: 1, summary,satisfactionEvidence:satisfaction, rows: selected.content, periodFacts, categoryEvidence, coverageEvidence: coverages, householdEvidence: rates, masterScopeFacts, scopeFacts: source.filter(r => contributing.has(String(r.complaint_id))).map(row => { const fact = contributing.get(String(row.complaint_id))!; return { complaintId: fact.complaintId, current: { enterpriseCode: text(row.enterprise_code), districtCode: text(row.district_code) }, original: { enterpriseCode: fact.enterpriseCode, districtCode: fact.districtCode } }; }), legacyListItems: matchingSource.map(r => rowToListItem(r as unknown as ComplaintRow)), legacyMetrics };
 }
 
 export async function captureStatistics(q:StatisticsQuery,access:AccessContext,permissions:readonly string[],clock:()=>Date=()=>new Date(),legacy=false):Promise<StatisticsCapture>{

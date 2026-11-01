@@ -13,3 +13,5 @@
 - name：必填名称，最多128字
 - enterpriseCode：必填稳定企业编码；文本，保留前导零
 - businessType：必填已发布启用业务编码，如 water/gas
+- managerName：可选管理人，空白清除，最多64字；已有网格请在覆盖维护中创建新版本
+- managerPhone：可选管理人电话，空白清除，最多64字；不在普通大屏显示

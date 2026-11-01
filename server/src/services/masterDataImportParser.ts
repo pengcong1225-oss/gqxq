@@ -8,12 +8,12 @@ export const TEMPLATE_VERSION='b4-v1';
 export const IMPORT_KINDS:MasterDataImportKind[]=['enterprise','department_mapping','household','dictionary_type','dictionary_item','category','admin_grid','community','service_grid','grid_coverage','grid_boundary'];
 export const IMPORT_LIMITS={bytes:10*1024*1024,rows:2000,inflatedBytes:40*1024*1024,zipEntries:100,sheets:2,cells:100000,cellBytes:4096,vertices:20000,expiresHours:24} as const;
 export const TEMPLATE_FIELDS:Record<MasterDataImportKind,string[]>={
- enterprise:['enterpriseCode','enterpriseName','businessType','status','districtCode','uscc','legalPerson','contactPerson','contactPhone','serviceArea','address','disableReason'],
+ enterprise:['enterpriseCode','enterpriseName','businessType','status','districtCode','uscc','legalPerson','contactPerson','contactPhone','serviceArea','address','disableReason','dashboardVisible','dashboardName'],
  department_mapping:['sourceSystem','sourceDepartmentCode','sourceDepartmentName','enterpriseCode','entityType','aliases','verified'],
  household:['enterpriseCode','households','validFrom','validTo'], dictionary_type:['code','name','status','published','cascadeDisable'],
  dictionary_item:['typeCode','code','label','parentCode','sort','status','published','cascadeDisable'],category:['code','label','parentCode','sort','status','published','cascadeDisable'],
  admin_grid:['code','name','districtCode'],community:['code','name','adminGridCode'],
- service_grid:['code','name','enterpriseCode','businessType'],
+ service_grid:['code','name','enterpriseCode','businessType','managerName','managerPhone'],
  grid_coverage:['code','validFrom','validTo','relationKind','relationCode'],grid_boundary:['code','coordinateSystem','geometrySource','geometry']};
 const required:Record<MasterDataImportKind,string[]>={enterprise:['enterpriseCode','enterpriseName','businessType','status'],department_mapping:['sourceSystem','sourceDepartmentCode','sourceDepartmentName','enterpriseCode','entityType','aliases','verified'],household:['enterpriseCode','households','validFrom','validTo'],dictionary_type:['code','name','status','published','cascadeDisable'],dictionary_item:['typeCode','code','label','parentCode','sort','status','published','cascadeDisable'],category:['code','label','parentCode','sort','status','published','cascadeDisable'],admin_grid:['code','name','districtCode'],community:['code','name','adminGridCode'],service_grid:['code','name','enterpriseCode','businessType'],grid_coverage:['code','validFrom','validTo','relationKind','relationCode'],grid_boundary:[]};
 export function parseKind(value:unknown):MasterDataImportKind {if(typeof value!=='string'||!IMPORT_KINDS.includes(value as MasterDataImportKind))throw AppError.validation('导入类型无效');return value as MasterDataImportKind;}

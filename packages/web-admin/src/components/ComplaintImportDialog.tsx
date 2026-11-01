@@ -43,15 +43,15 @@ export default function ComplaintImportDialog({onImported}:{onImported:()=>void}
    {batch?.expired&&!batch.result&&<Alert type="warning" message="预览已过期，请重新上传。"/>}
    {batch?.result?<Alert type="success" showIcon message={`导入完成：新增 ${batch.result.created} 件，跳过 ${batch.result.skipped} 件`}/>:p.canCommit&&<Button type="primary" loading={busy} disabled={busy} onClick={()=>void confirm()}>确认导入</Button>}
    <Button style={{marginLeft:8}} disabled={busy} onClick={()=>void load(p.batchId)}>查询本批次结果</Button>
-   <Table<ComplaintImportDetail> style={{marginTop:12}} size="small" rowKey="row" dataSource={batch?.details} pagination={{pageSize:20,showSizeChanger:false}} scroll={{x:800}} columns={[
-    {title:'Excel 行号',dataIndex:'row',width:90},{title:'案件公文号',dataIndex:'sourceId',width:180},{title:'诉求摘要',dataIndex:'title',ellipsis:true},
-    {title:'业务',render:(_,d)=>d.businessType==='water'?'供水':d.businessType==='gas'?'燃气':'—',width:65},{title:'性质',render:(_,d)=>labels[d.complaintType??'']??'—',width:65},
-    {title:'校验结果',render:(_,d)=><>{d.errors.length?d.errors.join('；'):<Tag color={d.action==='create'?'blue':undefined}>{({create:'新增',skip:'已有案件，跳过',duplicate:'文件重复，跳过',error:'错误'})[d.action]}</Tag>}</>,width:230}
+   <Table<ComplaintImportDetail> style={{marginTop:12}} size="small" rowKey="row" dataSource={batch?.details} pagination={{pageSize:20,showSizeChanger:false}} scroll={{x:1030}} columns={[
+    {title:'Excel 行号',dataIndex:'row',width:90},{title:'案件公文号',dataIndex:'sourceId',width:180},{width:320,title:'诉求摘要',dataIndex:'title',ellipsis:true},
+    {title:'业务',render:(_,d)=>d.businessType==='water'?'供水':d.businessType==='gas'?'燃气':'—',width:90},{title:'性质',render:(_,d)=>labels[d.complaintType??'']??'—',width:90},
+    {title:'校验结果',render:(_,d)=><>{d.errors.length?d.errors.join('；'):<Tag color={d.action==='create'?'blue':undefined}>{({create:'新增',skip:'已有案件，跳过',duplicate:'文件重复，跳过',error:'错误'})[d.action]}</Tag>}</>,width:260}
    ]}/>
   </div>}
-  <p style={{marginTop:20}}>最近导入记录</p><Table<ComplaintImportSummary> size="small" rowKey={b=>b.preview.batchId} dataSource={history} pagination={false} columns={[
-   {title:'文件',dataIndex:['preview','name']},{title:'结果',render:(_,b)=>b.result?`新增 ${b.result.created} 件，跳过 ${b.result.skipped} 件`:b.expired?'预览已过期':b.preview.canCommit?'待确认':'校验未通过'},
-   {title:'操作',render:(_,b)=><Button size="small" disabled={busy} onClick={()=>void load(b.preview.batchId)}>查看</Button>}
+  <p style={{marginTop:20}}>最近导入记录</p><Table<ComplaintImportSummary> scroll={{x:650}} size="small" rowKey={b=>b.preview.batchId} dataSource={history} pagination={false} columns={[
+   {width:260,title:'文件',dataIndex:['preview','name']},{width:240,title:'结果',render:(_,b)=>b.result?`新增 ${b.result.created} 件，跳过 ${b.result.skipped} 件`:b.expired?'预览已过期':b.preview.canCommit?'待确认':'校验未通过'},
+   {width:150,title:'操作',render:(_,b)=><Button size="small" disabled={busy} onClick={()=>void load(b.preview.batchId)}>查看</Button>}
   ]}/>
  </Modal></>;
 }

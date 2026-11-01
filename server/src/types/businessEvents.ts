@@ -34,6 +34,6 @@ export type BusinessEventView = BusinessEventInput & {
 export interface BusinessEventContext {
   userId: string; userName?: string; clientIp?: string | null; permissionCodes: readonly string[]; access: AccessContext;
 }
-export interface BusinessSourceConfig { sourceId: string; keyId: string; secret: string; maxSkewSeconds: number; }
+export interface BusinessSourceConfig { sourceId: string; keyId: string; secret: string; maxSkewSeconds: number;sourceSystem?:string;complaintTargets?:{sourceSystem:string;allEnterprises?:boolean;enterpriseCodes?:string[]}[]; }
 export interface BusinessSourceHeaders { sourceId: string; keyId: string; timestamp: string; signature: string; }
 export interface BusinessEventQuery { page: number; size: number; search?: string; businessType?: 'water' | 'gas'; approvalState?: string; state?: string; from?: string; to?: string; }

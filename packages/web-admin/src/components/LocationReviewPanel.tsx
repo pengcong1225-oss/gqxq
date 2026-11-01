@@ -8,10 +8,10 @@ import {confirmLocationGroup,deferLocationGroup,getLocationCorrectionOptions,lis
 import {locationDraftInput,type LocationDraft} from './LocationCorrectionFields';
 import TiandituLocationPicker from './TiandituLocationPicker';
 import {adoptLocation,safePlaceQuery,suggestLocations,resolveAddressLocation} from '../utils/locationSuggestions';
-export interface LocationReviewPanelProps {detail:ComplaintDetail;items:CorrectionItem[];disabled?:boolean;onSaved:(result:LocationCorrectionResult,next:boolean)=>void;onDeferred:(next:boolean)=>void}
+export interface LocationReviewPanelProps {detail:ComplaintDetail;items:CorrectionItem[];disabled?:boolean;singleRecord?:boolean;onSaved:(result:LocationCorrectionResult,next:boolean)=>void;onDeferred:(next:boolean)=>void}
 const fields=new Set(['address','location_lng','location_lat','district_name','district_code','admin_grid_code','community_code']);
 function initial(d:ComplaintDetail):LocationDraft{return {address:d.effectiveAddress??d.correctedAddress??d.address??'',districtCode:d.districtCode,adminGridCode:d.adminGridCode,communityCode:d.communityCode,lng:d.locationLng==null?'':String(d.locationLng),lat:d.locationLat==null?'':String(d.locationLat),coordinateSystem:d.locationCoordinateSystem??'unknown',coordinateSource:d.locationCoordinateSource??''};}
-function Review({detail:incoming,items:incomingItems,disabled,onSaved,onDeferred}:LocationReviewPanelProps){
+function Review({detail:incoming,items:incomingItems,disabled,singleRecord,onSaved,onDeferred}:LocationReviewPanelProps){
  const [refreshed,setRefreshed]=useState<{detail:ComplaintDetail;items:CorrectionItem[]}|null>(null);
  const detail=refreshed&&refreshed.detail.editVersion>=incoming.editVersion?refreshed.detail:incoming,items=refreshed&&refreshed.detail===detail?refreshed.items:incomingItems;
  const [draft,setDraft]=useState<LocationDraft>(()=>initial(detail)),[options,setOptions]=useState<LocationCorrectionOptions|null>(null),[error,setError]=useState(''),[editing,setEditing]=useState(false),[dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[deferring,setDeferring]=useState(false),[reason,setReason]=useState(''),[note,setNote]=useState(''),[stale,setStale]=useState(false);
@@ -27,7 +27,10 @@ function Review({detail:incoming,items:incomingItems,disabled,onSaved,onDeferred
  }
  return current;
  });}).catch(e=>{if(alive.current)setError(e.message||'地点选项加载失败');});return()=>{alive.current=false;};},[]);
- useEffect(()=>{if(detail.editVersion!==version.current){setStale(true);setError('记录版本已变化，草稿已保留，请核对最新原文后确认使用新版本');}},[detail.editVersion]);
+ useEffect(()=>{
+  if(!pending){version.current=detail.editVersion;setStale(false);setError('');return;}
+  if(detail.editVersion!==version.current){setStale(true);setError('记录版本已变化，草稿已保留，请核对最新原文后确认使用新版本');}
+ },[detail.editVersion,pending]);
  const change=(patch:Partial<LocationDraft>,location=false)=>{changed.current=true;setDirty(true);setDraft(d=>({...d,...(location?{lng:'',lat:'',coordinateSystem:'unknown' as const,coordinateSource:''}:{}),...patch}));};
  const blocked=disabled||busy||!pending||stale;
  async function submit(next:boolean,defer=false){
@@ -51,7 +54,7 @@ function Review({detail:incoming,items:incomingItems,disabled,onSaved,onDeferred
   change(resolved?.location??{address,districtCode:null,adminGridCode:null,communityCode:null},true);
  }
  const query=!dirty&&suggestions?.unique?safePlaceQuery((options?.districts.find(d=>d.code===suggestions.unique?.districtCode)?.name??'')+suggestions.unique.address):null;
- return <Card title="位置核验" size="small">
+ return <Card title={singleRecord?"完善地址":"位置核验"} size="small">
   <Typography.Paragraph><strong>原始内容：</strong>{detail.title}　{detail.content||'未提供正文'}</Typography.Paragraph>
   <Typography.Paragraph><strong>原始地址：</strong>{detail.sourceAddress||'来源未提供地址'}</Typography.Paragraph>
   <Typography.Paragraph>当前位置：{detail.effectiveAddress??detail.correctedAddress??detail.address??'待核实'}（{detail.districtName??'区县待核实'}）</Typography.Paragraph>
@@ -64,9 +67,9 @@ function Review({detail:incoming,items:incomingItems,disabled,onSaved,onDeferred
   <Typography.Paragraph>区县：{options?.districts.find(d=>d.code===draft.districtCode)?.name??'待核实'}；网格：{options?.adminGrids.find(g=>g.code===draft.adminGridCode)?.name??'待核实'}；小区：{options?.communities.find(c=>c.code===draft.communityCode)?.name??'待核实'}</Typography.Paragraph>
   <Typography.Paragraph>待确认地点：{draft.address||'待选择'}；坐标{draft.lng&&draft.lat?'已提供，仍按来源状态核验':'未知'}</Typography.Paragraph>
    {draft.address&&addressResolution&&<Alert type="info" showIcon message={addressResolution.message} description={addressResolution.township?'乡镇／街道线索：'+addressResolution.township+'（从地址提取）':undefined} />}
-  {suggestions&&suggestions.candidates.length>1&&<Space wrap>{suggestions.candidates.map((c,i)=><Button key={i} disabled={blocked} onClick={()=>change(adoptLocation(draft,c))}>{c.address} · {options?.districts.find(d=>d.code===c.districtCode)?.name??'区县未知'} · {options?.adminGrids.find(g=>g.code===c.adminGridCode)?.name??'网格未知'}</Button>)}</Space>}
-  <Space wrap style={{marginBottom:12}}><Button type="primary" disabled={blocked||!options} loading={busy} onClick={()=>void submit(true)}>确认位置并下一条</Button><Button disabled={blocked||!options} onClick={()=>void submit(false)}>确认位置</Button><Button disabled={blocked} onClick={()=>setEditing(v=>!v)}>调整位置</Button><Button disabled={blocked} onClick={()=>setDeferring(v=>!v)}>暂无法确认</Button></Space>
-  {deferring&&<Space direction="vertical" style={{display:'flex'}}><Select aria-label="暂缓原因" placeholder="请选择暂缓原因" style={{width:260}} value={reason||undefined} disabled={blocked} onChange={setReason} options={['原文信息不足','多个地点无法区分','区划或地址冲突','需联系核实'].map(value=>({value,label:value}))}/><Input.TextArea aria-label="暂缓补充说明" placeholder="可补充说明" maxLength={400} value={note} onChange={e=>setNote(e.target.value)}/><Button disabled={blocked} onClick={()=>void submit(true,true)}>记录暂缓并下一条</Button></Space>}
+  {suggestions&&suggestions.candidates.length>1&&<Space wrap className="location-suggestion-list">{suggestions.candidates.map((c,i)=><Button key={i} disabled={blocked} onClick={()=>change(adoptLocation(draft,c))}>{c.address} · {options?.districts.find(d=>d.code===c.districtCode)?.name??'区县未知'} · {options?.adminGrids.find(g=>g.code===c.adminGridCode)?.name??'网格未知'}</Button>)}</Space>}
+  <Space wrap style={{marginBottom:12}}>{!singleRecord&&<Button type="primary" disabled={blocked||!options} loading={busy} onClick={()=>void submit(true)}>确认位置并下一条</Button>}<Button disabled={blocked||!options} onClick={()=>void submit(false)}>确认位置</Button><Button disabled={blocked} onClick={()=>setEditing(v=>!v)}>调整位置</Button><Button disabled={blocked} onClick={()=>setDeferring(v=>!v)}>暂无法确认</Button></Space>
+  {deferring&&<Space direction="vertical" style={{display:'flex'}}><Select aria-label="暂缓原因" placeholder="请选择暂缓原因" style={{width:260}} value={reason||undefined} disabled={blocked} onChange={setReason} options={['原文信息不足','多个地点无法区分','区划或地址冲突','需联系核实'].map(value=>({value,label:value}))}/><Input.TextArea aria-label="暂缓补充说明" placeholder="可补充说明" maxLength={400} value={note} onChange={e=>setNote(e.target.value)}/><Button disabled={blocked} onClick={()=>void submit(!singleRecord,true)}>{singleRecord?"记录暂缓":"记录暂缓并下一条"}</Button></Space>}
   {(editing||dirty||suggestions?.conflict||(suggestions?.candidates.length??0)>1)&&<Space direction="vertical" style={{display:'flex'}}>
    <Typography.Text strong>核实后的地址</Typography.Text>
    <Input aria-label="核实后的地址" value={draft.address} maxLength={500} disabled={blocked} onChange={e=>editAddress(e.target.value)}/>

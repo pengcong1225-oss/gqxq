@@ -1,4 +1,4 @@
-import {chineseLabel} from '../utils/chineseDisplay';
+import {chineseLabel,namedLabel} from '../utils/chineseDisplay';
 import MasterDataImportDialog from '../components/MasterDataImportDialog';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -202,7 +202,7 @@ export const SensitiveWordManager: React.FC = () => {
       title: '操作',
       width: 180,
       render: (_, row) => (
-        <Space>
+        <Space wrap>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(row)}>
             编辑
           </Button>
@@ -223,7 +223,7 @@ export const SensitiveWordManager: React.FC = () => {
     <div>
 
 
-      <Row gutter={16} style={{ marginBottom: 16 }}>
+      <Row gutter={[16,16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={8}><Card size="small"><Statistic title="词条总数" value={rows.length} /></Card></Col>
         <Col xs={24} sm={8}><Card size="small"><Statistic title="当前启用" value={enabledCount} /></Card></Col>
         <Col xs={24} sm={8}><Card size="small"><Statistic title="当前敏感诉求" value={currentSensitiveCount ?? '—'} /></Card></Col>
@@ -244,7 +244,7 @@ export const SensitiveWordManager: React.FC = () => {
       </Space>
 
       <Table
-        rowKey="itemId"
+        scroll={{x:680}} rowKey="itemId"
         columns={columns}
         dataSource={filtered}
         loading={loading}
@@ -313,11 +313,11 @@ export const SensitiveWordManager: React.FC = () => {
               description={`请在以下时间前确认： ${new Date(preview.expiresAt).toLocaleString()}。数据变化后需要重新预览。`}
             />
             <Row gutter={[12, 12]}>
-              <Col span={12}><Statistic title="扫描总数" value={preview.summary.total} /></Col>
-              <Col span={12}><Statistic title="将变为敏感" value={preview.summary.wouldBecomeSensitive} /></Col>
-              <Col span={12}><Statistic title="将取消敏感" value={preview.summary.wouldBecomeNonSensitive} /></Col>
-              <Col span={12}><Statistic title="关键词将变化" value={preview.summary.keywordsChanged} /></Col>
-              <Col span={12}><Statistic title="保持不变" value={preview.summary.unchanged} /></Col>
+              <Col xs={24} xl={12}><Statistic title="扫描总数" value={preview.summary.total} /></Col>
+              <Col xs={24} xl={12}><Statistic title="将变为敏感" value={preview.summary.wouldBecomeSensitive} /></Col>
+              <Col xs={24} xl={12}><Statistic title="将取消敏感" value={preview.summary.wouldBecomeNonSensitive} /></Col>
+              <Col xs={24} xl={12}><Statistic title="关键词将变化" value={preview.summary.keywordsChanged} /></Col>
+              <Col xs={24} xl={12}><Statistic title="保持不变" value={preview.summary.unchanged} /></Col>
             </Row>
             <div>本次启用词：{preview.enabledWords.map((word) => <Tag key={word}>{word}</Tag>)}</div>
           </Space>
@@ -529,13 +529,13 @@ const DictionaryAdmin: React.FC = () => {
                     setError(errorText(e));
             } } });
     };
-    const columns: ColumnsType<DictionaryItem> = [{ title: '条目', dataIndex: 'code', render: v => current?.type.fixedCodes ? chineseLabel(v,active,'其他条目') : v }, { title: '标签', dataIndex: 'label' }, { title: '父项', dataIndex: 'parentCode', render: v => v ? current?.items.find(i=>i.code===v)?.label??'父项待核对' : '大类 / 根项' }, { title: '排序', dataIndex: 'sort' }, { title: '状态', dataIndex: 'status', render: v => <Tag>{v === 'enabled' ? '启用' : '停用'}</Tag> }, { title: '版本', dataIndex: 'version' }, { title: '发布', dataIndex: 'published', render: v => v ? '已发布' : '草稿' }, { title: '操作', render: (_, item) => <Space>{!current?.type.readOnly && <Button size="small" onClick={() => openItem(item)}>编辑条目</Button>}<Button size="small" onClick={() => void readReferences(item.code)}>引用</Button>{!item.published && !current?.type.readOnly && !current?.type.fixedCodes && <Button danger size="small" onClick={() => removeItem(item)}>删除草稿</Button>}</Space> }];
-    return <div><h2>字典管理</h2><Space style={{ marginBottom: 12 }}><MasterDataImportDialog kinds={['dictionary_type', 'dictionary_item', 'category']} onImported={() => void refresh()}/><Button onClick={() => openType(null)}>新增字典类型</Button><Button onClick={() => void refresh()}>刷新字典</Button></Space>{error && !editor && !typeEditor && <Alert type="error" message={error}/>}
-  <Tabs activeKey={active} onChange={changeActive} items={[...types.map(t => ({ key: t.code, label: t.name })), { key: 'sensitive_word', label: '敏感词' }]}/>
+    const columns: ColumnsType<DictionaryItem> = [{width:180, title: '条目', dataIndex: 'code', render: v => current?.type.fixedCodes ? chineseLabel(v,active,'其他条目') : v }, {width:220, title: '标签', dataIndex: 'label' }, {width:180, title: '父项', dataIndex: 'parentCode', render: v => v ? current?.items.find(i=>i.code===v)?.label??'父项待核对' : '大类 / 根项' }, {width:90, title: '排序', dataIndex: 'sort' }, {width:90, title: '状态', dataIndex: 'status', render: v => <Tag>{v === 'enabled' ? '启用' : '停用'}</Tag> }, {width:90, title: '版本', dataIndex: 'version' }, {width:110, title: '发布', dataIndex: 'published', render: v => v ? '已发布' : '草稿' }, {width:230, title: '操作', render: (_, item) => <Space wrap>{!current?.type.readOnly && <Button size="small" onClick={() => openItem(item)}>编辑条目</Button>}<Button size="small" onClick={() => void readReferences(item.code)}>引用</Button>{!item.published && !current?.type.readOnly && !current?.type.fixedCodes && <Button danger size="small" onClick={() => removeItem(item)}>删除草稿</Button>}</Space> }];
+    return <div><h2>字典管理</h2><Space wrap style={{ marginBottom: 12 }}><MasterDataImportDialog kinds={['dictionary_type', 'dictionary_item', 'category']} onImported={() => void refresh()}/><Button onClick={() => openType(null)}>新增字典类型</Button><Button onClick={() => void refresh()}>刷新字典</Button></Space>{error && !editor && !typeEditor && <Alert type="error" message={error}/>}
+  <Tabs activeKey={active} onChange={changeActive} items={[...types.map(t => ({ key: t.code, label: namedLabel(t.code,t.name,'dictionary_type') })), { key: 'sensitive_word', label: '敏感词' }]}/>
   {active === 'sensitive_word' ? <SensitiveWordManager /> : <Card loading={loading}>
    {current && <><Space wrap style={{ marginBottom: 16 }}><Tag>字典版本 {current.type.version}</Tag>{!current.type.readOnly && <><Button onClick={() => openType(current.type)}>编辑类型</Button><Button type="primary" onClick={() => openItem(null)}>新增字典项</Button>{!current.type.published && !current.type.fixedCodes && current.type.code !== 'complaint_category' && <Button danger onClick={removeType}>删除类型草稿</Button>}</>}<Button onClick={() => void readReferences()}>类型引用</Button></Space>
    {current.type.readOnly && <Alert type="info" message="此类字典仅供查看。"/>}{current.type.fixedCodes && <Alert type="info" message="可修改名称、排序和启用状态，编码不可更改。"/>}
-   <Table rowKey="itemId" columns={columns} dataSource={current.items} pagination={false}/></>}
+   <Table scroll={{x:1190}} rowKey="itemId" columns={columns} dataSource={current.items} pagination={false}/></>}
   </Card>}
   <Modal key={contextKey + ':item:' + itemOwner.current?.action} title={editing ? '编辑字典条目' : '新增字典条目'} open={editor && ownsAction(itemOwner.current)} onCancel={() => { actionSerial.current++; setEditor(false); }} onOk={() => void saveItem()} okText="保存条目" confirmLoading={saving}>
    {error && <Alert type="error" message={error}/>}<Form form={form} layout="vertical">
@@ -547,7 +547,7 @@ const DictionaryAdmin: React.FC = () => {
    </Form>
   </Modal>
   <Modal key={contextKey + ':type:' + typeOwner.current?.action} title="字典类型" open={typeEditor && ownsAction(typeOwner.current)} onCancel={() => { actionSerial.current++; setTypeEditor(false); }} onOk={() => void saveType()} okText="保存类型" confirmLoading={saving}>{error && <Alert type="error" message={error}/>}<Form form={typeForm} layout="vertical"><Form.Item label="类型编码" name="code" rules={[{ required: true }]}><Input disabled={Boolean(editingType)}/></Form.Item><Form.Item label="类型名称" name="name" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="状态" name="status"><Select options={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}/></Form.Item><Form.Item name="published" valuePropName="checked"><Checkbox disabled={editingType?.published}>发布类型</Checkbox></Form.Item><Form.Item name="cascadeDisable" valuePropName="checked"><Checkbox>明确确认停用该类型的全部条目</Checkbox></Form.Item></Form></Modal>
-  <Modal key={contextKey} title="可见引用（最多100条诉求）" open={references !== null} onCancel={() => setReferences(null)} footer={null}><p>子项：{references?.children.join(' / ') || '无'}</p><Table rowKey="complaintId" dataSource={references?.complaints ?? []} columns={[{ title: '诉求编号', dataIndex: 'complaintNo' }]} pagination={false}/><p>列表按当前数据范围显示；历史或范围外引用也会阻止删除。</p></Modal>
+  <Modal key={contextKey} title="可见引用（最多100条诉求）" open={references !== null} onCancel={() => setReferences(null)} footer={null}><p>子项：{references?.children.join(' / ') || '无'}</p><Table scroll={{x:200}} rowKey="complaintId" dataSource={references?.complaints ?? []} columns={[{width:200, title: '诉求编号', dataIndex: 'complaintNo' }]} pagination={false}/><p>列表按当前数据范围显示；历史或范围外引用也会阻止删除。</p></Modal>
  </div>;
 };
 

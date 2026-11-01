@@ -58,6 +58,7 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   {method:'GET',path:/^\/business-source-status$/,roles:R,permissionCode:'source_status.read',desc:'业务来源接入配置与授权快照状态'},
   {method:'GET',path:/^\/shutdowns\/[^/]+$/,roles:R,permissionCode:'shutdown.read',desc:'版本化来源停供详情'},
   {method:'GET',path:/^\/pipeline-projects\/[^/]+$/,roles:R,permissionCode:'pipeline.read',desc:'版本化来源施工详情'},
+  {method:'GET',path:/^\/complaints\/[^/]+\/source-processes$/,roles:R,permissionCode:'complaint.read',desc:'对象范围内只读来源全过程'},
   {method:'GET',path:/^\/synchronized-followups(?:\/[^/]+)?$/,roles:R,permissionCode:'complaint.read',desc:'当前诉求范围内的外部回访事实'},
   {method:'POST',path:/^\/complaint-imports\/preview$/,roles:A,permissionCode:'complaint.import',desc:'诉求文件校验预览'},
   {method:'POST',path:/^\/complaint-imports\/[^/]+\/commit$/,roles:A,permissionCode:'complaint.import',desc:'诉求整批事务确认'},

@@ -20,10 +20,16 @@ function render(props: any = {}) {
       <ConfigProvider locale={zhCN} theme={{
         token: {
           colorPrimary: '#1677ff', borderRadius: 8,
-          fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif",
+          fontFamily: "'PingFang SC','Microsoft YaHei UI','Microsoft YaHei',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+          fontSize: 14, lineHeight: 1.65, controlHeight: 36,
+          colorText: '#243247', colorTextSecondary: '#596b80',
+          colorTextPlaceholder: '#7b8798', colorBorder: '#d8e0ea',
         },
         components: {
-          Table: { headerBg: '#fafbfc' },
+          Table: { headerBg: '#f5f7fb', headerColor: '#46566d', rowHoverBg: '#f0f6ff', cellPaddingBlockMD: 12 },
+          Card: { headerFontSize: 16, headerHeight: 52 },
+          Tabs: { titleFontSize: 14 },
+          Form: { itemMarginBottom: 20 },
           Menu: { itemHeight: 44 },
           Layout: { bodyBg: '#f5f7fa' },
         },

@@ -55,17 +55,16 @@ export const ACTIVE_DISPATCH_JOIN =
 export const ACTIVE_DISPATCH_COLUMNS =
   ', ad.assignment_id as active_dispatch_id, ad.status as active_dispatch_status';
 
-/**
- * 统一选列清单 = 冻结的共享列清单，不做任何替换。
- *
- * 历史：本文件曾把 c.correction_confidence 替换为 "null as correction_confidence"，
- * 因为当时 live gqxq_service.complaint 没有这一列。该缺口已由主线用迁移 M4 补列修掉
- * （migrations/20260917100400__m4_correction_confidence.js），因此不再替换——
- * 继续替换会用 null 盖住真实列。
- *
- * complaint 表真实存在但共享清单未选的列是 deleted / source_payload_hash，由 DETAIL_EXTRA_COLUMNS 补选。
- */
-export const COMPLAINT_SELECT_COLUMNS = COMPLAINT_COLUMNS;
+// Workflow records are authoritative; legacy complaint flags are not updated by
+// every correction path. Read current evidence without rewriting historical rows.
+export const CORRECTION_STATUS_SQL = "(case when exists (select 1 from correction_item ci where ci.complaint_id=c.complaint_id and (ci.status is null or ci.status not in ('confirmed','rejected'))) then 'pending'" +
+  " when exists (select 1 from correction_item ci where ci.complaint_id=c.complaint_id and ci.status='confirmed') then 'corrected'" +
+  " when exists (select 1 from correction_item ci where ci.complaint_id=c.complaint_id) then 'none' else coalesce(c.correction_status,'none') end)";
+export const ANALYSIS_INCLUDED_SQL = 'exists (select 1 from analysis_record ar where ar.complaint_id=c.complaint_id)';
+export const COMPLAINT_SELECT_COLUMNS = COMPLAINT_COLUMNS
+  .replace('c.correction_status', CORRECTION_STATUS_SQL + ' as correction_status')
+  .replace('c.analysis_included', ANALYSIS_INCLUDED_SQL + ' as analysis_included')
+  .replace('c.analysis_record_id', '(select ar.analysis_id from analysis_record ar where ar.complaint_id=c.complaint_id limit 1) as analysis_record_id');
 
 export interface WhereClause {
   text: string;
@@ -111,7 +110,7 @@ export function buildWhere(filter: ComplaintFilter): WhereClause {
   }
 
   if (filter.correctionStatus) {
-    parts.push('c.correction_status = ?');
+    parts.push(CORRECTION_STATUS_SQL + ' = ?');
     params.push(filter.correctionStatus);
   }
   // 超期时效（M11 派生列）：三态各自一档，**NULL 不并进"未超期"**。

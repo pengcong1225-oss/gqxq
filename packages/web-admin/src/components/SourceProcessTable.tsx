@@ -9,13 +9,14 @@ import type {SourceProcessResult,SourceProcessRevision} from '../types/api';
 const text=(value:string|null)=><span style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{value??'—'}</span>;
 const time=(value:string|null)=>value?new Date(value).toLocaleString('zh-CN'):'来源时间缺失';
 const columns:ColumnsType<SourceProcessRevision>=[
- {title:'来源时间',dataIndex:'occurredAt',width:150,render:time},
- {title:'来源顺序',dataIndex:'sourceSequence',width:90,render:value=>value??'未提供'},
- {title:'办理阶段',dataIndex:'stage',width:120,render:text},
- {title:'办理部门',dataIndex:'department',width:140,render:text},
- {title:'联系人',dataIndex:'contactName',width:110,render:text},
- {title:'处理意见',dataIndex:'opinion',render:text},
- {title:'来源版号',dataIndex:'sourceVersion',width:110,render:value=>text(value??'未提供')},
+ {title:'来源时间',dataIndex:'occurredAt',width:180,render:time},
+ {title:'来源顺序',dataIndex:'sourceSequence',width:100,render:value=>value??'未提供'},
+ {title:'办理阶段',dataIndex:'stage',width:150,render:text},
+ {title:'办理部门',dataIndex:'department',width:200,render:text},
+ {title:'联系人',dataIndex:'contactName',width:130,render:text},
+ {title:'联系方式',dataIndex:'contactPhone',width:160,render:text},
+ {width:360,title:'处理意见',dataIndex:'opinion',render:text},
+ {title:'来源版号',dataIndex:'sourceVersion',width:140,render:value=>text(value??'未提供')},
 ];
 const SourceProcessTable:React.FC<{complaintId:string}>=({complaintId})=>{
  const access=usePermissionAccess('complaint.read');const requestSeq=useRef(0);
@@ -35,8 +36,8 @@ const SourceProcessTable:React.FC<{complaintId:string}>=({complaintId})=>{
    <Alert showIcon style={{marginBottom:12}} type={result.state==='error'?'error':result.complete?'success':'warning'}
     message={result.state==='unavailable'?'来源全过程尚未接入':result.complete?'完整批次已保存':'来源全过程尚未完整'}
     description={<>{result.syncError&&<div>{systemMessage(result.syncError,'来源同步失败，请稍后重试')}</div>}<div>已完成批次截止时间：{result.cutoffAt?new Date(result.cutoffAt).toLocaleString('zh-CN'):'未提供可信截止时间'}</div>{result.missingTimeNodeIds.length>0&&<div>部分节点缺少来源时间，无法确认完整业务时序。</div>}</>}/>
-   {result.nodes.length===0?<Empty description="暂无已核实的来源节点"/>:<Table size="small" pagination={false} columns={columns} dataSource={result.nodes} rowKey="nodeId" scroll={{x:850}}
-    expandable={{rowExpandable:node=>result.revisions.filter(r=>r.nodeId===node.nodeId).length>1,expandedRowRender:node=><><Typography.Text type="secondary">该节点已保存的来源修订</Typography.Text><Table size="small" pagination={false} columns={columns} dataSource={result.revisions.filter(r=>r.nodeId===node.nodeId)} rowKey={r=>String(r.revision)}/></>}}/>}
+   {result.nodes.length===0?<Empty description="暂无已核实的来源节点"/>:<Table size="small" pagination={false} columns={columns} dataSource={result.nodes} rowKey="nodeId" scroll={{x:1420}}
+    expandable={{rowExpandable:node=>result.revisions.filter(r=>r.nodeId===node.nodeId).length>1,expandedRowRender:node=><><Typography.Text type="secondary">该节点已保存的来源修订</Typography.Text><Table scroll={{x:1420}} size="small" pagination={false} columns={columns} dataSource={result.revisions.filter(r=>r.nodeId===node.nodeId)} rowKey={r=>String(r.revision)}/></>}}/>}
   </>}
  </Card>;
 };

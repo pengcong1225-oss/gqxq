@@ -3,6 +3,7 @@ import {AppError} from '../http/errors';
 import type {AccessContext} from '../auth/accessScope';
 import type {StatisticsQuery,ComparisonPeriod,PeriodKind} from '../types/statistics';
 export const STATISTICS_POLICY=Object.freeze({id:'candidate-calendar-v1',version:1,status:'candidate' as const,label:'候选统计政策（待业务确认）'});
+export const PROCUREMENT_POLICY=Object.freeze({id:'procurement-source-completed-v2',version:2,status:'procurement' as const,label:'采购范围：宜接就办来源已办结供水供气；日历比较规则待业务确认'});
 const DAY=86400000;
 export const shanghaiToday=(clock:()=>Date=()=>new Date())=>clock().toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'});
 export function normalizeShanghaiDay(value:string):string {
@@ -16,7 +17,7 @@ const bucket=z.object({dimension:z.enum(['business','category','enterprise','dis
  if(b.dimension==='category'&&(!b.level||b.dictionaryVersion===undefined))c.addIssue({code:'custom',message:'分类桶须提供级别及字典版本（未知须显式 null）'});
  if(b.dimension!=='category'&&(b.level!==undefined||b.dictionaryVersion!==undefined))c.addIssue({code:'custom',message:'非分类桶不能带分类属性'});
 });
-const schema=z.object({dataset:z.enum(['ledger','analysis']),projection:z.enum(['current','entry_snapshot']),periodKind:z.enum(['month','quarter','year','custom']),from:z.string(),to:z.string(),comparisonPolicyId:z.literal('candidate-calendar-v1'),businessType:code.optional(),majorCode:code.optional(),minorCode:code.optional(),enterpriseCode:code.optional(),districtCode:code.optional(),serviceGridCode:code.optional(),bucket:bucket.optional()}).strict();
+const schema=z.object({dataset:z.enum(['ledger','analysis']),projection:z.enum(['current','entry_snapshot']),periodKind:z.enum(['month','quarter','year','custom']),from:z.string(),to:z.string(),comparisonPolicyId:z.enum(['candidate-calendar-v1','procurement-source-completed-v2']),businessType:code.optional(),majorCode:code.optional(),minorCode:code.optional(),enterpriseCode:code.optional(),districtCode:code.optional(),serviceGridCode:code.optional(),bucket:bucket.optional()}).strict();
 function calendarBounds(from:string,kind:Exclude<PeriodKind,'custom'>,offset=0):{from:string;to:string}{
  const year=Number(from.slice(0,4)),month=Number(from.slice(5,7))-1;const months=kind==='year'?12:kind==='quarter'?3:1;
  const start=new Date(Date.UTC(year,kind==='year'?0:kind==='quarter'?Math.floor(month/3)*3:month,1));start.setUTCMonth(start.getUTCMonth()+offset*months);

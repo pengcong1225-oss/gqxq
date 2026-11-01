@@ -13,9 +13,7 @@ import {
   Statistic,
   Switch,
   Table,
-  Tabs,
   Tag,
-  Tooltip,
   message,
 } from 'antd';
 import {
@@ -206,15 +204,16 @@ const UserManager: React.FC = () => {
   };
 
   const columns = [
-    { title: '用户名', dataIndex: 'username', width: 160 },
-    { title: '姓名', dataIndex: 'realName', width: 120 },
-    {title:'账号类型',dataIndex:'accountType',render:(value:import('../types/api').AccountType)=>({internal:'内部',enterprise:'企业',unknown:'未确认'}[value]??'未确认')},
+    { title: '用户名', dataIndex: 'username', width: 200, fixed: 'left' as const,
+      render: (value: string, row: UserAdminItem) => <div className="account-identity"><span>{value}</span>{row.userId === myUserId && <Tag color="blue">当前登录</Tag>}</div> },
+    { title: '姓名', dataIndex: 'realName', width: 180 },
+    {title:'账号类型',dataIndex:'accountType',width:100,render:(value:import('../types/api').AccountType)=>({internal:'内部',enterprise:'企业',unknown:'未确认'}[value]??'未确认')},
     {
       title: '角色',
       dataIndex: 'roleNames',
       width: 150,
       render: (names: string[], r: UserAdminItem) => (
-        <Space size={4}>
+        <Space size={[4, 4]} wrap>
           {names.map((n) => (
             <Tag
               key={n}
@@ -235,10 +234,10 @@ const UserManager: React.FC = () => {
     { title: '最后登录', dataIndex: 'lastLoginAt', width: 200, render: (v: string | null) => fmt(v) },
     {
       title: '操作',
-      width: 260,
+      width: 220,
       fixed: 'right' as const,
       render: (_: unknown, r: UserAdminItem) => (
-        <Space size={0}>
+        <div className="account-row-actions">
           <WriteGate allowed={isAdmin} tip={adminTip}>
             <Button type="link" size="small" onClick={() => openEdit(r)}>
               编辑
@@ -249,50 +248,46 @@ const UserManager: React.FC = () => {
               {r.status === 1 ? '禁用' : '启用'}
             </Button>
           </WriteGate>
-          {/* 没有删除按钮：禁用即下线，历史审计里的 user_id 要还能查得到人 */}
-          <Tooltip title="禁用后该账号将无法登录">
-            <span style={{ marginLeft: 8, color: '#bfbfbf' }}>无删除</span>
-          </Tooltip>
           <Button type="link" disabled={!isAdmin} onClick={()=>{resetForm.resetFields();setResetting(r);}}>重置口令</Button>
           <Button type="link" disabled={!isAdmin} onClick={()=>void openScope(r)}>数据范围</Button>
-          {r.userId === myUserId ? <Tag style={{ marginLeft: 8 }}>当前登录</Tag> : null}
-        </Space>
+        </div>
       ),
     },
   ];
 
   const userTab = (
     <div>
-      <Row gutter={12} style={{ marginBottom: 16 }}>
-        <Col span={4}>
+      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+        <Col xs={24} sm={8}>
           <Card size="small">
             <Statistic title="本页启用" value={stats.enabled} prefix={<UserOutlined />} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={24} sm={8}>
           <Card size="small">
             <Statistic title="本页禁用" value={stats.disabled} valueStyle={{ color: '#ff4d4f' }} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={24} sm={8}>
           <Card size="small">
             <Statistic title="账号总数" value={total} prefix={<TeamOutlined />} />
           </Card>
         </Col>
-        <Col span={12}>
-          <Space style={{ marginTop: 8 }} wrap>
+      </Row>
+      <div className="account-toolbar">
+          <Space className="account-filters" wrap>
             <Input
               placeholder="用户名 / 姓名"
               prefix={<SearchOutlined />}
               value={keywordInput}
               onChange={(e) => setKeywordInput(e.target.value)}
               onPressEnter={applyKeyword}
-              style={{ width: 170 }}
+              style={{ width: 240 }}
               allowClear
             />
             <Select
               placeholder="角色"
-              style={{ width: 110 }}
+              style={{ width: 150 }}
               allowClear
               value={filters.role}
               onChange={(v: AppRole | undefined) => changeFilters({ ...filters, role: v })}
@@ -315,14 +310,14 @@ const UserManager: React.FC = () => {
             <Button icon={<ReloadOutlined />} onClick={refresh}>
               刷新
             </Button>
+          </Space>
             <WriteGate allowed={isAdmin} tip={adminTip}>
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
                 新增用户
               </Button>
             </WriteGate>
-          </Space>
-        </Col>
-      </Row>
+      </div>
+      <p className="account-help">停用账号后将无法登录，历史操作记录保留。</p>
 
       {loadError !== null && (
         <Alert type="error" showIcon message="加载失败" description={loadError} style={{ marginBottom: 12 }} />
@@ -343,13 +338,13 @@ const UserManager: React.FC = () => {
         dataSource={rows}
         loading={loading}
         size="middle"
-        scroll={{ x: 1000 }}
+        scroll={{ x: 1140 }}
         pagination={{
           current: page,
           pageSize: size,
           total,
           showSizeChanger: true,
-          showTotal: (t) => '共 ' + t + ' 个账号' + (stats.admins > 0 ? '（本页 admin ' + stats.admins + ' 个）' : ''),
+          showTotal: (t) => '共 ' + t + ' 个账号' + (stats.admins > 0 ? '（本页管理员 ' + stats.admins + ' 个）' : ''),
           onChange: (p, s) => {
             setPage(p);
             setSize(s);
@@ -367,7 +362,7 @@ const UserManager: React.FC = () => {
           await updateUserScope(scopeTarget!.userId,rules,scopeVersion);setScopeTarget(null);message.success('数据范围已保存，用户下次请求立即生效');refresh();
         }catch(e){message.error(errText(e));}
       }}>
-        <Alert type="info" showIcon message="每条规则内企业与辖区同时满足；多条规则任一满足即可。两项都空的规则不授权。" style={{marginBottom:16}}/>
+        
         <Form form={scopeForm} layout="vertical">
           <Form.Item name="mode" label="授权范围"><Select onChange={setScopeMode} options={[{value:'deny',label:'无业务数据授权'},{value:'all',label:'显式全域'},{value:'restricted',label:'按企业和辖区授权'}]}/></Form.Item>
           {scopeMode==='restricted'&&<Form.List name="rules">{(fields,{add,remove})=><>
@@ -383,14 +378,10 @@ const UserManager: React.FC = () => {
        let values;try{values=await resetForm.validateFields();}catch{return;}
        try{await resetPassword(resetting!.userId,values.password);setResetting(null);resetForm.resetFields();message.success('已重置；旧会话失效，下次登录须改密');refresh();}catch(e){message.error(errText(e));}
       }} destroyOnClose>
-      <Alert type="warning" message="旧会话立即失效；新口令请通过既定安全渠道交给本人，下次登录必须修改。"/>
+      
       <Form form={resetForm} layout="vertical"><Form.Item name="password" label="新临时口令" rules={[{required:true},{min:8},{validator:(_,v)=>!v||new TextEncoder().encode(v).length<=72?Promise.resolve():Promise.reject(new Error('口令超过 72 字节'))}]}><Input.Password autoComplete="new-password"/></Form.Item></Form></Modal>
-      <h2 style={{ marginBottom: 16 }}>系统管理</h2>
-      <Tabs
-        items={[
-          { key: 'users', label: <span><UserOutlined /> 用户管理</span>, children: userTab },
-        ]}
-      />
+      <h2 style={{ marginBottom: 20 }}>账号管理</h2>
+      {userTab}
 
       <Modal
         title="新增用户"
@@ -405,7 +396,7 @@ const UserManager: React.FC = () => {
           <Form.Item
             name="username"
             label="用户名"
-            extra="2–64 字符，仅字母、数字与 . _ -（与 app_user.username 列宽一致）"
+            
             rules={[
               { required: true, message: '请输入用户名' },
               { min: 2, max: 64, message: '2–64 个字符' },
@@ -424,7 +415,7 @@ const UserManager: React.FC = () => {
           <Form.Item
             name="password"
             label="初始口令"
-            extra="至少 8 个字符、UTF-8 不超过 72 字节；首次登录须改密"
+            
             rules={[{ required: true, message: '请输入初始口令' }, { min: 8, message: '至少 8 个字符' },{validator:(_,v)=>!v||new TextEncoder().encode(v).length<=72?Promise.resolve():Promise.reject(new Error('口令超过 72 字节'))}]}
           >
             <Input.Password autoComplete="new-password" />
@@ -450,7 +441,7 @@ const UserManager: React.FC = () => {
             name="role"
             label="角色"
             rules={[{ required: true }]}
-            extra="改自己的角色会被拒（409）；降级最后一个 admin 也会被拒"
+            
           >
             <Select
               options={ROLE_OPTIONS}

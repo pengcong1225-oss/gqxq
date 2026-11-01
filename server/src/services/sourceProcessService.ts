@@ -1,3 +1,4 @@
+import {currentAccessContext} from '../auth/accessScope';
 import {AppError} from '../http/errors';
 import {findByIdOrNo} from '../repositories/complaintRepo';
 import {withTransaction} from '../db/tx';
@@ -9,7 +10,7 @@ async function resolveIdentity(idOrNo:string):Promise<SourceProcessIdentity>{
 }
 const SAFE_ERRORS:Record<string,string>={SOURCE_PROCESS_UNAVAILABLE:'来源全过程契约未就绪，尚未接入',SOURCE_PROCESS_VERSION_CONFLICT:'同一来源版号出现不同内容，批次未保存',SOURCE_PROCESS_VERSION_REQUIRED:'节点修订缺少可信来源版号，批次未保存',SOURCE_PROCESS_CUTOFF_REGRESSION:'来源截止时间倒退，批次未保存',SOURCE_PROCESS_INVALID_BATCH:'来源批次结构或分页契约无效，批次未保存',SOURCE_PROCESS_IDENTITY_MISSING:'诉求缺少来源标识'};
 export async function getSourceProcesses(idOrNo:string):Promise<SourceProcessResult>{
- const identity=await resolveIdentity(idOrNo);const {stream,revisions}=await readSourceProcess(identity);
+ const identity=await resolveIdentity(idOrNo);const {stream,revisions:stored}=await readSourceProcess(identity);const revisions=stored.map(r=>({...r,contactName:currentAccessContext().canReadSource?r.contactName:r.contactName?'已脱敏':null,contactPhone:currentAccessContext().canReadSource?r.contactPhone??null:r.contactPhone?'已脱敏':null}));
  const heads=new Map<string,typeof revisions[number]>();for(const revision of revisions)heads.set(revision.nodeId,revision);
  const nodes=orderSourceProcessNodes([...heads.values()]);
  return {complaintId:identity.complaintId,nodes,revisions,complete:stream.state==='complete',cutoffAt:stream.cutoffAt,state:stream.state,

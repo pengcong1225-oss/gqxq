@@ -28,6 +28,7 @@ import { auditLogsRouter } from './auditLogs';
 import { usersRouter } from './users';
 import { addressCandidatesRouter } from './addressCandidates';
 import { requireAuth } from '../middleware/requireAuth';
+import {sourceProcessesRouter} from './sourceProcesses';
 import {reportsRouter} from './reports';
 import { enforceRolePolicy } from '../middleware/requireRole';
 
@@ -62,6 +63,7 @@ export function buildRouter(): Router {
   root.use(businessFeaturesRouter);
   root.use(addressCandidatesRouter);
   root.use(complaintsRouter);
+  root.use(sourceProcessesRouter);
   root.use(complaintActionsRouter);
   root.use(enterprisesRouter);
   root.use(gridsRouter);

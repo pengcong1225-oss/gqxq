@@ -12,10 +12,10 @@ export function projectComplaintDetail(row:ComplaintRow,_ctx:AccessContext):Comp
  const sourceAddress=typeof fields?.address==='string'?fields.address:null;
  const sourceSnapshotAt=typeof _fields?._receivedAt==='string'?toIso(_fields._receivedAt):null;
  return {...detail,effectiveFieldState,sourceAddress,effectiveAddress:detail.address,
-  sourceDeadlineAt:null,sourceCompletedAt:null,sourceSnapshotAt,
+  sourceDeadlineAt:toIso(row.source_deadline_at),sourceCompletedAt:toIso(row.source_completed_at),sourceSnapshotAt,
   businessTimeSource:detail.sourceReportedAt?'source_reported_at':detail.receivedAt?'platform_received_at':'unavailable',
   sourceFieldReasons:{sourceAddress:sourceAddress===null?'未留存可核实的结构化来源原地址':null,
-   sourceDeadlineAt:'来源期限字段契约未就绪',sourceCompletedAt:'来源办结日期字段契约未就绪',
+   sourceDeadlineAt:toIso(row.source_deadline_at)?null:'可信来源未提供规定完成时间',sourceCompletedAt:toIso(row.source_completed_at)?null:'可信来源未提供实际完成时间',
    sourceSnapshotAt:sourceSnapshotAt===null?'未留存可核实的快照接收时间':null},
   addressCandidate:null,locationClues:[],locationConflict:false};
 }

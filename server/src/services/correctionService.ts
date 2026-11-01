@@ -126,7 +126,7 @@ const COMPLAINT_FULL_COLUMNS =
   ' address, business_type, complaint_type, location_lng, location_lat, reporting_status, supervision_status,' +
   ' analysis_included, major_category_code, minor_category_code, category_dictionary_version, edit_version, effective_field_state, content, urgency_level, is_sensitive, sensitive_keywords, rule_confidence, rule_version,source_reported_at,received_at';
 
-const LOCATION_EXTRA_COLUMNS=',admin_grid_code,community_code,location_coordinate_system,location_coordinate_source';
+const LOCATION_EXTRA_COLUMNS=',source_id,source_system,source_event_status,source_synced_at,admin_grid_code,community_code,location_coordinate_system,location_coordinate_source';
 
 async function resolveComplaintId(db: Tx | typeof pool, idOrNo: string): Promise<string> {
   const ref = await findComplaintRefByAnyKey(db, idOrNo);

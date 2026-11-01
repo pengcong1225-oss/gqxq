@@ -151,7 +151,7 @@ const ReportView: React.FC = () => {
             size="middle"
             loading={loading}
             dataSource={rows}
-            scroll={{ x: 1050 }}
+            scroll={{ x: 1545 }}
             locale={{
               emptyText: firstLoaded ? <Empty description="暂无待查报告待办" /> : <span />,
             }}
@@ -199,7 +199,7 @@ const ReportView: React.FC = () => {
                   <Tag color={STATUS_COLOR[s] ?? 'default'}>{namedLabel(s,r.statusName,'report_todo_status')}</Tag>
                 ),
               },
-              {
+              {width:260,
                 title: '备注',
                 dataIndex: 'note',
                 ellipsis: true,
@@ -209,7 +209,7 @@ const ReportView: React.FC = () => {
               { title: '更新时间', dataIndex: 'updatedAt', width: 165, render: (v: string | null) => fmt(v) },
               {
                 title: '操作',
-                width: 110,
+                width: 130,
                 fixed: 'right' as const,
                 render: (_: unknown, r: ReportTodoItem) => (
                   <Button

@@ -136,7 +136,7 @@ const DispatchArchive: React.FC = () => {
   };
 
   const columns: Array<Record<string, unknown>> = [
-    { title: '交办单号', dataIndex: 'orderNo', width: 155 },
+    { title: '交办单号', dataIndex: 'orderNo', width: 180 },
     {
       title: '诉求',
       width: 300,
@@ -150,14 +150,14 @@ const DispatchArchive: React.FC = () => {
     {
       title: '目标企业',
       dataIndex: 'targetEnterpriseName',
-      width: 190,
+      width: 200,
       ellipsis: true,
       render: (v: string | null) => v ?? DASH,
     },
     {
       title: '状态',
       dataIndex: 'statusName',
-      width: 110,
+      width: 150,
       render: (v: string, r: DispatchOrderListItem) => (
         <Tag color={r.status === 'archived' ? 'default' : r.status === 'completed' ? 'success' : 'processing'}>
           {namedLabel(r.status,v,'supervision_status')}
@@ -167,16 +167,16 @@ const DispatchArchive: React.FC = () => {
     {
       title: '填报任务号',
       dataIndex: 'reportingTaskId',
-      width: 120,
+      width: 180,
       render: (v: string | null) => v ?? DASH,
     },
-    { title: '最近更新', dataIndex: 'updatedAt', width: 165, render: (v: string | null) => fmt(v) },
+    { title: '最近更新', dataIndex: 'updatedAt', width: 180, render: (v: string | null) => fmt(v) },
     {
       title: '操作',
-      width: 150,
+      width: 170,
       fixed: 'right' as const,
       render: (_: unknown, r: DispatchOrderListItem) => (
-        <Space size={0}>
+        <Space wrap size={0}>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => void openDetail(r.assignmentId)}>
             详情
           </Button>
@@ -214,7 +214,7 @@ const DispatchArchive: React.FC = () => {
       size="middle"
       loading={loading}
       dataSource={rows}
-      scroll={{ x: 1160 }}
+      scroll={{ x: 1360 }}
       locale={{
         emptyText: firstLoaded ? (
           <Empty description={tab === 'completed' ? '暂无已完成待归档的交办' : '暂无已归档交办'} />
@@ -239,7 +239,7 @@ const DispatchArchive: React.FC = () => {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 8 }}>交办归档</h2>
+      <Space wrap style={{marginBottom:8}}><Button onClick={()=>navigate('/dispatch')}>返回敏感交办</Button><h2 style={{margin:0}}>交办归档</h2></Space>
 
       <Card>
         <Tabs
@@ -313,7 +313,7 @@ const DispatchArchive: React.FC = () => {
             type="primary"
             onClick={() => {
               setBlocked(null);
-              navigate('/address-correction');
+              navigate('/complaints/corrections');
             }}
           >
             前往整体纠偏

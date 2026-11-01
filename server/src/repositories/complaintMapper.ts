@@ -53,7 +53,7 @@ export const COMPLAINT_COLUMNS = [
   'c.edit_version',
   'c.source_reported_at',
   'c.source_updated_at',
-  'c.source_event_status',
+  'c.source_event_status','c.source_synced_at','c.source_deadline_at','c.source_completed_at','c.source_process_received_at',
   'c.overtime_flag',
   'c.supervision_status',
   'c.reporting_status',

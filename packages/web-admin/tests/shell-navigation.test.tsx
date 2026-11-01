@@ -58,10 +58,24 @@ test('complaint detail keeps its parent menu selected and permission filtering i
   assert.match(doc.querySelector('.ant-breadcrumb')?.textContent ?? '', /诉求管理/);
 });
 
-test('archive selects the specific route instead of the dispatch parent', async () => {
+test('archive stays under sensitive dispatch without a separate menu', async () => {
   const doc = await shell('/dispatch/archive', ['dispatch.read']);
   assert.equal(doc.querySelectorAll('.ant-menu-item-selected').length, 1);
-  assert.equal(doc.querySelector('.ant-menu-item-selected')?.textContent, '交办归档');
+  assert.equal(doc.querySelector('.ant-menu-item-selected')?.textContent, '敏感交办');
+  assert.doesNotMatch(doc.querySelector('.ant-menu')?.textContent ?? '', /交办归档/);
+});
+
+test('overall correction keeps complaint management selected', async () => {
+  const doc = await shell('/complaints/corrections?complaintId=CPL-123', ['complaint.read','complaint.correct']);
+  assert.equal(doc.querySelector('.ant-menu-item-selected')?.textContent, '诉求管理');
+  assert.doesNotMatch(doc.querySelector('.ant-menu')?.textContent ?? '', /诉求核验|整体纠偏/);
+});
+
+test('correction permission adds no separate verification menu and address stays under complaints', async () => {
+  const doc = await shell('/complaints/CPL-123?edit=address', ['complaint.read', 'complaint.correct', 'dispatch.read']);
+  assert.equal(doc.querySelector('.ant-menu-item-selected')?.textContent, '诉求管理');
+  assert.doesNotMatch(doc.querySelector('.ant-menu')?.textContent ?? '', /诉求核验/);
+  assert.match(doc.querySelector('.ant-menu')?.textContent ?? '', /敏感交办/);
 });
 
 test('initial password gate exposes no business menu', async () => {

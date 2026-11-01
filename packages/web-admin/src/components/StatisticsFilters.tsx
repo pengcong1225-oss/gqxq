@@ -11,7 +11,7 @@ export type StatisticsDraft=Omit<StatisticsQuery,'projection'>&{projection:Stati
 export function statisticsToday(){return new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'});}
 export function initialStatisticsDraft(dataset:StatisticsDataset):StatisticsDraft {
  const to=statisticsToday();const d=new Date(to+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-29);
- return {dataset,projection:dataset==='ledger'?'current':'',periodKind:'custom',from:d.toISOString().slice(0,10),to,comparisonPolicyId:'candidate-calendar-v1'};
+ return {dataset,projection:dataset==='ledger'?'current':'',periodKind:'custom',from:d.toISOString().slice(0,10),to,comparisonPolicyId:'procurement-source-completed-v2'};
 }
 export function statisticsDateError(value:Pick<StatisticsDraft,'from'|'to'>){
  const valid=(date:string)=>/^\d{4}-\d{2}-\d{2}$/.test(date)&&!Number.isNaN(Date.parse(date))&&new Date(date).toISOString().slice(0,10)===date;

@@ -26,7 +26,7 @@ import {
   ThunderboltOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   confirmCorrection,
   rejectCorrection,
@@ -199,7 +199,7 @@ export const AddressCandidateBackfillControls: React.FC<AddressCandidateBackfill
           <Button type="primary" danger disabled={!adminAccess.can || !preview || executeLoading} loading={executeLoading}
             onClick={doExecute}>确认执行存量补提取</Button>
         </Tooltip>
-        {preview && <Descriptions size="small" column={4} title="预览结果">
+        {preview && <Descriptions size="small" column={{xs:1,sm:1,md:2,lg:4,xl:4,xxl:4}} title="预览结果">
           <Descriptions.Item label="总数">{preview.total}</Descriptions.Item>
           <Descriptions.Item label="可提取">{preview.extractable}</Descriptions.Item>
           <Descriptions.Item label="无候选">{preview.noCandidate}</Descriptions.Item>
@@ -223,6 +223,7 @@ export const AddressCandidateBackfillControls: React.FC<AddressCandidateBackfill
 
 const AddressCorrectionWorkbench: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const navigate=useNavigate();
   const deepLinkHandledRef = useRef<string | null>(null);
   // ---- 左侧队列 ----
   const [queue, setQueue] = useState<PendingComplaintSummary[]>([]);
@@ -581,7 +582,7 @@ const AddressCorrectionWorkbench: React.FC = () => {
         setPage(1);
       }
       if (row) selectComplaint(row.complaintId, row);
-      else message.info('当前筛选下没有其他待核验诉求；本条剩余事项仍可继续处理');
+      else message.info('当前筛选下没有其他待纠偏诉求；本条剩余事项仍可继续处理');
     } catch (err) {
       if (selectionIsCurrent(id, epoch)) message.error('操作已保存，刷新失败：' + errText(err));
     }
@@ -610,7 +611,8 @@ const AddressCorrectionWorkbench: React.FC = () => {
     <div>
       {versionConflict && <Alert type="warning" showIcon message={CORRECTION_CONFLICT_MESSAGE}
         action={<Button onClick={() => void refreshConflict()}>刷新核对（保留草稿）</Button>} />}
-      <h2 style={{ marginBottom: 8 }}>诉求核验</h2>
+      <Space wrap style={{marginBottom:8}}><Button onClick={()=>navigate('/complaints')}>返回诉求管理</Button><h2 style={{margin:0}}>整体纠偏</h2></Space>
+      <Alert type="info" showIcon style={{marginBottom:12}} message="纠偏覆盖全部诉求，与交办并行" description="保留企业归属、地址、分类、坐标、摘要及企业处置结果的逐项确认与修正。最终审批、本系统办结和分析入库仍按原业务条件分别处理。"/>
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
           <Segmented
@@ -658,7 +660,7 @@ const AddressCorrectionWorkbench: React.FC = () => {
         />
       </Card>
 
-      <Card title={'待核验诉求（共 ' + queueTotal + ' 件）'} size="small">
+      <Card title={'待纠偏诉求（共 ' + queueTotal + ' 件）'} size="small">
             {loadError ? (
               <Result
                 status="error"
@@ -672,7 +674,7 @@ const AddressCorrectionWorkbench: React.FC = () => {
               />
             ) : (
               <Table<PendingComplaintSummary>
-                rowKey="complaintId"
+                scroll={{x:852}} rowKey="complaintId"
                 size="middle"
                 loading={loading}
                 dataSource={queue}
@@ -702,7 +704,7 @@ const AddressCorrectionWorkbench: React.FC = () => {
                     width: 160,
                     render: (value: string, row: PendingComplaintSummary) => value || row.complaintId,
                   },
-                  { title: '诉求内容', dataIndex: 'title', ellipsis: true },
+                  {width:340, title: '诉求内容', dataIndex: 'title', ellipsis: true },
                   {
                     // 两条轴并行的交叉状态：交办与否不影响这条件不该进纠偏队列
                     title: '待核验项',
@@ -713,15 +715,15 @@ const AddressCorrectionWorkbench: React.FC = () => {
                   {
                     title: '交办状态',
                     dataIndex: 'hasDispatch',
-                    width: 100,
+                    width: 120,
                     render: (v: boolean) =>
                       v ? <Tag color="processing">已交办</Tag> : <Tag>未交办</Tag>,
                   },
                   {
                     title: '操作',
-                    width: 100,
+                    width: 120,
                     render: (_: unknown, row: PendingComplaintSummary) => (
-                      <Button type="link" onClick={(event) => { event.stopPropagation(); selectComplaint(row.complaintId, row); }}>核验信息</Button>
+                      <Button type="link" onClick={(event) => { event.stopPropagation(); selectComplaint(row.complaintId, row); }}>整体纠偏</Button>
                     ),
                   },
                 ]}
@@ -732,9 +734,9 @@ const AddressCorrectionWorkbench: React.FC = () => {
       <Drawer
         title={
           selectedComplaintId
-            ? '诉求核验 · ' +
+            ? '整体纠偏 · ' +
               (selectedComplaintInfo?.complaintNo || selectedComplaintId)
-            : '诉求核验'
+            : '整体纠偏'
         }
         open={drawerOpen}
         width="min(1120px, 96vw)"
@@ -759,11 +761,11 @@ const AddressCorrectionWorkbench: React.FC = () => {
               />
             ) : (
               <>
-                <Descriptions size="small" column={{ xs: 1, sm: 2 }} bordered style={{ marginBottom: 12 }}>
+                <Descriptions size="small" column={{ xs: 1, sm: 2, md: 2, lg: 2, xl: 2, xxl: 2 }} bordered style={{ marginBottom: 12 }}>
                   <Descriptions.Item label="诉求编号">
                     {selectedComplaintInfo?.complaintNo || selectedComplaintId}
                   </Descriptions.Item>
-                  <Descriptions.Item label="诉求内容" span={2}>
+                  <Descriptions.Item label="诉求内容" span="filled">
                     {selectedComplaintInfo?.title || '正在读取…'}
                   </Descriptions.Item>
                   <Descriptions.Item label="交办状态">
@@ -798,7 +800,7 @@ const AddressCorrectionWorkbench: React.FC = () => {
                 )}
 
                 <Table<CorrectionItem>
-                  rowKey="correctionId"
+                  scroll={{x:830}} rowKey="correctionId"
                   size="small"
                   loading={itemsLoading}
                   dataSource={items.filter(item => !POSITION_FIELDS.includes(item.fieldName as typeof POSITION_FIELDS[number]))}
@@ -808,7 +810,7 @@ const AddressCorrectionWorkbench: React.FC = () => {
                     {
                       title: '字段',
                       dataIndex: 'fieldLabel',
-                      width: 96,
+                      width: 110,
                       render: (v: string | null, r: CorrectionItem) => fieldNameLabel(r.fieldName,v),
                     },
                     {
@@ -857,7 +859,7 @@ const AddressCorrectionWorkbench: React.FC = () => {
                     {
                       title: '状态',
                       dataIndex: 'status',
-                      width: 92,
+                      width: 110,
                       render: (v: string, r: CorrectionItem) => {
                         const m = STATUS_TAG[v] ?? { color: 'default', text: namedLabel(v,r.statusName,'correction_status') };
                         const statusText =
@@ -880,10 +882,10 @@ const AddressCorrectionWorkbench: React.FC = () => {
                     },
                     {
                       title: '操作',
-                      width: 155,
+                      width: 180,
                       render: (_: unknown, r: CorrectionItem) =>
                         r.status === 'pending' ? (
-                          <Space size={0}>
+                          <Space wrap size={0}>
                             <WriteGate allowed={writeAccess.can && Boolean(selectedComplaintInfo)} tip={selectedComplaintInfo ? writeAccess.tip : '正在读取诉求编号与标题'}>
                             <Button
                               type="link"

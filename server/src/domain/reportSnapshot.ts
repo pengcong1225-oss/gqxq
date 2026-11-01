@@ -7,8 +7,9 @@ import type {ReportCreateInput} from '../types/report';
 import {AppError} from '../http/errors';
 export const REPORT_LIMITS=Object.freeze({objects:20000,snapshot:16*1024*1024,artifact:16*1024*1024,string:8192,proofs:100000});
 export const RENDER_PLAN='statistics-draft-v1/docx9.9.0-exceljs4.4.0/2';
-const input=z.object({requestId:z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/),templateCode:z.literal('statistics-draft'),templateVersion:z.literal('v1'),format:z.enum(['docx','xlsx']),query:z.record(z.unknown()),includeHeat:z.boolean().default(false),todoIds:z.array(z.string().min(1).max(64)).max(20000).default([])}).strict();
-export function parseReportInput(raw:unknown):ReportCreateInput {const r=input.safeParse(raw);if(!r.success)throw AppError.validation('报告请求参数不合法');return {...r.data,todoIds:[...new Set(r.data.todoIds)].sort()} as unknown as ReportCreateInput;}
+export const PROCUREMENT_RENDER_PLAN='procurement-statistics-v1/docx9.9.0-exceljs4.4.0/1';
+const input=z.object({requestId:z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/),templateCode:z.enum(['statistics-draft','procurement-statistics']),templateVersion:z.literal('v1'),format:z.enum(['docx','xlsx']),query:z.record(z.unknown()),includeHeat:z.boolean().default(false),todoIds:z.array(z.string().min(1).max(64)).max(20000).default([])}).strict();
+export function parseReportInput(raw:unknown):ReportCreateInput {const r=input.safeParse(raw);if(!r.success)throw AppError.validation('报告请求参数不合法');if(r.data.templateCode==='procurement-statistics'&&r.data.query.comparisonPolicyId!=='procurement-source-completed-v2')throw AppError.validation('采购固定报告必须使用来源办结统计政策');return {...r.data,todoIds:[...new Set(r.data.todoIds)].sort()} as unknown as ReportCreateInput;}
 export function canonical(value:unknown):string {if(value===null||typeof value!=='object')return JSON.stringify(value);if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';return '{'+Object.keys(value as object).sort().filter(k=>(value as any)[k]!==undefined).map(k=>JSON.stringify(k)+':'+canonical((value as any)[k])).join(',')+'}';}
 export const digest=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 export function normalizedRules(rules:ScopeRule[]):ScopeRule[] {
@@ -17,7 +18,7 @@ export function normalizedRules(rules:ScopeRule[]):ScopeRule[] {
  return rules.filter(r=>r.kind==='restricted'&&(r.enterpriseCodes.length||r.districtCodes.length)).map(r=>{if(r.kind!=='restricted')throw Error('rule');if(r.enterpriseCodes.length>200||r.districtCodes.length>200)throw AppError.validation('报告授权规则超出工程限额');return {kind:'restricted' as const,enterpriseCodes:[...new Set(r.enterpriseCodes)].sort(),districtCodes:[...new Set(r.districtCodes)].sort()};});
 }
 export interface ReportSnapshot {
- version:1;renderPlan:typeof RENDER_PLAN;input:ReportCreateInput;statistics:StatisticsCapture;
+ version:1;renderPlan:typeof RENDER_PLAN|typeof PROCUREMENT_RENDER_PLAN;input:ReportCreateInput;statistics:StatisticsCapture;
  domain:{rules:ScopeRule[];ranges:{kind:string;from:string;to:string}[]};requiredPermissions:string[];
  heat:null|Awaited<ReturnType<typeof captureHeatIn>>;
  todoLinks:{todoId:string;analysisId:string;complaintId:string}[];
@@ -32,7 +33,7 @@ export function assertSnapshotLimits(snapshot:ReportSnapshot):void {
 export function freezeReportSnapshot(input:ReportCreateInput,capture:StatisticsCapture,rules:ScopeRule[],heat:ReportSnapshot['heat']=null,todoLinks:ReportSnapshot['todoLinks']=[]):ReportSnapshot {
  const requiredPermissions=['statistics.read','complaint.read',input.query.dataset==='ledger'?'dashboard.read':'analysis.read'];
  if(capture.masterScopeFacts.length)requiredPermissions.push('enterprise.read');if(capture.coverageEvidence.length)requiredPermissions.push('grid.read');if(input.includeHeat)requiredPermissions.push('heatmap.read');
- const snapshot:ReportSnapshot={version:1,renderPlan:RENDER_PLAN,input,statistics:capture,domain:{rules:normalizedRules(rules),ranges:capture.periodFacts.map(p=>({kind:p.kind,from:p.from,to:p.to}))},requiredPermissions,heat:heat?{...heat,data:{...heat.data,points:[]}}:null,todoLinks};
+ const snapshot:ReportSnapshot={version:1,renderPlan:input.templateCode==='procurement-statistics'?PROCUREMENT_RENDER_PLAN:RENDER_PLAN,input,statistics:capture,domain:{rules:normalizedRules(rules),ranges:capture.periodFacts.map(p=>({kind:p.kind,from:p.from,to:p.to}))},requiredPermissions,heat:heat?{...heat,data:{...heat.data,points:[]}}:null,todoLinks};
  // Refuse the stricter D3 resource bounds BEFORE allocating a cloned capture.
  assertSnapshotLimits(snapshot);return JSON.parse(canonical(snapshot));
 }

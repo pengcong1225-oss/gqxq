@@ -9,7 +9,7 @@ import {
   TeamOutlined, AppstoreOutlined, FireOutlined,
   FilePdfOutlined, DatabaseOutlined, SettingOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined, LogoutOutlined, UserOutlined,
-  AuditOutlined, FolderOpenOutlined, CustomerServiceOutlined, SafetyCertificateOutlined
+  AuditOutlined, CustomerServiceOutlined, SafetyCertificateOutlined
 } from '@ant-design/icons';
 
 const NavigatePassword=()=>{const navigate=useNavigate();useEffect(()=>{navigate('/change-password',{replace:true});},[navigate]);return null;};
@@ -39,10 +39,8 @@ const menuEntries: MenuEntry[] = [
   {key:'/master-data/imports',icon:<DatabaseOutlined/>,label:'导入批次',permission:'masterdata.import'},
   { key: '/dashboard', icon: <DashboardOutlined />, label: '数据概览', permission: 'dashboard.read' },
   { key: '/complaints', icon: <FileTextOutlined />, label: '诉求管理', permission: 'complaint.read' },
-  { key: '/address-correction', icon: <AuditOutlined />, label: '诉求核验', permission: 'complaint.correct' },
   { key: '/analysis', icon: <BarChartOutlined />, label: '数据分析', permission: 'analysis.read' },
   { key: '/dispatch', icon: <WarningOutlined />, label: '敏感交办', permission: 'dispatch.read' },
-  { key: '/dispatch/archive', icon: <FolderOpenOutlined />, label: '交办归档', permission: 'dispatch.read' },
   { key: '/companies', icon: <TeamOutlined />, label: '企业管理', permission: 'enterprise.read' },
   { key: '/grids', icon: <AppstoreOutlined />, label: '网格管理', permission: 'grid.read' },
   {key:'/heat-rules',icon:<FireOutlined/>,label:'五档热力规则',permission:'heatmap.manage'},
@@ -89,7 +87,7 @@ const MainLayout: React.FC = () => {
     const available = menuEntries.filter(e => permissions.includes(e.permission) && !userInfo?.mustChangePassword &&
       (e.key !== '/master-data/imports' || ['enterprise.manage', 'grid.manage', 'system.dict.manage'].some(code => permissions.includes(code))));
     const groups = [
-      { label: '诉求办理', keys: ['/complaints', '/dispatch', '/address-correction', '/dispatch/archive','/followups','/shutdowns','/pipelines','/shutdown-feedback'] },
+      { label: '诉求办理', keys: ['/complaints', '/dispatch','/followups','/shutdowns','/pipelines','/shutdown-feedback'] },
       { label: '统计与报告', keys: ['/dashboard', '/analysis', '/heatmap', '/reports','/grid-comparison','/appeal-assessment','/data-alerts','/seasonal-assessment'] },
       { label: '基础资料', keys: ['/companies', '/grids', '/heat-rules', '/master-data/imports', '/dicts'] },
       { label: '系统管理', keys: ['/system/users', '/system/roles', '/system/audit-logs','/business-rules','/business-source-status'] },

@@ -118,7 +118,7 @@ export async function insertAnalysisIfAbsent(
         input.confirmedAt,
         input.payload === null ? null : JSON.stringify(input.payload),
         input.createdAt,
-        input.statisticsSnapshot?1:null,
+        input.statisticsSnapshot?2:null,
         input.statisticsSnapshot?JSON.stringify(input.statisticsSnapshot):null,
       ]
     );

@@ -1,3 +1,4 @@
+import {bindFollowupTarget,type FollowupBinding} from '../domain/businessSourceBinding';
 import {z} from 'zod';
 import {pool} from '../db/pool';
 import {withTransaction} from '../db/tx';
@@ -16,10 +17,12 @@ export class BusinessEventService {
   const input=parseBusinessEvent(body);if(input.sourceId!==headers.sourceId)throw AppError.unauthenticated('正文来源与签名不一致');
   const id=businessEventKey(input),revision=sourceRevision(input);
   return withTransaction(async tx=>{
+   let binding:FollowupBinding|null=null;
+   if(input.kind==='followup'){const target=(await eventRows(tx,'select complaint_id,source_system,source_id,enterprise_code,deleted from complaint where complaint_id=? for update',[input.payload.complaintId]))[0];if(!target||Number(target.deleted??0)!==0)throw AppError.notFound('目标诉求不存在');binding=bindFollowupTarget(config,target);}
    // Insert the unique identity first. Concurrent initial deliveries serialize on this row.
    await tx.execute('insert ignore into source_business_head(event_id,source_id,kind,source_object_id,source_version,enterprise_code,district_code,payload_hash,content,received_at) values(?,?,?,?,?,?,?,?,?,?)',[id,input.sourceId,input.kind,input.sourceObjectId,0,input.enterpriseCode,input.districtCode,'',JSON.stringify(input),clock]);
    const current=await readEvent(tx,id,true);const result=classifySourceRevision(current?.payloadHash?{sourceId:current.sourceId,kind:current.kind,sourceObjectId:current.sourceObjectId,sourceVersion:current.sourceVersion,payloadHash:current.payloadHash}:null,revision);
-   if(result==='new')await writeEvent(tx,input,id,revision.payloadHash,clock);
+   if(result==='new')await writeEvent(tx,input,id,revision.payloadHash,clock,binding);
    await insertAudit(tx,{userId:null,appCode:'gqxq',resourceCode:'business.source',action:'SOURCE_BUSINESS_RECEIVE',bizType:'source_business',bizId:id,result:result==='new'?'success':result==='duplicate'?'duplicate':'rejected',clientIp,detail:{sourceId:input.sourceId,kind:input.kind,sourceVersion:input.sourceVersion,result},createdAt:clock});
    return {id,result,sourceVersion:result==='new'?input.sourceVersion:current!.sourceVersion};
   });

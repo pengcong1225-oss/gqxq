@@ -20,3 +20,5 @@
 - serviceArea：可空清除，最多500字
 - address：可空清除，最多500字
 - disableReason：企业停用必填依据，最多500字
+- dashboardVisible：可选 true/false；空白保留原开关，新建默认 false
+- dashboardName：可空清除，最多128字；仅用于大屏显示

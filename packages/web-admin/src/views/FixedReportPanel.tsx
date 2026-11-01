@@ -47,24 +47,24 @@ export default function FixedReportPanel({todoIds,onTodosCompleted}:{todoIds:str
  const validation=getStatisticsDraftError(draft,allowed)||(todoIds.length&&draft.dataset!=='analysis'?'已选择分析待办，请将统计数据集切换为分析库并选择统计方式。':'');
  const generateDraft=()=>action(async()=>{
   if(!generate.can||validation)throw Error(validation||'当前账号无生成权限');
-  const e=epoch.current,payload={templateCode:'statistics-draft' as const,templateVersion:'v1' as const,query:{...draft,projection:draft.projection} as StatisticsQuery,format,includeHeat:heat&&codes.includes('heatmap.read'),todoIds:[...todoIds]};
+  const e=epoch.current,payload={templateCode:'procurement-statistics' as const,templateVersion:'v1' as const,query:{...draft,projection:draft.projection} as StatisticsQuery,format,includeHeat:heat&&codes.includes('heatmap.read'),todoIds:[...todoIds]};
   const key=JSON.stringify(payload);if(submission.current?.payload!==key)submission.current={payload:key,requestId:crypto.randomUUID()};
   const report=await createReport({...payload,requestId:submission.current.requestId});if(e!==epoch.current||currentAuth.current!==authKey)return;
   submission.current=null;if(payload.todoIds.length){tracked.current.set(report.reportId,payload.todoIds);setTrackingVersion(v=>v+1);observe([report]);}
   setCursors([undefined]);setPage(0);await load();
  });
  const download=(r:ReportArtifact)=>action(async()=>{const e=epoch.current,blob=await downloadReport(r.reportId,r.format);if(e!==epoch.current||currentAuth.current!==authKey)return;const url=URL.createObjectURL(blob),a=document.createElement('a');try{a.href=url;a.download=r.reportId+'.'+r.format;document.body.appendChild(a);a.click();}finally{a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}});
- return <Card title="统计报告草稿" style={{marginBottom:24}}>
+ return <Card title="诉求统计分析报告" style={{marginBottom:24}}>
   {!canRead?<Alert type="info" message="当前账号无报告查询权限，请联系管理员。"/>:<>
    {generate.can&&<><StatisticsFilters value={draft} onChange={setDraft} onApply={()=>{}} allowed={allowed} loading={busy} hideApply/>
     <Alert type="info" showIcon style={{marginBottom:16}} message="报告按统计筛选范围生成" description={'所选待办用于关联报告，不会将报告缩小为仅包含这些记录。'+(todoIds.length?'已选择 '+todoIds.length+' 条待办；请选择分析库，所选待办必须属于当前日期及其他筛选范围。':'可在下方选择需要关联的分析待办。')}/>
     {validation&&<Alert type="warning" showIcon message={validation} style={{marginBottom:16}}/>}
-    <Space wrap style={{marginBottom:16}}><Select aria-label="报告格式" value={format} onChange={setFormat} options={[{value:'docx',label:'Word 文档（DOCX）'},{value:'xlsx',label:'Excel 表格（XLSX）'}]}/>{codes.includes('heatmap.read')&&<Checkbox checked={heat} onChange={e=>setHeat(e.target.checked)}>包含热力数据</Checkbox>}<Button type="primary" loading={busy} disabled={Boolean(validation)} onClick={()=>void generateDraft()}>生成报告草稿</Button></Space></>}
-   <Space style={{marginBottom:16}}><Button onClick={()=>void load(cursors[page])} loading={loading}>刷新报告</Button><Button disabled={page===0||loading} onClick={()=>{setPage(page-1);void load(cursors[page-1]);}}>上一页</Button><span>第 {page+1} 页</span><Button disabled={!next||loading} onClick={()=>{if(next){setCursors([...cursors.slice(0,page+1),next]);setPage(page+1);void load(next);}}}>下一页</Button></Space>
+    <Space wrap style={{marginBottom:16}}><Select aria-label="报告格式" value={format} onChange={setFormat} options={[{value:'docx',label:'Word 文档（DOCX）'},{value:'xlsx',label:'Excel 表格（XLSX）'}]}/>{codes.includes('heatmap.read')&&<Checkbox checked={heat} onChange={e=>setHeat(e.target.checked)}>包含热力数据</Checkbox>}<Button type="primary" loading={busy} disabled={Boolean(validation)} onClick={()=>void generateDraft()}>生成固定模板报告</Button></Space></>}
+   <Space wrap style={{marginBottom:16}}><Button onClick={()=>void load(cursors[page])} loading={loading}>刷新报告</Button><Button disabled={page===0||loading} onClick={()=>{setPage(page-1);void load(cursors[page-1]);}}>上一页</Button><span>第 {page+1} 页</span><Button disabled={!next||loading} onClick={()=>{if(next){setCursors([...cursors.slice(0,page+1),next]);setPage(page+1);void load(next);}}}>下一页</Button></Space>
    {error&&<Alert type="error" showIcon message={error} style={{marginBottom:16}}/>}
-   <Table<ReportArtifact> rowKey="reportId" dataSource={rows} loading={loading} pagination={false} scroll={{x:950}} columns={[
-    {title:'报告编号',dataIndex:'reportId'},{title:'格式',dataIndex:'format',render:v=>v==='docx'?'Word 文档':'Excel 表格'},{title:'状态',render:(_,r)=><Tag>{stateNames[r.state]??chineseLabel(r.state)}</Tag>},{title:'数据截止时间',dataIndex:'dataCutoffAt',render:v=>v?new Date(v).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}):'—'},{title:'失败原因',dataIndex:'failureReason',render:v=>v?systemMessage(v,'报告生成失败，请重试'):'—'},
-    {title:'操作',render:(_,r)=><Space>{r.state==='succeeded'&&codes.includes('report.download')&&<Button disabled={busy} onClick={()=>void download(r)}>下载</Button>}{r.state==='failed'&&retry.can&&generate.can&&<Button disabled={busy} onClick={()=>void action(async()=>{const e=epoch.current;await retryReport(r.reportId);if(e===epoch.current&&currentAuth.current===authKey)await load(cursors[page]);})}>重新生成</Button>}</Space>}
+   <Table<ReportArtifact> rowKey="reportId" dataSource={rows} loading={loading} pagination={false} scroll={{x:1170}} columns={[
+    {width:220,title:'报告编号',dataIndex:'reportId'},{width:150,title:'格式',dataIndex:'format',render:v=>v==='docx'?'Word 文档':'Excel 表格'},{width:140,title:'状态',render:(_,r)=><Tag>{stateNames[r.state]??chineseLabel(r.state)}</Tag>},{width:190,title:'数据截止时间',dataIndex:'dataCutoffAt',render:v=>v?new Date(v).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}):'—'},{width:260,title:'失败原因',dataIndex:'failureReason',render:v=>v?systemMessage(v,'报告生成失败，请重试'):'—'},
+    {width:210,title:'操作',render:(_,r)=><Space wrap>{r.state==='succeeded'&&codes.includes('report.download')&&<Button disabled={busy} onClick={()=>void download(r)}>下载</Button>}{r.state==='failed'&&retry.can&&generate.can&&<Button disabled={busy} onClick={()=>void action(async()=>{const e=epoch.current;await retryReport(r.reportId);if(e===epoch.current&&currentAuth.current===authKey)await load(cursors[page]);})}>重新生成</Button>}</Space>}
    ]}/>
   </>}
  </Card>;

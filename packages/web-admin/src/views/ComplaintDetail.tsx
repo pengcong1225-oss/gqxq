@@ -1,12 +1,14 @@
 import {namedLabel,fieldLabel,chineseLabel,sourceLabel} from '../utils/chineseDisplay';
 import ChineseDetail from '../components/ChineseDetail';
+import ComplaintAddressEditor from '../components/ComplaintAddressEditor';
+import ComplaintClosureConfirmation from '../components/ComplaintClosureConfirmation';
 import ComplaintCategoryEditor from '../components/ComplaintCategoryEditor';
 import ComplaintReportingResults from '../components/ComplaintReportingResults';
 import SynchronizedFollowups from '../components/SynchronizedFollowups';
 import {useWriteAccess,usePermissionAccess} from '../stores/roleAccess';
 import {useAppStore} from '../stores/appStore';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -17,6 +19,7 @@ import {
   Divider,
   Empty,
   Form,
+  Grid,
   Input,
   Modal,
   Result,
@@ -40,6 +43,7 @@ import {
 import ReactECharts from 'echarts-for-react';
 import LocationClues from '../components/LocationClues';
 import type { Dayjs } from 'dayjs';
+import SourceProcessTable from '../components/SourceProcessTable';
 import { getComplaint, getComplaintTimeline, getComplaintSourceDocument } from '../api/complaints';
 import { createDispatch, getDispatchOrder } from '../api/dispatch';
 import { listEnterpriseOptions } from '../api/enterprises';
@@ -120,6 +124,7 @@ export function sensitiveRuleScoreLabel(confidence: number | null, version: stri
 }
 
 const ComplaintDetail: React.FC = () => {
+  const detailColumns = Grid.useBreakpoint().xxl ? 2 : 1;
   const correctionAccess=useWriteAccess('complaint.correct');
   const sourceAccess=useWriteAccess('complaint.source_sync');
   const documentAccess=usePermissionAccess('source_document.read');
@@ -134,6 +139,7 @@ const ComplaintDetail: React.FC = () => {
       id: string;
   }>();
   const navigate = useNavigate();
+  const [searchParams,setSearchParams] = useSearchParams();
   const documentKey = JSON.stringify([id, actorToken, user?.userId, user?.authorizationVersion, user?.roles, user?.permissions, user?.mustChangePassword, documentAccess.can]);
   const documentKeyRef = useRef(documentKey), documentSequence = useRef(0);
   if (documentKeyRef.current !== documentKey) {
@@ -469,7 +475,7 @@ const ComplaintDetail: React.FC = () => {
   }, [detail, hasCoords]);
 
   const backButton = (
-    <Space style={{ marginBottom: 16 }}>
+    <Space wrap className="detail-actions" style={{ marginBottom: 16 }}>
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/complaints')}>
         返回列表
       </Button>
@@ -585,7 +591,7 @@ const ComplaintDetail: React.FC = () => {
     );
   }
 
-  // 进行中的交办（唯一；为 null 表示尚无交办，可发起）
+  // 进行中的交办（唯一；为 null 也可能已有完成或归档的历史交办）
   const activeDispatchId = detail.activeDispatchId;
 
   return (
@@ -596,16 +602,16 @@ const ComplaintDetail: React.FC = () => {
       {sourceStatusPanel}
 
       <Row gutter={[16, 16]}>
-        <Col span={16}>
+        <Col xs={24} xl={15} xxl={16}>
           <Card title="基本信息">
-            <Descriptions bordered size="small" column={2}>
+            <Descriptions className="complaint-facts" bordered size="small" column={detailColumns}>
               <Descriptions.Item label="诉求编号">{detail.complaintNo}</Descriptions.Item>
               <Descriptions.Item label="督办状态">
                 <Tag color={SUPERVISION_COLOR[detail.supervisionStatusCode] ?? 'default'}>
                   {namedLabel(detail.supervisionStatusCode,detail.supervisionStatusName,'supervision_status')}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="标题" span={2}>
+              <Descriptions.Item label="标题" span={detailColumns}>
                 {detail.title}
               </Descriptions.Item>
               <Descriptions.Item label="业务类型">
@@ -616,7 +622,7 @@ const ComplaintDetail: React.FC = () => {
               <Descriptions.Item label="诉求性质">
                 <Tag>{namedLabel(detail.complaintTypeCode,detail.complaintTypeName,'complaint_type')}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="正式大小类" span={2}><ComplaintCategoryEditor detail={detail} onSaved={()=>void load()}/></Descriptions.Item>
+              <Descriptions.Item label="正式大小类" span={detailColumns}><ComplaintCategoryEditor key={detail.complaintId+searchParams.get("edit")} detail={detail} initialOpen={searchParams.get("edit")==="category"} onSaved={()=>{setSearchParams({}, {replace:true});void load();}}/></Descriptions.Item>
               <Descriptions.Item label="紧急程度">
                 <Tag color={detail.urgencyLevelCode === 'critical' ? 'red' : detail.urgencyLevelCode === 'urgent' ? 'orange' : 'blue'}>
                   {detail.urgencyLevelName}
@@ -713,7 +719,7 @@ const ComplaintDetail: React.FC = () => {
               <Descriptions.Item label="来源办结时间">{detail.sourceCompletedAt?fmtDateTime(detail.sourceCompletedAt):detail.sourceFieldReasons?.sourceCompletedAt??'—'}</Descriptions.Item>
               <Descriptions.Item label="本系统办结时间">{fmtDateTime(detail.closedAt)}</Descriptions.Item>
               <Descriptions.Item label="最后更新">{fmtDateTime(detail.updatedAt)}</Descriptions.Item>
-              <Descriptions.Item label="诉求内容" span={2}>
+              <Descriptions.Item label="诉求内容" span={detailColumns}>
                 <span style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{detail.content ?? '—'}</span>
               </Descriptions.Item>
             </Descriptions>
@@ -721,6 +727,7 @@ const ComplaintDetail: React.FC = () => {
           </Card>
 
           <ComplaintReportingResults complaintId={detail.complaintId}/>
+          <SourceProcessTable complaintId={detail.complaintId}/>
           <SynchronizedFollowups complaintId={detail.complaintId}/>
           <Card title="本平台处理记录" style={{ marginTop: 16 }}>
             {timelineError && (
@@ -759,7 +766,7 @@ const ComplaintDetail: React.FC = () => {
           </Card>
         </Col>
 
-        <Col span={8}>
+        <Col xs={24} xl={9} xxl={8}>
           <Card
             title={
               <>
@@ -800,9 +807,10 @@ const ComplaintDetail: React.FC = () => {
             <Divider orientation="left" plain>
               交办信息
             </Divider>
+            <ComplaintClosureConfirmation detail={detail} onSaved={()=>void load()}/>
 
             {activeDispatchId === null ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该诉求尚无交办记录" />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前无进行中的交办，历史结果见「填报事项结果」" />
             ) : dispatchLoading ? (
               <Typography.Text type="secondary">交办信息加载中…</Typography.Text>
             ) : dispatchError ? (
@@ -901,11 +909,14 @@ const ComplaintDetail: React.FC = () => {
             ) : (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="无定位信息（该诉求未提供坐标，可在整体纠偏中补全）"
+                description="无定位信息，可通过完善地址补全"
               />
             )}
             <Typography.Paragraph type="secondary" style={{marginTop:8}}>坐标系：{detail.locationCoordinateSystem==='WGS84'?'全球大地坐标系（操作者声明）':'未核实'}；来源：{detail.locationCoordinateSource??'未留存可核实来源'}。网格：{detail.adminGridCode??'—'}；小区：{detail.communityCode??'—'}。</Typography.Paragraph>
-            {correctionAccess.can&&<Button onClick={()=>navigate('/address-correction?complaintId='+encodeURIComponent(detail.complaintId))}>前往位置组纠偏</Button>}
+            {correctionAccess.can&&<Space wrap>
+              <ComplaintAddressEditor key={detail.complaintId+searchParams.get("edit")} detail={detail} initialOpen={searchParams.get("edit")==="address"} onSaved={()=>{setSearchParams({}, {replace:true});void load();}}/>
+              <Button onClick={()=>navigate('/complaints/corrections?complaintId='+encodeURIComponent(detail.complaintId))}>整体纠偏</Button>
+            </Space>}
           </Card>
 
           <Card

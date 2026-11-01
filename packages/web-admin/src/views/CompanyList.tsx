@@ -118,14 +118,14 @@ const CompanyList:React.FC=()=>{
   finally{if(currentDetail(owner))setDetailSaving(false);}
  };
  if(!read.can)return <Result status="403" title="无权限，请联系管理员"/>;
- return <Card title="企业档案" extra={<Space><MasterDataImportDialog kinds={['enterprise','department_mapping','household']} onImported={()=>setReload(v=>v+1)}/>{write.can&&<Button type="primary" onClick={()=>void edit()}>新增企业</Button>}</Space>}>
+ return <Card title="企业档案" extra={<Space wrap><MasterDataImportDialog kinds={['enterprise','department_mapping','household']} onImported={()=>setReload(v=>v+1)}/>{write.can&&<Button type="primary" onClick={()=>void edit()}>新增企业</Button>}</Space>}>
 
   {error&&<Alert type="error" showIcon message={error} style={{marginBottom:16}}/>}
   <Space className="filter-bar" wrap><Input aria-label="企业搜索" value={search} onChange={e=>setSearch(e.target.value)} placeholder="登记编码或名称"/><Button onClick={()=>{setPage(1);setKeyword(search);}}>查询</Button><Button onClick={()=>setReload(v=>v+1)}>刷新</Button></Space>
-  <Table<EnterpriseListItem> rowKey="enterpriseCode" dataSource={items} loading={loading} pagination={{current:page,pageSize:20,total,onChange:setPage}} locale={{emptyText:error?'查询失败':'当前范围暂无企业'}} columns={[
-   {title:'登记编码',dataIndex:'enterpriseCode'},{title:'企业名称',dataIndex:'enterpriseName'},{title:'业务类型',dataIndex:'businessTypeName',render:(v,r)=>namedLabel(r.businessType,v,'business_type')},{title:'联系人',dataIndex:'contactPerson',render:v=>v??'—'},{title:'电话',dataIndex:'contactPhone',render:v=>v??'—'},
-   {title:'状态',dataIndex:'status',render:v=><Tag color={v==='enabled'?'green':'default'}>{v==='enabled'?'启用':'停用'}</Tag>},
-   {title:'操作',render:(_,r)=><Space><Button onClick={()=>void openDetail(r.enterpriseCode)}>详情与历史</Button>{write.can&&<Button onClick={()=>void edit(r.enterpriseCode)}>编辑企业</Button>}</Space>}
+  <Table<EnterpriseListItem> scroll={{x:1170}} rowKey="enterpriseCode" dataSource={items} loading={loading} pagination={{current:page,pageSize:20,total,onChange:setPage}} locale={{emptyText:error?'查询失败':'当前范围暂无企业'}} columns={[
+   {width:180,title:'登记编码',dataIndex:'enterpriseCode'},{width:260,title:'企业名称',dataIndex:'enterpriseName'},{width:110,title:'业务类型',dataIndex:'businessTypeName',render:(v,r)=>namedLabel(r.businessType,v,'business_type')},{width:130,title:'联系人',dataIndex:'contactPerson',render:v=>v??'—'},{width:160,title:'电话',dataIndex:'contactPhone',render:v=>v??'—'},
+   {width:90,title:'状态',dataIndex:'status',render:v=><Tag color={v==='enabled'?'green':'default'}>{v==='enabled'?'启用':'停用'}</Tag>},
+   {width:240,title:'操作',render:(_,r)=><Space wrap><Button onClick={()=>void openDetail(r.enterpriseCode)}>详情与历史</Button>{write.can&&<Button onClick={()=>void edit(r.enterpriseCode)}>编辑企业</Button>}</Space>}
   ]}/>
   <Modal title={editing?'编辑企业':'新增企业'} open={editorOpen&&write.can} onCancel={closeEditor} onOk={()=>void save()} okText="保存企业" confirmLoading={editorSaving} forceRender>
    {error&&<Alert type="error" message={error}/>}
@@ -139,21 +139,21 @@ const CompanyList:React.FC=()=>{
     <Form.Item name="contactPerson" label="联系人"><Input maxLength={64}/></Form.Item>
     <Form.Item name="contactPhone" label="联系电话"><Input maxLength={64}/></Form.Item>
     <Form.Item name="address" label="注册地址"><Input maxLength={500}/></Form.Item>
-    <Form.Item name="serviceArea" label="服务范围说明"><Input.TextArea maxLength={500}/></Form.Item>
+    <Form.Item name="dashboardVisible" label="大屏显示" valuePropName="checked"><Switch/></Form.Item><Form.Item name="dashboardName" label="大屏显示名"><Input maxLength={128}/></Form.Item><Form.Item name="serviceArea" label="服务范围说明"><Input.TextArea maxLength={500}/></Form.Item>
     <Form.Item name="status" label="状态" rules={[{required:true}]}><Select options={[{value:'enabled',label:'启用'},{value:'disabled',label:'停用'}]}/></Form.Item>
     <Form.Item name="disableReason" label="停用依据（停用时必填，历史引用保留）"><Input maxLength={500}/></Form.Item>
    </Form>
   </Modal>
   <Drawer title={selected?.enterpriseName} open={Boolean(selected)} width={760} onClose={closeDetail}>
    {error&&<Alert type="error" message={error}/>}
-   {selected&&<><Descriptions column={2} items={[{key:'code',label:'登记编码',children:selected.enterpriseCode},{key:'version',label:'档案版本',children:selected.version},{key:'district',label:'管理归属区县',children:selected.districtCode??'未登记'},{key:'score',label:'年度评分',children:selected.annualScore??'未知'},{key:'contact',label:'联系人',children:selected.contactPerson??'—'},{key:'phone',label:'联系电话',children:selected.contactPhone??'—'},{key:'address',label:'注册地址',children:selected.address??'—'},{key:'area',label:'服务范围说明',children:selected.serviceArea??'—'}]}/>
+   {selected&&<><Descriptions column={1} items={[{key:'code',label:'登记编码',children:selected.enterpriseCode},{key:'version',label:'档案版本',children:selected.version},{key:'district',label:'管理归属区县',children:selected.districtCode??'未登记'},{key:'score',label:'年度评分',children:selected.annualScore??'未知'},{key:'contact',label:'联系人',children:selected.contactPerson??'—'},{key:'phone',label:'联系电话',children:selected.contactPhone??'—'},{key:'address',label:'注册地址',children:selected.address??'—'},{key:'area',label:'服务范围说明',children:selected.serviceArea??'—'}]}/>
    <Tabs items={[{key:'households',label:'服务户数历史',children:<>
 
-    <Table<HouseholdVersion> rowKey="version" dataSource={households} pagination={false} columns={[{title:'户数',dataIndex:'households',render:v=>v??'未知'},{title:'生效日',dataIndex:'validFrom'},{title:'截止日（不含）',dataIndex:'validTo',render:v=>v??'持续有效'},{title:'版本',dataIndex:'version'}]}/>
+    <Table<HouseholdVersion> scroll={{x:520}} rowKey="version" dataSource={households} pagination={false} columns={[{width:120,title:'户数',dataIndex:'households',render:v=>v??'未知'},{width:150,title:'生效日',dataIndex:'validFrom'},{width:160,title:'截止日（不含）',dataIndex:'validTo',render:v=>v??'持续有效'},{width:90,title:'版本',dataIndex:'version'}]}/>
     {write.can&&<Form ref={instance=>{if(instance)detailFormsMounted.current.households=true;}} form={houseForm} layout="vertical" onFinish={()=>void addHousehold()}><Form.Item name="households" label="服务户数（留空为未知）"><InputNumber min={0} precision={0}/></Form.Item><Form.Item name="validFrom" label="生效日" rules={[{required:true}]}><Input type="date"/></Form.Item><Form.Item name="validTo" label="截止日（可空）"><Input type="date"/></Form.Item><Button htmlType="submit" loading={detailSaving}>新增户数版本</Button></Form>}
    </>},{key:'mapping',label:'来源部门映射',children:<>
 
-    <Table<DepartmentMapping> rowKey={m=>m.sourceSystem+':'+m.sourceDepartmentCode} dataSource={mappings} pagination={false} columns={[{title:'来源系统',dataIndex:'sourceSystem',render:value=>sourceLabel(value,'system')},{title:'部门码',dataIndex:'sourceDepartmentCode'},{title:'名称',dataIndex:'sourceDepartmentName'},{title:'别名',dataIndex:'aliases',render:v=>Array.isArray(v)?v.join('、'):'—'},{title:'核验',dataIndex:'verified',render:v=>v?'已核验':'待核验'},{title:'操作',render:(_,m)=>write.can&&<Button onClick={()=>mappingForm.setFieldsValue({...m,verified:Boolean(m.verified),aliases:m.aliases.join('\n')})}>核验或编辑</Button>}]}/>
+    <Table<DepartmentMapping> scroll={{x:1000}} rowKey={m=>m.sourceSystem+':'+m.sourceDepartmentCode} dataSource={mappings} pagination={false} columns={[{width:160,title:'来源系统',dataIndex:'sourceSystem',render:value=>sourceLabel(value,'system')},{width:160,title:'部门码',dataIndex:'sourceDepartmentCode'},{width:200,title:'名称',dataIndex:'sourceDepartmentName'},{width:240,title:'别名',dataIndex:'aliases',render:v=>Array.isArray(v)?v.join('、'):'—'},{width:100,title:'核验',dataIndex:'verified',render:v=>v?'已核验':'待核验'},{width:140,title:'操作',render:(_,m)=>write.can&&<Button onClick={()=>mappingForm.setFieldsValue({...m,verified:Boolean(m.verified),aliases:m.aliases.join('\n')})}>核验或编辑</Button>}]}/>
     {write.can&&<Form ref={instance=>{if(instance)detailFormsMounted.current.mapping=true;}} form={mappingForm} layout="vertical" onFinish={()=>void addMapping()}><Form.Item name="sourceSystem" label="来源系统" rules={[{required:true}]}><Input maxLength={64}/></Form.Item><Form.Item name="sourceDepartmentCode" label="来源部门码" rules={[{required:true}]}><Input maxLength={64}/></Form.Item><Form.Item name="sourceDepartmentName" label="来源部门名称" rules={[{required:true}]}><Input maxLength={128}/></Form.Item><Form.Item name="aliases" label="人工核验别名（每行一个）"><Input.TextArea/></Form.Item><Form.Item name="verified" label="已人工核验" valuePropName="checked"><Switch/></Form.Item><Button htmlType="submit" loading={detailSaving}>保存部门映射</Button></Form>}
    </>} ]}/></>}
   </Drawer>

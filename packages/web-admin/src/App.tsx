@@ -68,9 +68,15 @@ const RequireRole: React.FC<{ permission: string; children: React.ReactNode }> =
     <Result
       status="403"
       title={FORBIDDEN_MESSAGE}
-      subTitle="当前账号的角色看不到这个页面。权限由服务端策略表统一判定，需要开通请由系统管理员在「系统管理」里调整角色。"
+      subTitle="请联系管理员开通权限。"
     />
   );
+};
+
+const LegacyCorrectionRedirect = () => {
+  const location=useLocation();
+  const id=new URLSearchParams(location.search).get('complaintId');
+  return <Navigate replace to={'/complaints/corrections'+(id?'?complaintId='+encodeURIComponent(id):'')}/>;
 };
 
 const App: React.FC = () => {
@@ -82,8 +88,9 @@ const App: React.FC = () => {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="complaints" element={<ComplaintList />} />
+        <Route path="complaints/corrections" element={<AddressCorrection />} />
         <Route path="complaints/:id" element={<ComplaintDetail />} />
-        <Route path="address-correction" element={<AddressCorrection />} />
+        <Route path="address-correction" element={<LegacyCorrectionRedirect />} />
         <Route path="analysis" element={<Analysis />} />
         <Route path="dispatch" element={<DispatchOrders />} />
         <Route path="dispatch/archive" element={<DispatchArchive />} />

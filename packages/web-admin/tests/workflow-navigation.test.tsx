@@ -47,12 +47,14 @@ function renderWithRouter(node: React.ReactNode, route: string): string {
   );
 }
 
-test('诉求核验页用覆盖全部字段的名称呈现', async () => {
+test('整体纠偏保留全部字段并归属诉求管理', async () => {
   const { default: AddressCorrection } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
-  const html = renderWithRouter(<AddressCorrection />, '/address-correction');
+  const html = renderWithRouter(<AddressCorrection />, '/complaints/corrections');
 
-  assert.match(html, />诉求核验</);
-  assert.match(html, /待核验诉求/);
+  assert.match(html, />整体纠偏</);
+  assert.match(html, /待纠偏诉求/);
+  assert.match(html, /返回诉求管理/);
+  assert.match(html, /企业归属、地址、分类、坐标、摘要及企业处置结果/);
   assert.doesNotMatch(html, />纠偏待办</);
 });
 
@@ -156,7 +158,7 @@ test('敏感交办工作台同时提供规则命中诉求与交办记录', async
 
   assert.match(html, />规则命中诉求</);
   assert.match(html, />交办记录</);
-  assert.match(html, /本表直接发起交办/);
+  assert.match(html, />交办归档</);
 });
 
 test('规则命中诉求查询始终带服务端敏感标记筛选', async () => {

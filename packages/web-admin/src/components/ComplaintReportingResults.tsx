@@ -31,14 +31,14 @@ export default function ComplaintReportingResults({complaintId}:{complaintId:str
  const selected=selection?.key===key&&current?.rows.find(row=>row.assignmentId===selection.assignmentId);
  return <Card title="填报事项结果" style={{marginTop:16}} extra={<Button loading={current?.loading} onClick={()=>void load(current?.page??1)}>刷新结果</Button>}>
   {current?.error&&<Alert type="error" showIcon message={current.error} style={{marginBottom:12}}/>}
-  <Table rowKey="assignmentId" size="small" loading={current?.loading} dataSource={current?.rows??[]} locale={{emptyText:current?.error?'读取失败':'暂无关联填报事项'}}
+  <Table scroll={{x:880}} rowKey="assignmentId" size="small" loading={current?.loading} dataSource={current?.rows??[]} locale={{emptyText:current?.error?'读取失败':'暂无关联填报事项'}}
    pagination={{current:current?.page??1,pageSize:10,total:current?.total??0,onChange:page=>void load(page),showSizeChanger:false}}
    columns={[
-    {title:'交办单号',dataIndex:'orderNo'},
-    {title:'责任单位',dataIndex:'targetEnterpriseName',render:value=>value??'—'},
-    {title:'填报状态',dataIndex:'externalStatus',render:value=>chineseLabel(value,'reporting_status')},
-    {title:'归档状态',dataIndex:'archivedAt',render:value=>value?'已归档':'未归档'},
-    {title:'操作',render:(_,row)=><Button type="link" onClick={()=>setSelection({key,assignmentId:row.assignmentId})}>查看事项结果</Button>},
+    {width:200,title:'交办单号',dataIndex:'orderNo'},
+    {width:240,title:'责任单位',dataIndex:'targetEnterpriseName',render:value=>value??'—'},
+    {width:170,title:'交办进展',dataIndex:'status',render:value=>chineseLabel(value,'supervision_status')},
+    {width:120,title:'归档状态',dataIndex:'archivedAt',render:value=>value?'已归档':'未归档'},
+    {width:150,title:'操作',render:(_,row)=><Button type="link" onClick={()=>setSelection({key,assignmentId:row.assignmentId})}>查看事项结果</Button>},
    ]}/>
   {selected&&<ReportingResultPanel key={key+selected.assignmentId} assignmentId={selected.assignmentId} readOnly/>}
  </Card>;

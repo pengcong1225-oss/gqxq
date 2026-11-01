@@ -9,7 +9,7 @@ import {insertAudit} from '../repositories/auditLogRepo';
 import {insertStatisticsSnapshot,storedSnapshot} from '../repositories/statisticsSnapshotRepo';
 import {authorizedReport,claimReport,fenceCurrent,findReportRequest,insertReportJob,listReportRows,readReport,reportBinary,reportView,saveReportArtifact,type ReportClaim} from '../repositories/reportRepo';
 import {AppError} from '../http/errors';
-import {canonical,digest,freezeReportSnapshot,parseReportInput,RENDER_PLAN,REPORT_LIMITS,type ReportSnapshot} from '../domain/reportSnapshot';
+import {PROCUREMENT_RENDER_PLAN,canonical,digest,freezeReportSnapshot,parseReportInput,RENDER_PLAN,REPORT_LIMITS,type ReportSnapshot} from '../domain/reportSnapshot';
 import {normalizeStatisticsQuery} from '../domain/statisticsQuery';
 import {captureStatisticsIn} from './statisticsService';
 import {captureHeatIn} from './heatRuleService';
@@ -157,7 +157,7 @@ export async function listReports(ctx:MasterDataContext,size=20,continuation?:st
  });
 }
 export async function authorizeReportDownload(id:string,ctx:MasterDataContext){return transaction(async db=>{const current=await actorIn(db,ctx.userId!);const r=await authorizeIn(db,reportId(id),current,'download');if(r.row.state!=='succeeded')throw AppError.conflict('报告产物尚未生成成功');const binary=await reportBinary(db,id);await audit(db,id,current.userId!,'REPORT_DOWNLOAD','success',{format:binary.format,contentHash:binary.hash,byteLength:binary.bytes.length});return binary;});}
-export async function retryReport(id:string,ctx:MasterDataContext){return transaction(async db=>{const current=await actorIn(db,ctx.userId!);const r=await authorizeIn(db,reportId(id),current,'retry');const live=(await rowsIn(db,'select state,lease_until>=current_timestamp(3) as live from report_job where report_id=? for update',[id]))[0];if(live.state==='succeeded'||live.state==='pending')return reportView(r.row);if(live.state==='generating'&&Number(live.live)===1)throw AppError.conflict('报告仍在有效生成租约内');if(r.snapshot.renderPlan!==RENDER_PLAN)throw AppError.validation('RENDERER_UNAVAILABLE');await db.query("update report_job set state='pending',execution_actor=?,fence=fence+1,owner_token=null,lease_until=null,failure_reason=null where report_id=?",[current.userId,id]);await audit(db,id,current.userId!,'REPORT_RETRY','success',{format:r.snapshot.input.format,state:'pending'});return reportView((await readReport(db,id))!);});}
+export async function retryReport(id:string,ctx:MasterDataContext){return transaction(async db=>{const current=await actorIn(db,ctx.userId!);const r=await authorizeIn(db,reportId(id),current,'retry');const live=(await rowsIn(db,'select state,lease_until>=current_timestamp(3) as live from report_job where report_id=? for update',[id]))[0];if(live.state==='succeeded'||live.state==='pending')return reportView(r.row);if(live.state==='generating'&&Number(live.live)===1)throw AppError.conflict('报告仍在有效生成租约内');if(r.snapshot.renderPlan!==RENDER_PLAN&&r.snapshot.renderPlan!==PROCUREMENT_RENDER_PLAN)throw AppError.validation('RENDERER_UNAVAILABLE');await db.query("update report_job set state='pending',execution_actor=?,fence=fence+1,owner_token=null,lease_until=null,failure_reason=null where report_id=?",[current.userId,id]);await audit(db,id,current.userId!,'REPORT_RETRY','success',{format:r.snapshot.input.format,state:'pending'});return reportView((await readReport(db,id))!);});}
 export async function finalizeReport(c:ReportClaim,bytes:Buffer):Promise<boolean>{
  return transaction(async db=>{const current=await actorIn(db,c.actor);await authorizeIn(db,c.reportId,current,'finalize');if(!await fenceCurrent(db,c))return false;
   await saveReportArtifact(db,c,bytes);
@@ -170,7 +170,7 @@ export async function failReport(c:ReportClaim,reason:'AUTH_CHANGED'|'RENDER_FAI
  * frozen safe input, then fresh actor + whole authorization + fence finalization.
  * Never establishes trusted all scope or refreshes business statistics. */
 export async function generateReport(id?:string,leaseMs=60000):Promise<boolean>{const c=await transaction(db=>claimReport(db,id,leaseMs));if(!c)return false;let bytes:Buffer;
- try{bytes=await renderReport(c.snapshot);}catch{await failReport(c,c.snapshot.renderPlan!==RENDER_PLAN?'RENDERER_UNAVAILABLE':'RENDER_FAILED');return true;}
+ try{bytes=await renderReport(c.snapshot);}catch{await failReport(c,c.snapshot.renderPlan!==RENDER_PLAN&&c.snapshot.renderPlan!==PROCUREMENT_RENDER_PLAN?'RENDERER_UNAVAILABLE':'RENDER_FAILED');return true;}
  try{
   await finalizeReport(c,bytes);
  }catch(e){

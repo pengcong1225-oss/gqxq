@@ -1,5 +1,6 @@
 /** Presentation only: never feed translated values back into API requests. */
 const dictionaries: Record<string, Record<string, string>> = {
+ dictionary_type:{status:'诉求状态',correction_status:'纠偏状态',supervision_status:'督办交办状态',reporting_status:'填报状态',source_event_status:'来源事件状态',dispatch_type:'交办方式',trigger_type:'触发方式',intake_result:'接收结果',business_type:'业务类型',complaint_type:'诉求类型',urgency_level:'紧急程度',complaint_category:'正式大小类',source_system:'来源系统',source_channel:'来源渠道',sensitive_word:'敏感词'},
  business_type:{water:'供水',gas:'燃气',lpg:'液化气'},
  complaint_type:{complaint:'投诉',consult:'咨询',suggest:'建议',report:'举报',help:'求助',other:'其他',praise:'表扬'},
  urgency_level:{normal:'一般',urgent:'紧急',critical:'特急'},
