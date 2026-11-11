@@ -12,6 +12,7 @@ import { findComplaintRefByAnyKey, findOrderByAssignmentId, rowToDispatchDetail 
 import { GQXQ_APP_CODE } from './intakeService';
 import { requiredText, type OperatorContext } from './dispatchService';
 import { pendingCorrectionCount } from './correctionService';
+import { readFinalReportingResult } from '../repositories/finalReportingResultRepo';
 
 /** 可归档的交办状态：只有走完填报审批链路的终态才允许归档 */
 const ARCHIVABLE_DISPATCH_STATUSES = ['completed', 'rejected'] as const;
@@ -74,6 +75,26 @@ export async function closeComplaint(
         'INVALID_STATE_TRANSITION',
         '该诉求仍有 ' + pending + ' 项待纠偏，纠偏全部确认后才能办结'
       );
+    }
+
+    // A complaint's aggregate approval can still describe an older dispatch round.
+    // Reuse the analysis evidence check under the same complaint lock before closing.
+    const [orders] = await tx.query(
+      'select assignment_id from dispatch_order where complaint_id = ? order by id desc limit 1 for update',
+      [complaintId]
+    );
+    const assignmentId = (orders as Array<{assignment_id:string}>)[0]?.assignment_id ?? null;
+    const finalResult = await readFinalReportingResult(tx, complaintId, assignmentId);
+    if (!finalResult) {
+      throw new AppError('INVALID_STATE_TRANSITION', '最新交办尚未收到并应用最终审批通过的结果，不能办结');
+    }
+    const [decisions] = await tx.query(
+      "select assignment_id, old_value from correction_item where complaint_id = ? and field_name = 'disposal_result' for update",
+      [complaintId]
+    );
+    const results = decisions as Array<{assignment_id:string|null;old_value:string|null}>;
+    if (results.length !== 1 || results[0].assignment_id !== assignmentId || results[0].old_value !== finalResult.value) {
+      throw new AppError('INVALID_STATE_TRANSITION', '本轮处置结果尚未完成对应的人工纠偏确认，不能办结');
     }
 
     await tx.execute(

@@ -4,6 +4,8 @@ import ComplaintCategoryEditor from '../components/ComplaintCategoryEditor';
 import ComplaintReportingResults from '../components/ComplaintReportingResults';
 import ComplaintFollowups from '../components/ComplaintFollowups';
 import SourceProcessTable from '../components/SourceProcessTable';
+import SynchronizedFollowups from '../components/SynchronizedFollowups';
+import ComplaintClosureConfirmation from '../components/ComplaintClosureConfirmation';
 import ComplaintSourceSummary,{SourceCitizenFields} from '../components/ComplaintSourceSummary';
 import {useWriteAccess,usePermissionAccess} from '../stores/roleAccess';
 import {useAppStore} from '../stores/appStore';
@@ -727,6 +729,7 @@ const ComplaintDetail: React.FC = () => {
           <ComplaintReportingResults complaintId={detail.complaintId}/>
           <SourceProcessTable key={detail.complaintId+documentKey} complaintId={detail.complaintId}/>
           <ComplaintFollowups key={detail.complaintId+documentKey} complaintId={detail.complaintId}/>
+          <SynchronizedFollowups key={'source-followups-'+detail.complaintId+documentKey} complaintId={detail.complaintId}/>
           <Card title="本平台处理记录" style={{ marginTop: 16 }}>
             {timelineError && (
               <Alert
@@ -789,6 +792,7 @@ const ComplaintDetail: React.FC = () => {
                 ) : (
                   <Tag>未办结</Tag>
                 )}
+                <ComplaintClosureConfirmation detail={detail} onSaved={()=>void load()}/>
               </Descriptions.Item>
               {detail.closedInSystem && (
                 <>

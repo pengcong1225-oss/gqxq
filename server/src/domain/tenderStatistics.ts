@@ -91,9 +91,9 @@ export function aggregateTenderStatistics(selected:StatisticsCapture,extended:St
   const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',hourCycle:'h23'}).format(new Date(row.businessAt)));
   if(hours[hour])hours[hour][business]++;else missingTimeCount++;
  }
- return {query:q,anchorDate,dataCutoffAt:selected.summary.dataCutoffAt,total:selected.summary.total,periods:aggregatePeriods(q,extended.rows,anchorDate,names,extended.summary.partial),services,partial,dateFilterUnavailableCount:Math.max(selected.summary.dateFilterUnavailableCount,extended.summary.dateFilterUnavailableCount),sourceTimeFallbackCount:selected.summary.sourceTimeFallbackCount,demoCount:selected.rows.filter(r=>r.complaintId.startsWith('DEMO-20261110')).length,extendedDemoCount:extended.rows.filter(r=>r.complaintId.startsWith('DEMO-20261110')).length,
+ return {satisfactionRate:selected.summary.satisfactionRate,timeBasis:selected.summary.timeBasis,policy:selected.summary.policy,excludedByReason:selected.summary.excludedByReason,query:q,anchorDate,dataCutoffAt:selected.summary.dataCutoffAt,total:selected.summary.total,periods:aggregatePeriods(q,extended.rows,anchorDate,names,extended.summary.partial),services,partial,dateFilterUnavailableCount:Math.max(selected.summary.dateFilterUnavailableCount,extended.summary.dateFilterUnavailableCount),sourceTimeFallbackCount:selected.summary.sourceTimeFallbackCount,demoCount:selected.rows.filter(r=>r.complaintId.startsWith('DEMO-20261110')).length,extendedDemoCount:extended.rows.filter(r=>r.complaintId.startsWith('DEMO-20261110')).length,
   dynamics:{hours,months,weekdays,missingTimeCount,unavailable:[
-   {key:'satisfaction',title:'满意与不满意诉求占比',reason:'尚未提供经确认的有效评价及来源优先依据，不能将未评价视为不满意。'},
+   ...(selected.summary.satisfactionRate?.policyId?[]:[{key:'satisfaction',title:'满意与不满意诉求占比',reason:'尚未提供经确认的有效评价及来源优先依据，不能将未评价视为不满意。'}]),
    {key:'dissatisfactionBusiness',title:'供水供气不满意诉求占比',reason:'需先确认有效不满意评价样本，再按供水、供气分别计算。'},
    {key:'duration',title:'24 / 48 / 72 / 超过72小时处理统计',reason:'统计事实未提供有效实际办理完成时间；平台闭环时间不能代替来源办理时长，亦无法计算各时长组满意度。'}
   ]}};

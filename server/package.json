@@ -26,15 +26,18 @@
     "verify:m4": "node scripts/verify-intake-baseline.mjs",
     "verify:rbac": "node scripts/verify-rbac.mjs",
     "verify:rbac:live": "node scripts/verify-rbac.mjs --live=http://127.0.0.1:3100/api/v1 --db=gqxq_service",
-    "verify:workflow-navigation": "tsx --test ../packages/web-admin/tests/workflow-navigation.test.tsx",
-    "test:sensitive-words": "tsx --test tests/sensitive-word-management.test.ts",
+    "verify:workflow-navigation": "node scripts/verify-suite.mjs web workflow-navigation.test.tsx",
+    "test:sensitive-words": "node tests/run-tests.mjs unit sensitive-word-management.test.ts",
     "verify:hardening": "npm run verify:m1 && npm run verify:m3 && npm run verify:m4",
     "mock:public-utility": "node scripts/mock-public-utility.mjs",
     "mock:public-utility-callback": "node scripts/mock-public-utility-callback.mjs",
     "prepare:local-data": "node scripts/prepare-local-data.mjs",
     "prebuild": "npm run prepare:local-data",
     "pretypecheck": "npm run prepare:local-data",
-    "predev": "npm run prepare:local-data"
+    "predev": "npm run prepare:local-data",
+    "pretest": "npm run prepare:local-data",
+    "test": "node tests/run-tests.mjs unit",
+    "test:db": "node tests/run-tests.mjs db"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

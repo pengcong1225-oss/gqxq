@@ -50,6 +50,7 @@ const param = '[^/]+';
 export const ROLE_POLICY: readonly PolicyRule[] = [
   {method:'GET',path:/^\/screen\/(bootstrap|demands|compare|evidence|events\/[^/]+)$/,roles:R,permissionCode:'statistics.read',desc:'诉求大屏只读：另核 dashboard.read、complaint.read 和当前数据范围'},
   {method:'GET',path:/^\/complaints\/[^/]+\/(?:followups|source-processes)$/,roles:R,permissionCode:'complaint.read',desc:'回访及来源流程明细'},
+  {method:'GET',path:/^\/synchronized-followups(?:\/[^/]+)?$/,roles:R,permissionCode:'complaint.read',desc:'外部回访当前版本及历史，按目标诉求范围授权'},
   {method:'POST',path:/^\/complaints\/[^/]+\/followups$/,roles:A,permissionCode:'followup.create',desc:'回访登记，服务内重核当前身份范围'},
   {method:'PATCH',path:/^\/followups\/[^/]+$/,roles:A,permissionCode:'followup.create',desc:'本人回访修订'},
   {method:'PATCH',path:/^\/followups\/[^/]+\/conclusion$/,roles:A,permissionCode:'followup.conclude',desc:'内部主管回访结论'},
@@ -102,6 +103,11 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   {method:'POST',path:/^\/roles$/,roles:A,permissionCode:'system.roles.manage',desc:'创建角色'},
   {method:'PATCH',path:/^\/roles\/[^/]+$/,roles:A,permissionCode:'system.roles.manage',desc:'修改角色'},
   {method:'GET',path:/^\/permissions$/,roles:A,permissionCode:'system.roles.manage',desc:'权限目录'},
+  {method:'GET',path:/^\/business-rules$/,roles:A,permissionCode:'business.rules.manage',desc:'真实主账规则列表（全域）'},
+  {method:'POST',path:/^\/business-rules(?:\/[^/]+\/publish)?$/,roles:A,permissionCode:'business.rules.manage',desc:'真实主账规则草稿及发布（全域）'},
+  {method:'GET',path:/^\/assessment\/(?:admin-grids|grid-comparison|historical|seasonal)$/,roles:R,permissionCode:'assessment.read',desc:'真实主账授权范围研判'},
+  {method:'GET',path:/^\/business-alerts(?:\/[^/]+\/history)?$/,roles:R,permissionCode:'alert.read',desc:'持久预警及处理记录'},
+  {method:'POST',path:/^\/business-alerts(?:\/evaluate|\/[^/]+\/actions)$/,roles:W,permissionCode:'alert.handle',desc:'核算及处理预警'},
   // ---------- S：身份自查询（三档皆放，只看自己） ----------
   { method: 'GET', path: new RegExp('^/auth/user-info$'), roles: R, selfService: true, desc: 'S1 当前登录用户信息' },
 

@@ -8,6 +8,7 @@ import {recoverPendingDispatches} from './services/dispatchRecoveryService';
 import { assertDbReachable, closePool } from './db/pool';
 import {pruneExpiredImports} from './services/masterDataImportService';
 import {pruneExpiredComplaintImports} from './services/complaintImportService';
+import {startBusinessAlertWorker} from './services/businessAlertWorker';
 import {startReportWorker} from './services/reportService';
 import {startUtilityIntegrationWorker} from './services/utilityIntegrationService';
 
@@ -37,6 +38,7 @@ async function main(): Promise<void> {
   const deliveryTimer=setInterval(()=>void deliver(),5_000);deliveryTimer.unref();void deliver();
   const app = createApp();
   const stopReportWorker=startReportWorker();
+  const stopBusinessAlertWorker=startBusinessAlertWorker();
   const stopUtilityIntegrationWorker=runAsTrustedSystem(()=>startUtilityIntegrationWorker());
   const stopLocationInitializer=runAsTrustedSystem(()=>startLocationInitializer());
   let pruning=false;
@@ -61,6 +63,7 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     stopReportWorker();
+    stopBusinessAlertWorker();
     stopUtilityIntegrationWorker();
     stopLocationInitializer();
     clearInterval(replayTimer);

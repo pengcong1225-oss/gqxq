@@ -27,6 +27,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, relative, extname, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { VIEW_DATA_POLICY, validateViewPolicy, hasRenderedDemoNotice } from './gate-g1-view-policy.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
@@ -79,35 +80,17 @@ const RULES = [
     desc: '大写枚举字面量（G1 起枚举一律小写）' },
 ];
 
-// 已接入真实接口、因而不需要「演示数据」横幅的页面。
-// 加入白名单的前提是该页确实不再展示本地示例数据（G2 起 DispatchOrders 已改为真查 /dispatch/orders）。
-const VIEW_WHITELIST = new Set([
-  'ComplaintList',
-  'ComplaintDetail',
-  'Dashboard',
-  'Login',
-  'DispatchOrders',
-  // G5：以下四页已改为真实接口驱动，并移除了「演示数据」横幅
-  'AddressCorrection',
-  'DispatchArchive',
-  'ReportView',
-  'Analysis',
-  // Task #35：系统管理页从 Mock 换成真接口（GET/POST/PATCH /users），
-  // 且旧「操作日志」页签是**撤下**而非留假数据（读审计的接口本批不做，见映射表 §5）。
-  'UserManager',
-]);
-const DEMO_MARKER = 'DemoDataNotice';
 
 /**
  * 在**已显式声明演示数据**的页面里可以豁免的规则。
  *
  * 设计意图：交付纪律要拦的是"静默的 Mock 回退"——接口失败悄悄回落本地数组、
- * 或在没有标注的页面上直接摆假数字。而挂了 DemoDataNotice 横幅的页面，
+ * 或在没有标注的页面上直接摆假数字。而来源清单显式声明为 demo 且渲染 DemoDataNotice 横幅的页面，
  * 已经对用户明示"这是演示数据、不代表真实业务数据"，属于**可审计的声明**，
- * 不是隐性欺骗。因此这些页面里的本地示例字面量豁免；但 fake-success-toast 不豁免——
+ * 不是隐性欺骗。因此仅这些纯模拟页面里的本地示例字面量豁免；mixed 页面仍扫描所有规则；但 fake-success-toast 不豁免——
  * "操作成功"的假提示即使有横幅也仍然是在骗人（交付纪律第 2 条）。
  *
- * 注意：这不等于放宽。structural 规则仍然要求每个非白名单 view 必须带该标记，
+ * 注意：这不等于放宽。structural 规则要求逐页声明来源，混合页面必须保留可见模拟标识，
  * 所以"页面既没接真实数据、又没声明演示"依然会被拦下。
  */
 const DEMO_SUPPRESSIBLE_RULES = new Set([
@@ -277,7 +260,8 @@ for (const target of TARGETS) {
     }
     const lines = content.split(/\r?\n/);
     const upLines = target.scope === 'ddl' ? computeUpLineSet(lines) : null;
-    const declaredDemo = target.scope !== 'ddl' && content.includes(DEMO_MARKER);
+    const viewName = rel.match(/^packages\/web-admin\/src\/views\/([^/]+)\.tsx$/)?.[1];
+    const declaredDemo = target.scope === 'web' && VIEW_DATA_POLICY[viewName]?.mode === 'demo' && hasRenderedDemoNotice(content);
 
     for (const rule of RULES) {
       if (!resolveScope(rule.scope, target.scope)) continue;
@@ -340,19 +324,17 @@ const viewFiles = existsSync(viewsDir)
 for (const file of viewFiles) {
   const name = file.split(/[\\/]/).pop().replace(/\.tsx$/, '');
   const rel = relative(ROOT, file).split('\\').join('/');
-  if (VIEW_WHITELIST.has(name)) continue;
   let content = '';
   try {
     content = readFileSync(file, 'utf8');
   } catch {
     continue;
   }
-  if (!content.includes(DEMO_MARKER)) {
-    structuralViolations.push({
-      file: rel,
-      desc: '缺少 <' + DEMO_MARKER + ' /> 演示数据标记（该页尚未接入真实数据）',
-    });
-  }
+  const errors = validateViewPolicy(name, content, VIEW_DATA_POLICY[name], source => {
+    const sourcePath = join(ROOT, 'packages', 'web-admin', 'src', source);
+    return existsSync(sourcePath) ? readFileSync(sourcePath, 'utf8') : null;
+  });
+  for (const desc of errors) structuralViolations.push({file: rel, desc});
 }
 
 /* ---------------- 汇总与输出 ---------------- */
@@ -374,7 +356,7 @@ if (JSON_OUT) {
     root: ROOT,
     scan: scanStats,
     viewFilesChecked: viewFiles.length,
-    viewWhitelist: Array.from(VIEW_WHITELIST),
+    viewDataPolicy: VIEW_DATA_POLICY,
     counts,
     exitCode,
     violations,
@@ -387,7 +369,7 @@ if (JSON_OUT) {
   out.push('=== G1 门禁脚本 gate-g1.mjs ===');
   out.push('根目录: ' + ROOT);
   out.push('扫描: ' + scanStats.map(s => s.target + ' ' + s.files + ' 个文件' + (s.exists ? '' : '（目录不存在，跳过）')).join('；'));
-  out.push('结构约束: 检查 ' + viewFiles.length + ' 个 views/*.tsx（白名单 ' + Array.from(VIEW_WHITELIST).join(', ') + '）');
+  out.push('结构约束: 检查 ' + viewFiles.length + ' 个 views/*.tsx（逐页校验 real/mixed/demo 来源声明）');
   out.push('');
 
   out.push('--- fail 级违规（正则规则）: ' + failViolations.length + ' 条 ---');

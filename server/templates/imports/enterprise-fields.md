@@ -20,3 +20,6 @@
 - serviceArea：可空清除，最多500字
 - address：可空清除，最多500字
 - disableReason：企业停用必填依据，最多500字
+- displayOnScreen：可选 true/false 文本；空值表示未设置（NULL）；缺列保留已有值。
+- screenName：可选大屏展示名，最多128字；空值清除；缺列保留已有值。
+- 来源企业：公共事业填报系统维护的字段仍受服务校验保护，导入不能覆盖。

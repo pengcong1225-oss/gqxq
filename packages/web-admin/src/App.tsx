@@ -1,3 +1,8 @@
+import BusinessRuleManager from './views/BusinessRuleManager';
+import DataAlerts from './views/DataAlerts';
+import AppealAssessment from './views/AppealAssessment';
+import SeasonalAssessment from './views/SeasonalAssessment';
+import GridComparison from './views/GridComparison';
 import React from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Result } from 'antd';
@@ -89,6 +94,11 @@ const App: React.FC = () => {
         <Route path="utility-timeouts" element={<RequireRole permission="shutdown.read"><UtilityTimeoutView /></RequireRole>} />
         <Route path="pipelines" element={<RequireRole permission="pipeline.read"><PipelineList /></RequireRole>} />
         <Route path="reports" element={<ReportView />} />
+        <Route path="business-rules" element={<RequireRole permission="business.rules.manage"><BusinessRuleManager/></RequireRole>} />
+        <Route path="business-alerts" element={<RequireRole permission="alert.read"><DataAlerts/></RequireRole>} />
+        <Route path="appeal-assessment" element={<RequireRole permission="assessment.read"><AppealAssessment/></RequireRole>} />
+        <Route path="seasonal-assessment" element={<RequireRole permission="assessment.read"><SeasonalAssessment/></RequireRole>} />
+        <Route path="grid-comparison" element={<RequireRole permission="assessment.read"><GridComparison/></RequireRole>} />
         <Route path="tender-support" element={<RequireRole permission="statistics.read"><TenderSupportView/></RequireRole>} />
         <Route path="dicts" element={<RequireRole permission="system.dict.manage"><DictManager /></RequireRole>} />
         <Route path="system/roles" element={<RequireRole permission="system.roles.manage"><RoleManager/></RequireRole>} />

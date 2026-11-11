@@ -1,4 +1,5 @@
 import {followupsRouter} from './followups';
+import {sourceDeliveryRouter,synchronizedFollowupsRouter} from './sourceDeliveries';
 import {sourceProcessesRouter} from './sourceProcesses';
 import {utilityRouter} from './utility';
 import { Router } from 'express';
@@ -32,6 +33,7 @@ import { usersRouter } from './users';
 import { addressCandidatesRouter } from './addressCandidates';
 import { requireAuth } from '../middleware/requireAuth';
 import {reportsRouter} from './reports';
+import {businessFeaturesRouter} from './businessFeatures';
 import {tenderSupportRouter} from './tenderSupport';
 import {screenRouter} from './screen';
 import { enforceRolePolicy } from '../middleware/requireRole';
@@ -55,6 +57,7 @@ export function buildRouter(): Router {
 
   root.use(healthRouter);
   root.use(authRouter);
+  root.use('/external/business-source',sourceDeliveryRouter);
   root.use('/external', externalRouter);
   // 回调靠签名鉴权，必须挂在 requireAuth 之前
   root.use('/external/public-utility', publicUtilityCallbackRouter);
@@ -65,6 +68,7 @@ export function buildRouter(): Router {
   root.use(addressCandidatesRouter);
   root.use(complaintsRouter);
   root.use(followupsRouter);
+  root.use(synchronizedFollowupsRouter);
   root.use(sourceProcessesRouter);
   root.use(complaintActionsRouter);
   root.use(enterprisesRouter);
@@ -89,6 +93,7 @@ export function buildRouter(): Router {
   root.use(auditLogsRouter);
   root.use(reportsRouter);
   root.use(tenderSupportRouter);
+  root.use(businessFeaturesRouter);
   root.use(heatRulesRouter);
   root.use(utilityRouter);
   root.use(legacyRouter);

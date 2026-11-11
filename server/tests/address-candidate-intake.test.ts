@@ -1,3 +1,4 @@
+import { runAsTrustedSystem } from '../src/auth/accessScope';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { pool } from '../src/db/pool';
@@ -43,6 +44,8 @@ class MemoryConnection {
     }
     if (sql.includes('from complaint_address_candidate')) return [this.candidate ? [{ ...this.candidate }] : [], []];
     if (sql.includes('from complaint_location_clue')) return [this.clues.map((clue) => ({ ...clue })), []];
+    if (sql.includes('from complaint where complaint_id') && sql.includes('for update')) return [this.complaint ? [{ ...this.complaint }] : [], []];
+    if (sql.includes('from dispatch_order') || sql.includes('from correction_item') || sql.includes('from reporting_')) return [[], []];
     if (sql.includes('from dict_item')) return [[], []];
     throw new Error(`unexpected query: ${sql}`);
   }
@@ -116,7 +119,8 @@ function command(overrides: Partial<IntakeCommand> = {}): IntakeCommand {
 
 test('creates address candidate in the same transaction and leaves source address untouched', async () => {
   const { intakeAppeal } = await import('../src/services/intakeService');
-  const result = await intakeAppeal(command(), { receivedAt: new Date('2026-09-23T04:00:00Z') });
+  const trustedIntake: typeof intakeAppeal = (...args) => runAsTrustedSystem(() => intakeAppeal(...args));
+  const result = await trustedIntake(command(), { receivedAt: new Date('2026-09-23T04:00:00Z') });
   assert.equal(result.result, 'created');
   assert.equal(connection.candidate?.candidateText, '点军区联棚乡示例小区18号1301');
   assert.equal(connection.clues.some((clue) => clue.kind === 'township' && clue.townshipCode === '420504202'), true);
@@ -126,11 +130,12 @@ test('creates address candidate in the same transaction and leaves source addres
 
 test('same-payload duplicate does not write or change the candidate', async () => {
   const { intakeAppeal } = await import('../src/services/intakeService');
+  const trustedIntake: typeof intakeAppeal = (...args) => runAsTrustedSystem(() => intakeAppeal(...args));
   const before = { ...connection.candidate! };
   const writes = connection.candidateWrites;
   const cluesBefore = connection.clues.map((clue) => ({ ...clue }));
   const clueWrites = connection.clueWrites;
-  const result = await intakeAppeal(command(), { receivedAt: new Date('2026-09-23T04:01:00Z') });
+  const result = await trustedIntake(command(), { receivedAt: new Date('2026-09-23T04:01:00Z') });
   assert.equal(result.result, 'duplicate_same');
   assert.equal(connection.candidateWrites, writes);
   assert.equal(connection.clueWrites, clueWrites);
@@ -140,9 +145,10 @@ test('same-payload duplicate does not write or change the candidate', async () =
 
 test('changed redelivery updates or clears candidate without touching source or human correction', async () => {
   const { intakeAppeal } = await import('../src/services/intakeService');
+  const trustedIntake: typeof intakeAppeal = (...args) => runAsTrustedSystem(() => intakeAppeal(...args));
   connection.complaint!.corrected_address = '人工纠偏地址';
   const sourceAddress = connection.complaint!.address;
-  await intakeAppeal(command({
+  await trustedIntake(command({
     title: '燃气安装', content: '点军区联棚乡示例小区19号1301的居民反映燃气报装进度。',
     payloadHash: 'redelivery-with-new-address',
   }), { receivedAt: new Date('2026-09-23T04:02:00Z') });
@@ -151,7 +157,7 @@ test('changed redelivery updates or clears candidate without touching source or 
   assert.equal(connection.clues.some((clue) => clue.kind === 'settlement' && clue.value === '示例小区18号1301'), false);
   assert.equal(connection.complaint?.address, sourceAddress);
   assert.equal(connection.complaint?.corrected_address, '人工纠偏地址');
-  await intakeAppeal(command({ title: '燃气安装', content: '什么时候可以安装？', payloadHash: 'redelivery-without-address' }),
+  await trustedIntake(command({ title: '燃气安装', content: '什么时候可以安装？', payloadHash: 'redelivery-without-address' }),
     { receivedAt: new Date('2026-09-23T04:03:00Z') });
   assert.equal(connection.candidate, null);
   assert.deepEqual(connection.clues, []);
@@ -161,6 +167,7 @@ test('changed redelivery updates or clears candidate without touching source or 
 
 test('clue write failure rolls back complaint, candidate, and clue changes', async () => {
   const { intakeAppeal } = await import('../src/services/intakeService');
+  const trustedIntake: typeof intakeAppeal = (...args) => runAsTrustedSystem(() => intakeAppeal(...args));
   connection.clues = [{
     complaintId: String(connection.complaint!.complaint_id), kind: 'township', value: '联棚乡', evidence: '联棚乡',
     sourceField: 'content', start: 0, end: 3, townshipCode: '420504202', districtCode: '420504',
@@ -173,7 +180,7 @@ test('clue write failure rolls back complaint, candidate, and clue changes', asy
   assert.notDeepEqual(originalClues, []);
   connection.failClueWriteAfterMutation = true;
   await assert.rejects(
-    intakeAppeal(command({ title: '新增投诉', content: '点军区联棚乡示例小区20号1301的居民反映。', payloadHash: 'rollback-test' }),
+    trustedIntake(command({ title: '新增投诉', content: '点军区联棚乡示例小区20号1301的居民反映。', payloadHash: 'rollback-test' }),
       { receivedAt: new Date('2026-09-23T04:04:00Z') }),
     /clue write failed after insert/
   );

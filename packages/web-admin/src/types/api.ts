@@ -924,7 +924,7 @@ export interface DepartmentMapping {sourceSystem:string;sourceDepartmentCode:str
 
 export interface SourceProcessNode {
   sourceSystem:string; sourceId:string; nodeId:string; sourceSequence:number|null; sourceVersion:string|null;
-  occurredAt:string|null; stage:string; department:string|null; contactName:string|null; opinion:string|null;
+  occurredAt:string|null; stage:string; department:string|null; contactName:string|null; contactPhone?:string|null; opinion:string|null;
 }
 export interface SourceProcessRevision extends SourceProcessNode {revision:number; observedAt:string|null}
 export interface SourceProcessResult {

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import nodeTest from 'node:test';
+import { runWithAccessContext } from '../src/auth/accessScope';
+const allScope = { userId: 'a1', roles: ['admin'], scopeVersion: 1, rules: [{ kind: 'all' as const }], canReadSource: false };
+const test: typeof nodeTest = ((name: string, options: object, fn: () => unknown) => nodeTest(name, options, () => runWithAccessContext(allScope, fn))) as typeof nodeTest;
 import { ROLE_ADMIN, matchRule } from '../src/auth/rolePolicy';
 import { addressInputHash } from '../src/services/rules/addressExtract';
 
@@ -328,3 +331,13 @@ class BackfillFake {
     return [{ affectedRows: 1 }, []];
   }
 }
+
+nodeTest('backfill refuses missing or restricted scope before database access', async () => {
+  const { previewAddressCandidateBackfill, executeAddressCandidateBackfill } = await import('../src/services/addressCandidateBackfillService');
+  for (const rules of [[], [{ kind: 'restricted' as const, enterpriseCodes: ['E'], districtCodes: [] }]]) {
+    await runWithAccessContext({ ...allScope, rules }, async () => {
+      await assert.rejects(previewAddressCandidateBackfill(), /显式全域范围/);
+      await assert.rejects(executeAddressCandidateBackfill({userId:'a1', userName:'Admin', clientIp:null}), /显式全域范围/);
+    });
+  }
+});

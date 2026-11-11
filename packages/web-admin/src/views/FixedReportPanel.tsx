@@ -47,7 +47,7 @@ export default function FixedReportPanel({todoIds,onTodosCompleted}:{todoIds:str
  const validation=getStatisticsDraftError(draft,allowed)||(todoIds.length&&draft.dataset!=='analysis'?'已选择分析待办，请将统计数据集切换为分析库并选择统计方式。':'');
  const generateDraft=()=>action(async()=>{
   if(!generate.can||validation)throw Error(validation||'当前账号无生成权限');
-  const e=epoch.current,payload={templateCode:'statistics-draft' as const,templateVersion:'v1' as const,query:{...draft,projection:draft.projection} as StatisticsQuery,format,includeHeat:heat&&codes.includes('heatmap.read'),todoIds:[...todoIds]};
+  const e=epoch.current,payload={templateCode:(draft.comparisonPolicyId==='procurement-source-completed-v2'?'procurement-statistics':'statistics-draft') as 'procurement-statistics'|'statistics-draft',templateVersion:'v1' as const,query:{...draft,projection:draft.projection} as StatisticsQuery,format,includeHeat:heat&&codes.includes('heatmap.read'),todoIds:[...todoIds]};
   const key=JSON.stringify(payload);if(submission.current?.payload!==key)submission.current={payload:key,requestId:crypto.randomUUID()};
   const report=await createReport({...payload,requestId:submission.current.requestId});if(e!==epoch.current||currentAuth.current!==authKey)return;
   submission.current=null;if(payload.todoIds.length){tracked.current.set(report.reportId,payload.todoIds);setTrackingVersion(v=>v+1);observe([report]);}
@@ -59,6 +59,7 @@ export default function FixedReportPanel({todoIds,onTodosCompleted}:{todoIds:str
    {generate.can&&<><StatisticsFilters value={draft} onChange={setDraft} onApply={()=>{}} allowed={allowed} loading={busy} hideApply/>
     <Alert type="info" showIcon style={{marginBottom:16}} message="选择时间，生成并下载统计分析报告" description="固定模板包含选定期间概况、供水供气年季月分类型同比环比、月度趋势与数据说明。年季月以结束日期为统计时点，各节标明实际期间；缺少依据的指标显示不可用。"/>
     {todoIds.length>0&&<Alert type="info" showIcon style={{marginBottom:16}} message={'已关联 '+todoIds.length+' 条分析待办'} description="报告仍按上述完整筛选范围生成。关联待办必须属于所选分析库及筛选范围。"/>}
+    <Alert type="info" style={{marginBottom:16}} message={draft.comparisonPolicyId==='procurement-source-completed-v2'?'当前模板：标书采购统计报告':'当前模板：现有固定统计报告'} description={draft.comparisonPolicyId==='procurement-source-completed-v2'?'仅统计宜接就办来源明确办结且有同步证据的供水供气诉求；按来源录入日期筛选，关闭或平台闭环不能代替办结。满意度只使用可信绑定的外部当前回访版本；旧入库快照缺来源证据时排除。':'保留现有统计范围与默认模板。切换统计口径可选择标书采购报告。'}/>
     {validation&&<Alert type="warning" showIcon message={validation} style={{marginBottom:16}}/>}
     <Space wrap style={{marginBottom:16}}><Select aria-label="报告格式" value={format} onChange={setFormat} options={[{value:'docx',label:'Word 文档（DOCX）'},{value:'xlsx',label:'Excel 表格（XLSX）'}]}/>{codes.includes('heatmap.read')&&<Checkbox checked={heat} onChange={e=>setHeat(e.target.checked)}>包含热力数据</Checkbox>}<Button type="primary" loading={busy} disabled={Boolean(validation)} onClick={()=>void generateDraft()}>生成统计报告</Button></Space></>}
    <Space style={{marginBottom:16}}><Button onClick={()=>void load(cursors[page])} loading={loading}>刷新报告</Button><Button disabled={page===0||loading} onClick={()=>{setPage(page-1);void load(cursors[page-1]);}}>上一页</Button><span>第 {page+1} 页</span><Button disabled={!next||loading} onClick={()=>{if(next){setCursors([...cursors.slice(0,page+1),next]);setPage(page+1);void load(next);}}}>下一页</Button></Space>

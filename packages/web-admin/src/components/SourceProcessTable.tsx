@@ -3,6 +3,7 @@ import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Alert,Button,Card,Empty,Table,Typography} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {usePermissionAccess} from '../stores/roleAccess';
+import {useAppStore} from '../stores/appStore';
 import {getComplaintSourceProcesses} from '../api/complaints';
 import type {SourceProcessResult,SourceProcessRevision} from '../types/api';
 
@@ -14,21 +15,24 @@ const columns:ColumnsType<SourceProcessRevision>=[
  {title:'办理阶段',dataIndex:'stage',width:120,render:text},
  {title:'办理部门',dataIndex:'department',width:140,render:text},
  {title:'联系人',dataIndex:'contactName',width:110,render:text},
+ {title:'联系方式',dataIndex:'contactPhone',width:140,render:text},
  {title:'处理意见',dataIndex:'opinion',render:text},
  {title:'来源版号',dataIndex:'sourceVersion',width:110,render:value=>text(value??'未提供')},
  {title:'平台留存时间',dataIndex:'observedAt',width:150,render:value=>value?new Date(value).toLocaleString('zh-CN'):'未留存'},
 ];
 const SourceProcessTable:React.FC<{complaintId:string}>=({complaintId})=>{
  const access=usePermissionAccess('complaint.read');const requestSeq=useRef(0);
- const [result,setResult]=useState<SourceProcessResult|null>(null);const [loading,setLoading]=useState(false);const [error,setError]=useState<string|null>(null);
+ const user=useAppStore(s=>s.userInfo),token=useAppStore(s=>s.token),ownerKey=JSON.stringify([complaintId,user,token]),owner=useRef(ownerKey);owner.current=ownerKey;
+ const [snapshot,setSnapshot]=useState<{key:string;value:SourceProcessResult}|null>(null);const result=snapshot?.key===ownerKey?snapshot.value:null;
+ const [loading,setLoading]=useState(false);const [error,setError]=useState<string|null>(null);
  const load=useCallback(async()=>{
   if(!access.can)return;
-  const seq=++requestSeq.current;setLoading(true);setError(null);setResult(null);
-  try{const data=await getComplaintSourceProcesses(complaintId);if(seq===requestSeq.current)setResult(data);}
-  catch(err){if(seq===requestSeq.current)setError((err as {message?:string}).message??'来源全过程读取失败');}
-  finally{if(seq===requestSeq.current)setLoading(false);}
- },[complaintId,access.can]);
- useEffect(()=>{setResult(null);setError(null);setLoading(false);void load();return()=>{requestSeq.current++;};},[load]);
+  const seq=++requestSeq.current;setLoading(true);setError(null);setSnapshot(null);
+  try{const data=await getComplaintSourceProcesses(complaintId);if(seq===requestSeq.current&&owner.current===ownerKey)setSnapshot({key:ownerKey,value:data});}
+  catch(err){if(seq===requestSeq.current&&owner.current===ownerKey)setError((err as {message?:string}).message??'来源全过程读取失败');}
+  finally{if(seq===requestSeq.current&&owner.current===ownerKey)setLoading(false);}
+ },[complaintId,access.can,ownerKey]);
+ useEffect(()=>{setSnapshot(null);setError(null);setLoading(false);void load();return()=>{requestSeq.current++;};},[load]);
  if(!access.can)return null;
  return <Card title="来源全过程" style={{marginTop:16}} extra={<Button loading={loading} onClick={()=>void load()}>刷新已留存来源过程</Button>}>
 

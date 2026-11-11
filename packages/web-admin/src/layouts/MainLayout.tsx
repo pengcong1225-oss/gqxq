@@ -46,6 +46,11 @@ const menuEntries: MenuEntry[] = [
   { key: '/system/users', icon: <SettingOutlined />, label: '账号管理', permission: 'system.users.manage' },
 ];
 
+menuEntries.push({key:'/business-rules',icon:<BarChartOutlined/>,label:'主账预警研判规则',permission:'business.rules.manage'});
+menuEntries.push({key:'/business-alerts',icon:<BarChartOutlined/>,label:'真实主账预警',permission:'alert.read'});
+menuEntries.push({key:'/appeal-assessment',icon:<BarChartOutlined/>,label:'历史同期研判',permission:'assessment.read'});
+menuEntries.push({key:'/seasonal-assessment',icon:<BarChartOutlined/>,label:'五季保障研判',permission:'assessment.read'});
+menuEntries.push({key:'/grid-comparison',icon:<BarChartOutlined/>,label:'行政网格对比',permission:'assessment.read'});
 menuEntries.push({key:'/system/roles',icon:<SettingOutlined/>,label:'角色权限',permission:'system.roles.manage'});
 menuEntries.push({key:'/system/audit-logs',icon:<AuditOutlined/>,label:'登录与操作日志',permission:'system.audit.read'});
 
@@ -85,6 +90,7 @@ const MainLayout: React.FC = () => {
     const groups = [
       { label: '诉求办理', keys: ['/complaints', '/dispatch', '/address-correction', '/dispatch/archive'] },
       { label: '公共事业填报对接', keys: ['/shutdowns','/pipelines','/utility-timeouts'] },
+      { label: '真实主账预警与研判', keys: ['/business-alerts','/appeal-assessment','/seasonal-assessment','/grid-comparison','/business-rules'] },
       { label: '统计与报告', keys: ['/dashboard', '/analysis', '/reports'] },
       { label: '规则与数据管理', keys: ['/heat-rules', '/tender-support', '/heatmap'] },
       { label: '基础资料', keys: ['/companies', '/grids', '/master-data/imports', '/dicts'] },

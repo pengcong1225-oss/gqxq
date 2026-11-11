@@ -6,11 +6,15 @@
   "scripts": {
     "typecheck": "npm --prefix server run typecheck && npm --prefix packages/web-admin run typecheck",
     "gate": "node server/scripts/gate-g1.mjs",
-    "verify": "npm run typecheck && npm run gate && npm run verify:sensitive-words && npm run verify:workflow-navigation",
+    "verify": "npm run typecheck && npm run gate && npm test",
     "verify:hardening": "npm --prefix server run verify:hardening",
     "verify:rbac": "npm --prefix server run verify:rbac",
     "verify:workflow-navigation": "npm --prefix server run verify:workflow-navigation",
     "verify:sensitive-words": "npm --prefix server run test:sensitive-words",
-    "migrate:latest": "npm --prefix server run migrate:latest"
+    "migrate:latest": "npm --prefix server run migrate:latest",
+    "test": "npm --prefix server test && npm run test:web && npm run test:screen",
+    "test:web": "node server/scripts/verify-suite.mjs web",
+    "test:screen": "node server/scripts/verify-suite.mjs screen",
+    "verify:db": "node server/scripts/verify-suite.mjs migrations && npm --prefix server run test:db"
   }
 }

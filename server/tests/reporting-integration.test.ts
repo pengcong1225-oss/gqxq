@@ -1,3 +1,4 @@
+import { runAsTrustedSystem } from '../src/auth/accessScope';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 process.env.DOTENV_CONFIG_PATH='nonexistent-integration-test.env';
@@ -32,6 +33,7 @@ test('durable callback inbox replays missing association and reversed order, rej
  const entries=new Map<string,any>();let replayCursor=0;let associated=false;let supervisionStatus='pending';
  const ref:any={assignmentId:'A1',complaintId:'C1',status:'pending',requestId:'R1',subjectCode:'E1',taskId:null,lastEventSequence:0,reportingItemId:null};
  const query=async(sql:string,p:any[]=[])=>{
+  if(sql==='select enterprise_code, district_code, deleted from complaint where complaint_id = ? for update')return [[{enterprise_code:'E1',district_code:null,deleted:0}],[]];
   if(sql.includes('from dispatch_order'))return [associated&&p[0]==='A1'?[{...ref}]:[],[]];
   if(sql.includes('from integration_replay_cursor'))return [[{lastEventId:replayCursor}],[]];
   if(sql.includes("processed_result='pending'"))return [[...entries.values()].filter(e=>e.processedResult==='pending'&&(sql.includes('and task_id=?')?e.taskId===p[0]:(sql.includes('id>?')?e.id>Number(p[0]):true))).slice(0,500).map(e=>({id:e.id,eventId:e.eventId,payload:e.payload})),[]];
@@ -51,16 +53,16 @@ test('durable callback inbox replays missing association and reversed order, rej
  const originals={query:pool.query,execute:pool.execute,getConnection:pool.getConnection};
  Object.assign(pool,{query,execute,getConnection:async()=>({query,execute,beginTransaction:async()=>{},commit:async()=>{},rollback:async()=>{},release:()=>{}})});
  const base={contractVersion:2,assignmentId:'A1',requestId:'R1',reportingItemId:'I1',sourceAppCode:'gqxq',sourceBusinessId:'C1',taskId:'T1',sceneCode:'GQXQ_SENSITIVE_DISPATCH',enterpriseSubject:{subjectCode:'E1',subjectName:'Enterprise'},enterpriseDisposalResult:{result:'original'},attachments:[],templateVersion:1,occurredAt:new Date().toISOString()};
- const send=async(event:any)=>{const rawBody=Buffer.from(JSON.stringify(event));const timestamp=String(Math.floor(Date.now()/1000));return handleCallback({rawBody,keyId:'test-key',keyVersion:'v1',timestamp,headerEventId:event.eventId,signature:signCallback(env.callback.secret,Number(timestamp),rawBody),remoteIp:null});};
+ const send=async(event:any)=>{const rawBody=Buffer.from(JSON.stringify(event));const timestamp=String(Math.floor(Date.now()/1000));return runAsTrustedSystem(() => handleCallback({rawBody,keyId:'test-key',keyVersion:'v1',timestamp,headerEventId:event.eventId,signature:signCallback(env.callback.secret,Number(timestamp),rawBody),remoteIp:null}));};
  try{
   for(let n=0;n<500;n++)entries.set('permanent-'+n,{id:n+1,eventId:'permanent-'+n,taskId:'OTHER',payload:{...base,eventId:'permanent-'+n,assignmentId:'UNKNOWN',taskId:'OTHER',eventType:'TASK_ACCEPTED',approvalConclusion:'PENDING',eventSequence:1},processedResult:'pending'});
   const submit={...base,eventId:'submitted',eventType:'TASK_SUBMITTED',approvalConclusion:'PENDING',submissionVersion:1,eventSequence:2};
   const early=await send(submit);assert.equal(early.status,200);assert.equal(early.ackBody,'ACCEPTED\n');assert.equal(entries.get('submitted').processedResult,'pending');
-  associated=true;await reconcilePendingEvents();assert.equal(ref.status,'pending');
+  associated=true;await runAsTrustedSystem(() => reconcilePendingEvents());assert.equal(ref.status,'pending');
   const accepted={...base,eventId:'accepted',eventType:'TASK_ACCEPTED',approvalConclusion:'PENDING',eventSequence:1};
   await send(accepted);assert.equal(ref.status,'processing');assert.equal(ref.lastEventSequence,2);assert.equal(entries.get('submitted').processedResult,'applied');
-  const queuedProgress={...base,eventId:'progress',eventType:'TASK_PROGRESS',approvalConclusion:'PENDING',submissionVersion:1,eventSequence:3};entries.set('progress',{id:entries.size+1,eventId:'progress',taskId:'T1',payload:queuedProgress,processedResult:'pending',ackBody:'ACCEPTED\n'});
-  await reconcilePendingEvents();assert.equal(ref.lastEventSequence,3);assert.equal(replayCursor,503);
+  const queuedProgress={...base,eventId:'progress',eventType:'TASK_PROGRESS',approvalConclusion:'PENDING',submissionVersion:1,eventSequence:3};entries.set('progress',{id:entries.size+1,eventId:'progress',sourceBusinessId:'C1',taskId:'T1',payload:queuedProgress,processedResult:'pending',ackBody:'ACCEPTED\n'});
+  await runAsTrustedSystem(() => reconcilePendingEvents());assert.equal(ref.lastEventSequence,3);assert.equal(replayCursor,503);
   await send({...base,eventId:'progress',eventType:'TASK_PROGRESS',approvalConclusion:'PENDING',submissionVersion:1,eventSequence:3});assert.equal(ref.status,'processing');assert.equal(supervisionStatus,'processing');
   await send({...base,eventId:'returned',eventType:'TASK_RETURNED',approvalConclusion:'RETURNED',submissionVersion:1,eventSequence:4});assert.equal(ref.status,'returned');
   await send({...base,eventId:'rejected',eventType:'TASK_REJECTED',approvalConclusion:'DISAGREED',submissionVersion:1,eventSequence:5});assert.equal(ref.status,'rejected');

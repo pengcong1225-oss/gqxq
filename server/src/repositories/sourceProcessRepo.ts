@@ -8,12 +8,12 @@ import type {SourceProcessNode,SourceProcessRevision,SourceProcessState} from '.
 export interface SourceProcessIdentity {complaintId:string;sourceSystem:string;sourceId:string}
 export interface ProcessStream {version:number;cutoffAt:string|null;state:SourceProcessState;errorCode:string|null}
 const DEFAULT_STREAM:ProcessStream={version:0,cutoffAt:null,state:'unavailable',errorCode:'SOURCE_PROCESS_UNAVAILABLE'};
-const nodeColumns='r.source_system,r.source_id,r.node_id,r.revision,r.source_sequence,r.source_version,r.occurred_at,r.stage,r.department,r.contact_name,r.opinion,r.observed_at';
+const nodeColumns='r.source_system,r.source_id,r.node_id,r.revision,r.source_sequence,r.source_version,r.occurred_at,r.stage,r.department,r.contact_name,r.contact_phone,r.opinion,r.observed_at';
 function mapRevision(row:Record<string,unknown>):SourceProcessRevision {
  return {sourceSystem:String(row.source_system),sourceId:String(row.source_id),nodeId:String(row.node_id),revision:Number(row.revision),
   sourceSequence:row.source_sequence==null?null:Number(row.source_sequence),sourceVersion:row.source_version==null?null:String(row.source_version),
   occurredAt:toIso(row.occurred_at),stage:String(row.stage),department:row.department==null?null:String(row.department),
-  contactName:row.contact_name==null?null:String(row.contact_name),opinion:row.opinion==null?null:String(row.opinion),observedAt:toIso(row.observed_at)};
+  contactName:row.contact_name==null?null:String(row.contact_name),contactPhone:row.contact_phone==null?null:String(row.contact_phone),opinion:row.opinion==null?null:String(row.opinion),observedAt:toIso(row.observed_at)};
 }
 export async function readSourceProcess(identity:SourceProcessIdentity):Promise<{stream:ProcessStream;revisions:SourceProcessRevision[]}> {
  const scope=currentScopeSql();const {complaintId,sourceSystem,sourceId}=identity;
@@ -36,7 +36,7 @@ async function lockStream(tx:Tx,identity:SourceProcessIdentity,expectedVersion:n
  return row?{version:Number(row.version),cutoffAt:toIso(row.completed_cutoff_at),state:row.state as SourceProcessState,errorCode:row.error_code==null?null:String(row.error_code)}:{...DEFAULT_STREAM};
 }
 function sameNode(a:SourceProcessNode,b:SourceProcessNode):boolean {
- return (['sourceSystem','sourceId','nodeId','sourceSequence','sourceVersion','occurredAt','stage','department','contactName','opinion'] as const).every(key=>a[key]===b[key]);
+ return (['sourceSystem','sourceId','nodeId','sourceSequence','sourceVersion','occurredAt','stage','department','contactName','contactPhone','opinion'] as const).every(key=>(a[key]??null)===(b[key]??null));
 }
 export async function saveSourceProcessInTx(tx:Tx,identity:SourceProcessIdentity,expectedVersion:number,nodes:SourceProcessNode[],state:SourceProcessState,cutoffAt:string|null,errorCode:string|null):Promise<void> {
  const previous=await lockStream(tx,identity,expectedVersion);
@@ -49,8 +49,8 @@ export async function saveSourceProcessInTx(tx:Tx,identity:SourceProcessIdentity
   if(sameVersion){if(!sameNode(sameVersion,node))throw Error('SOURCE_PROCESS_VERSION_CONFLICT');continue;}
   if(revisions.length&&(node.sourceVersion===null||revisions.some(r=>r.sourceVersion===null)))throw Error('SOURCE_PROCESS_VERSION_REQUIRED');
   const revision=(revisions.at(-1)?.revision??0)+1;
-  await tx.execute('insert into source_process_revision (complaint_id,source_system,source_id,node_id,revision,source_sequence,source_version,occurred_at,stage,department,contact_name,opinion,observed_at) values (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-   [identity.complaintId,node.sourceSystem,node.sourceId,node.nodeId,revision,node.sourceSequence,node.sourceVersion,node.occurredAt===null?null:new Date(node.occurredAt),node.stage,node.department,node.contactName,node.opinion,observedAt]);
+  await tx.execute('insert into source_process_revision (complaint_id,source_system,source_id,node_id,revision,source_sequence,source_version,occurred_at,stage,department,contact_name,contact_phone,opinion,observed_at) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+   [identity.complaintId,node.sourceSystem,node.sourceId,node.nodeId,revision,node.sourceSequence,node.sourceVersion,node.occurredAt===null?null:new Date(node.occurredAt),node.stage,node.department,node.contactName,node.contactPhone??null,node.opinion,observedAt]);
  }
  const completedCutoff=state==='complete'&&cutoffAt!==null?new Date(cutoffAt):previous.cutoffAt===null?null:new Date(previous.cutoffAt);
  await tx.execute('insert into source_process_stream (complaint_id,source_system,source_id,version,completed_cutoff_at,state,error_code,attempted_at) values (?,?,?,?,?,?,?,?) on duplicate key update version=values(version),completed_cutoff_at=values(completed_cutoff_at),state=values(state),error_code=values(error_code),attempted_at=values(attempted_at)',

@@ -157,7 +157,7 @@ export async function createReport(raw:unknown,initiating:MasterDataContext){
   snapshot=freezeReportSnapshot(input,capture,first.ctx.access.rules,heat,links,extended,dataSources);gates(first.ctx,snapshot,'create');
  }finally{await conn.rollback();conn.release();}
  return transaction(async db=>{const ctx=await actorIn(db,initiating.userId!);gates(ctx,snapshot,'create');const prior=await findReportRequest(db,ctx.userId!,input.requestId);if(prior){if(prior.request_hash!==hash)throw AppError.conflict('同请求号的报告载荷不同');return reportView((await authorizeIn(db,String(prior.report_id),ctx,'create')).row);}
-  const id='RPT-'+randomUUID(),sid='SNP-'+randomUUID();await lockCurrentObjects(db,snapshot);await insertStatisticsSnapshot(db,sid,snapshot);await insertReportJob(db,id,sid,ctx.userId!,hash,snapshot);await authorizeIn(db,id,ctx,'create');await audit(db,id,ctx.userId!,'REPORT_CREATE','success',{templateCode:'statistics-draft',templateVersion:'v1',format:input.format,state:'pending'});return reportView((await readReport(db,id))!);
+  const id='RPT-'+randomUUID(),sid='SNP-'+randomUUID();await lockCurrentObjects(db,snapshot);await insertStatisticsSnapshot(db,sid,snapshot);await insertReportJob(db,id,sid,ctx.userId!,hash,snapshot);await authorizeIn(db,id,ctx,'create');await audit(db,id,ctx.userId!,'REPORT_CREATE','success',{templateCode:input.templateCode,templateVersion:input.templateVersion,format:input.format,state:'pending'});return reportView((await readReport(db,id))!);
  });
 }
 export async function getReport(id:string,ctx:MasterDataContext){return transaction(async db=>{const current=await actorIn(db,ctx.userId!);return reportView((await authorizeIn(db,reportId(id),current,'read')).row);});}

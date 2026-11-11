@@ -47,12 +47,12 @@ function renderWithRouter(node: React.ReactNode, route: string): string {
   );
 }
 
-test('整体纠偏页用覆盖全部字段的名称呈现', async () => {
+test('诉求核验页用覆盖全部字段的名称呈现', async () => {
   const { default: AddressCorrection } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
   const html = renderWithRouter(<AddressCorrection />, '/address-correction');
 
-  assert.match(html, />整体纠偏</);
-  assert.match(html, /待纠偏诉求/);
+  assert.match(html, />诉求核验</);
+  assert.match(html, /待核验诉求/);
   assert.doesNotMatch(html, />纠偏待办</);
 });
 
@@ -142,7 +142,7 @@ test('地址搜索返回可供人工选择的候选位置', async () => {
     }), { status: 200 });
   };
   const places = await search('宜昌市人民政府', 'test-key', request as typeof fetch);
-  assert.deepEqual(places, [{ name: '宜昌市人民政府', address: '湖北省宜昌市西陵区沿江大道', lng: '111.286000', lat: '30.691000' }]);
+  assert.deepEqual(places, [{ name: '宜昌市人民政府', address: '湖北省宜昌市西陵区沿江大道', lng: '111.286000', lat: '30.691000', coordinateSystem: 'unknown', coordinateSource: '天地图地址搜索候选，坐标系未核实' }]);
   const url = new URL(requestedUrl);
   assert.equal(url.hostname, 'api.tianditu.gov.cn');
   assert.equal(url.searchParams.get('type'), 'query');
@@ -156,7 +156,7 @@ test('敏感交办工作台同时提供规则命中诉求与交办记录', async
 
   assert.match(html, />规则命中诉求</);
   assert.match(html, />交办记录</);
-  assert.match(html, /本表直接发起交办/);
+  assert.match(html, /搜索诉求编号、标题或内容/);
 });
 
 test('规则命中诉求查询始终带服务端敏感标记筛选', async () => {
@@ -396,7 +396,7 @@ test('真实详情页把接口位置冲突传到只读线索区域', async () =>
   } finally { ui.unmount(); cleanup(); axiosRequest.defaults.adapter = originalAdapter; }
 });
 
-test('真实整体纠偏抽屉和位置窗体不允许带入有冲突的地址候选', async () => {
+test('真实诉求核验抽屉保留冲突原文且不自动采用候选', async () => {
   installDom();
   const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
   const axiosRequest = request as { defaults: { adapter: unknown } };
@@ -407,13 +407,14 @@ test('真实整体纠偏抽屉和位置窗体不允许带入有冲突的地址�
       '/enterprises': { content: [], total: 0 },
       '/complaints/CPL-TEST': locationDetailFixture,
       '/complaints/CPL-TEST/corrections': ['address', 'location_lng', 'location_lat'].map(locationCorrectionFixture),
+      '/complaints/CPL-TEST/location-correction-options': { districts: [], adminGrids: [], communities: [] },
     };
     if (!(config.url && config.url in responses)) throw new Error(`Unexpected test API: ${config.url}`);
     return { data: { code: 200, data: responses[config.url] }, status: 200, statusText: 'OK', headers: {}, config };
   };
   const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
   const originalUser = useAppStore.getState().userInfo;
-  useAppStore.setState({ userInfo: { id: 1, userId: 'tester', username: 'tester', realName: '测试经办', roles: ['handler'], permissions: [] } });
+  useAppStore.setState({ userInfo: { id: 1, userId: 'tester', username: 'tester', realName: '测试经办', roles: ['handler'], permissions: ['complaint.correct', 'dispatch.create'] } });
   const { default: AddressCorrectionPage } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
   const { render, within, fireEvent, cleanup, waitFor } = await import('@testing-library/react');
   const ui = render(<MemoryRouter initialEntries={['/address-correction?complaintId=CPL-TEST']}>
@@ -421,15 +422,89 @@ test('真实整体纠偏抽屉和位置窗体不允许带入有冲突的地址�
   </MemoryRouter>);
   try {
     const page = within(document.body);
-    await waitFor(() => assert.match(document.body.textContent ?? '', /待核实位置线索.*样例社区20号1301/));
-    assert.match(document.body.textContent ?? '', /位置冲突/);
-    await waitFor(() => assert.equal((page.getByRole('button', { name: '打开位置组纠偏' }) as HTMLButtonElement).disabled, false));
-    fireEvent.click(page.getByRole('button', { name: '打开位置组纠偏' }));
-    assert.match(document.body.textContent ?? '', /位置组纠偏/);
+    await waitFor(() => assert.match(document.body.textContent ?? '', /原文区划或候选存在冲突/));
+    assert.match(document.body.textContent ?? '', /联棚乡示例家园18号1301，样例社区20号1301/);
+    assert.match(document.body.textContent ?? '', /位置核验/);
+    await waitFor(() => assert.equal((page.getByRole('button', { name: '调整位置' }) as HTMLButtonElement).disabled, false));
+    fireEvent.click(page.getByRole('button', { name: '调整位置' }));
     assert.equal(page.queryByRole('button', { name: '填入待核实地址' }), null);
-    assert.equal((page.getByPlaceholderText('人工核对后填写地址') as HTMLInputElement).value, '来源地址原值');
+    assert.equal((page.getByRole('textbox', { name: '核实后的地址' }) as HTMLInputElement).value, '来源地址原值');
+    fireEvent.click(page.getByRole('button', { name: '确认位置', exact: true }));
+    await waitFor(() => assert.match(document.body.textContent ?? '', /调整或存在冲突时，请填写核对依据/));
+    assert.equal((page.getByRole('textbox', { name: '核实后的地址' }) as HTMLInputElement).value, '来源地址原值');
   } finally {
     ui.unmount(); cleanup(); axiosRequest.defaults.adapter = originalAdapter;
     useAppStore.setState({ userInfo: originalUser });
   }
+});
+
+
+test('规则命中诉求保留直接创建交办入口且打开表单不写入', async () => {
+  installDom();
+  const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
+  const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
+  const originalAdapter = request.defaults.adapter;
+  const originalUser = useAppStore.getState().userInfo;
+  const calls: string[] = [];
+  request.defaults.adapter = async (config: { url: string; method: string }) => {
+    calls.push(config.method + ' ' + config.url);
+    const responses: Record<string, unknown> = {
+      '/complaints': { content: [{ ...locationDetailFixture, isSensitive: true, sensitiveKeywords: ['爆管'] }], total: 1 },
+      '/enterprises': { content: [], total: 0 },
+    };
+    if (config.url.startsWith('/dicts/')) return { data: { code: 200, data: [] }, status: 200, headers: {}, config };
+    if (!(config.url in responses)) throw new Error(`Unexpected test API: ${config.url}`);
+    return { data: { code: 200, data: responses[config.url] }, status: 200, headers: {}, config };
+  };
+  useAppStore.setState({ userInfo: { id: 1, userId: 'tester', username: 'tester', realName: '测试经办', roles: ['handler'], permissions: ['dispatch.create'] } });
+  const { default: DispatchOrders } = await vite.ssrLoadModule('/src/views/DispatchOrders.tsx');
+  const { render, within, fireEvent, cleanup } = await import('@testing-library/react');
+  const ui = render(<MemoryRouter><DispatchOrders /></MemoryRouter>);
+  try {
+    const page = within(document.body);
+    const create = await page.findByRole('button', { name: '创建交办' });
+    assert.equal((create as HTMLButtonElement).disabled, false);
+    fireEvent.click(create);
+    await page.findByRole('dialog');
+    assert.match(document.body.textContent ?? '', /CS-TEST/);
+    assert.equal(calls.some(call => !call.startsWith('get ')), false);
+  } finally { ui.unmount(); cleanup(); request.defaults.adapter = originalAdapter; useAppStore.setState({ userInfo: originalUser }); }
+});
+
+
+test('固定报告保留默认口径，显式切换采购口径才发送采购模板', async () => {
+  installDom();
+  const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
+  const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
+  const originalAdapter = request.defaults.adapter, originalUser = useAppStore.getState().userInfo;
+  const submitted: Array<{templateCode:string;query:{comparisonPolicyId:string}}> = [];
+  request.defaults.adapter = async (config: {url:string;method:string;data?:string}) => {
+    assert.equal(config.url, '/reports');
+    let data: unknown = { content: [], hasMore: false, continuation: null };
+    if (config.method === 'post') {
+      submitted.push(JSON.parse(config.data!));
+      data = { reportId:'RPT-test',state:'pending' };
+    }
+    return { data:{code:200,data},status:200,headers:{},config };
+  };
+  useAppStore.setState({userInfo:{id:1,userId:'tester',username:'tester',realName:'测试经办',roles:['handler'],permissions:['report.read','report.generate','statistics.read','complaint.read','dashboard.read']}});
+  const {default: FixedReportPanel} = await vite.ssrLoadModule('/src/views/FixedReportPanel.tsx');
+  const {render,within,fireEvent,waitFor,cleanup} = await import('@testing-library/react');
+  const ui = render(<FixedReportPanel todoIds={[]} />);
+  try {
+    const page = within(document.body);
+    assert.match(document.body.textContent??'', /当前模板：现有固定统计报告/);
+    fireEvent.click(page.getByRole('button',{name:'生成统计报告'}));
+    await waitFor(()=>assert.equal(submitted.length,1));
+    assert.equal(submitted[0].templateCode,'statistics-draft');
+    assert.equal(submitted[0].query.comparisonPolicyId,'candidate-calendar-v1');
+    await waitFor(()=>assert.equal((page.getByRole('button',{name:'生成统计报告'}) as HTMLButtonElement).disabled,false));
+    fireEvent.mouseDown(page.getByRole('combobox',{name:'统计口径'}));
+    fireEvent.click(await page.findByText('标书采购范围（来源明确办结的水气诉求）'));
+    assert.match(document.body.textContent??'', /当前模板：标书采购统计报告/);
+    fireEvent.click(page.getByRole('button',{name:'生成统计报告'}));
+    await waitFor(()=>assert.equal(submitted.length,2));
+    assert.equal(submitted[1].templateCode,'procurement-statistics');
+    assert.equal(submitted[1].query.comparisonPolicyId,'procurement-source-completed-v2');
+  } finally {ui.unmount();cleanup();request.defaults.adapter=originalAdapter;useAppStore.setState({userInfo:originalUser});}
 });

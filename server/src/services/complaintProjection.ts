@@ -12,12 +12,14 @@ export function projectComplaintDetail(row:ComplaintRow,_ctx:AccessContext):Comp
   Object.entries(detail.effectiveFieldState).filter(([field])=>[...EFFECTIVE_COLUMNS,...LOCATION_GROUP_COLUMNS,'enterprise_code','enterprise_name','major_category_code','minor_category_code','category_dictionary_version'].includes(field as typeof EFFECTIVE_COLUMNS[number])).map(([field,state])=>[field,pick(state,['resolution','value','version','reason','correctionId'])]));
  const sourceAddress=typeof fields?.address==='string'?fields.address:null;
  const sourceSnapshotAt=typeof _fields?._receivedAt==='string'?toIso(_fields._receivedAt):null;
- const summary=sourceSummary(_payload);const sourceDeadlineAt=sourceExportTime(summary.deadlineRaw),sourceCompletedAt=sourceExportTime(summary.completedRaw);
+ const summary=sourceSummary(_payload);
+ const hasProcessSnapshot=row.source_process_received_at!=null;
+ const sourceDeadlineAt=hasProcessSnapshot?toIso(row.source_deadline_at):sourceExportTime(summary.deadlineRaw),sourceCompletedAt=hasProcessSnapshot?toIso(row.source_completed_at):sourceExportTime(summary.completedRaw);
  return {...detail,effectiveFieldState,sourceAddress,effectiveAddress:detail.address,
   sourceSummary:summary,sourceDeadlineAt,sourceCompletedAt,sourceSnapshotAt,
   businessTimeSource:detail.sourceReportedAt?'source_reported_at':detail.receivedAt?'platform_received_at':'unavailable',
   sourceFieldReasons:{sourceAddress:sourceAddress===null?'未留存可核实的结构化来源原地址':null,
-   sourceDeadlineAt:sourceDeadlineAt?null:summary.deadlineRaw?'来源规定完成时间格式未能核实，请核对原值':'来源未提供规定完成时间',sourceCompletedAt:sourceCompletedAt?null:summary.completedRaw?'来源实际完成时间格式未能核实，请核对原值':'来源未提供实际完成时间',
+   sourceDeadlineAt:sourceDeadlineAt?null:hasProcessSnapshot?'最新来源过程快照未提供规定完成时间':summary.deadlineRaw?'来源规定完成时间格式未能核实，请核对原值':'来源未提供规定完成时间',sourceCompletedAt:sourceCompletedAt?null:hasProcessSnapshot?'最新来源过程快照未提供实际完成时间':summary.completedRaw?'来源实际完成时间格式未能核实，请核对原值':'来源未提供实际完成时间',
    sourceSnapshotAt:sourceSnapshotAt===null?'未留存可核实的快照接收时间':null},
   addressCandidate:null,locationClues:[],locationConflict:false};
 }

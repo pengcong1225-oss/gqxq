@@ -34,6 +34,7 @@ export const env = {
    * 否则容器内回环不通、发布端口连不上（这是配置事实，不是代码兜底）。
    */
   host: opt('GQXQ_HOST', '127.0.0.1'),
+  businessSources: optRaw('GQXQ_BUSINESS_SOURCES_JSON') || '[]',
   publicBaseUrl: opt('GQXQ_PUBLIC_BASE_URL',''),
   /**
    * M3（防护方案 §4.1）：套网关**必须**同时声明哪些对端可信，否则 req.ip 与

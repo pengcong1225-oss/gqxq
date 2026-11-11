@@ -20,11 +20,16 @@ export function reportChart(s:ReportSnapshot):Buffer {
  const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(w);ihdr.writeUInt32BE(h,4);ihdr[8]=8;ihdr[9]=2;return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),pngChunk('IHDR',ihdr),pngChunk('IDAT',deflateSync(raw)),pngChunk('IEND',Buffer.alloc(0))]);
 }
 export function reportSections(s:ReportSnapshot):{title:string;headers:string[];rows:(string|number|null)[][]}[]{
- if(s.tenderStatistics)return fixedReportSections(s);
+ if(s.tenderStatistics)return [...fixedReportSections(s),...satisfactionSections(s)];
  const m=s.statistics.summary;
  const sections=[{title:'期间比较',headers:['比较口径','基期范围','本期数量','基期数量','变化百分比','说明'],rows:m.comparisons.map(c=>[c.label,c.from&&c.to?c.from+' 至 '+c.to:'不可用',c.currentCount,c.baselineCount,c.changePercent,c.reason??(c.truncated?'基期按候选规则截短':'候选政策，待业务确认')])},{title:'统计分布',headers:['维度','分类或对象','字典版本','数量'],rows:m.dimensions.map(d=>[d.dimension+(d.level?' '+d.level:''),d.name,d.dictionaryVersion??null,d.count])},{title:'按日统计',headers:['业务日期','数量'],rows:m.trend.map(t=>[t.date,t.count])},{title:'历史户数与候选指标',headers:['企业','选定日期','户数','历史版本','每万户事件数','说明'],rows:m.rates.map(r=>[r.enterpriseCode,r.at,r.households,r.version,r.value,r.reason??r.label])}];
  if(s.heat)sections.push({title:'热力统计',headers:['服务网格','数量','规则版本','政策版本','状态说明'],rows:s.heat.data.grids.map(g=>[g.code,g.count,g.ruleVersion,g.policyVersion,g.reason??g.level??'不可用'])} as any);
- return sections;
+ return [...sections,...satisfactionSections(s)];
+}
+function satisfactionSections(s:ReportSnapshot):ReturnType<typeof reportSections>{
+ const rate=s.statistics.summary.satisfactionRate,evidence=s.statistics.satisfactionEvidence;
+ if(!evidence)return [];
+ return [{title:'外部回访满意度',headers:['满意数','有效评价数','满意度（%）','说明'],rows:[[rate.satisfiedCount??0,rate.validCount??0,rate.value,rate.reason]]},{title:'回访排除说明',headers:['诉求编号','未计入原因'],rows:evidence.excluded.map(e=>[e.complaintId,e.reason])}];
 }
 type ReportSection=ReturnType<typeof reportSections>[number];
 const percentage=(comparisons:PeriodComparison[],kind:'yoy'|'mom')=>{const c=comparisons.find(c=>c.kind===kind);return !c?'不可用':c.changePercent===null?'不可用（'+(c.reason??'无有效基期')+'）':c.changePercent.toFixed(2)+'%';};
@@ -53,7 +58,7 @@ function reportIntro(s:ReportSnapshot):string[]{const m=s.statistics.summary;if(
  '本报告按固定模板生成，统计范围及数据截止时间如下。报告供业务分析使用，尚未履行业务审核或发布程序。',
  `统计期间：${s.input.query.from} 至 ${s.input.query.to}；数据范围：${s.input.query.dataset==='ledger'?'诉求总账':'分析库'}；取值方式：${s.input.query.projection==='current'?'当前有效数据':'入库时数据'}；数据截止：${m.dataCutoffAt}。`,
  `选定期间诉求 ${m.total} 条，${s.tenderStatistics.services.map(service=>service.title+' '+service.total+' 条').join('、')}。年、季、月统计截至 ${s.input.query.to}，可能超出所选开始日期；各表均标明实际统计期间。`,
- '时间按北京时间计算；来源填报时间优先，缺失或无效时采用平台接收时间。同比比较上年同期间，月度、季度环比比较上一期间的可比经过日数；年度环比以上年同期累计为基期。基期为零、日期缺失或缺少依据时显示不可用。',
+ m.policy.status==='procurement'?`统计口径：${m.policy.label}；${m.timeBasis}。关闭和平台闭环不能代替来源办结。同比环比采用可比日历期间，基期为零或缺依据时不可用。`:'时间按北京时间计算；来源填报时间优先，缺失或无效时采用平台接收时间。同比比较上年同期间，月度、季度环比比较上一期间的可比经过日数；年度环比以上年同期累计为基期。基期为零、日期缺失或缺少依据时显示不可用。',
  ...(s.dataSources?[`数据来源说明：选定期间包含 ${s.dataSources.selectedDemoCount} 条演示记录；年季月扩展范围包含 ${s.dataSources.calendarDemoCount} 条演示记录。演示记录与业务记录共同按当前筛选范围统计，请据此核实报告用途。`]:['数据来源说明：沿用当前授权数据范围，未取得独立的来源核验标记。']),
  ...(m.partial?['部分记录缺少有效日期，统计与比较存在数据缺口。']:[]),
  ...(m.total===0?['选定期间无匹配数据，不能据此推断满意度或服务质量。']:[]),

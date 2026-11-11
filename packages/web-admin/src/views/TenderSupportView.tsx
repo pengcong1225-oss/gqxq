@@ -1,4 +1,4 @@
-import {useSearchParams} from 'react-router-dom';
+import {Link,useSearchParams} from 'react-router-dom';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Button,Card,Descriptions,Empty,Input,Modal,Select,Space,Spin,Table,Tabs,Tag,Typography,message} from 'antd';
 import {useAppStore} from '../stores/appStore';
@@ -29,6 +29,7 @@ export default function TenderSupportView(){
  const related=selected&&data?data.events.filter(e=>e.gridIds.includes(selected.gridId)&&e.kind.includes(selected.businessType)&&Date.parse(e.startsAt)<=Date.parse(selected.occurredAt)&&Date.parse(e.endsAt)>=Date.parse(selected.occurredAt)):[];
  if(!canRead)return <Alert type="warning" message="专题分析需要统计及诉求明细查询权限"/>;
  return <div><Typography.Title level={3}>专题数据与预警管理</Typography.Title>
+ <Alert type="info" style={{marginBottom:16}} message={<Link to="/business-alerts">真实诉求总账的持久预警、历史同期与五季研判请进入“真实主账预警与研判”</Link>} description="本页继续管理独立专题导入和模拟预览，数据来源与真实诉求总账分开。"/>
  <Alert type="info" showIcon message="管理后台：维护数据、配置规则、核验效果" description="在数据接入中维护网格、小区、企业户数、停供施工事件和管线；在预警规则中设置四类场景。统计与图层页签仅用于后台效果预览。" style={{marginBottom:16}}/>
  <Space wrap style={{marginBottom:16}}><label>数据来源 <Select aria-label="专题数据来源" value={mode} onChange={setMode} style={{width:210}} options={[{value:'simulation',label:'模拟数据（演示验收）'},{value:'real',label:'真实专题数据'}]}/></label><label>开始日期 <Input type="date" aria-label="专题开始日期" value={from} onChange={e=>setFrom(e.target.value)}/></label><label>结束日期 <Input type="date" aria-label="专题结束日期" value={to} max={statisticsToday()} onChange={e=>setTo(e.target.value)}/></label><Button onClick={()=>setRefresh(n=>n+1)}>刷新数据</Button></Space>
  <Alert showIcon type={mode==='simulation'?'warning':'info'} message={mode==='simulation'?'模拟数据专区：边界、小区、管线、事件、评价、办结和户数均为模拟':'真实专题数据：仅使用已导入并通过校验的数据'} description={mode==='simulation'?'本专区用于验证标书功能，与已有真实诉求总账分开。模拟结果不能作为实际服务质量或事件判断依据；可切换真实模式并导入真实数据替换。':'本专区使用独立接入的数据版本；不修改原诉求总账。没有数据时保留空状态，不回退为模拟值。'} style={{marginBottom:16}}/>
