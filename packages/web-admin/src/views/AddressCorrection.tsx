@@ -1,3 +1,4 @@
+import {namedLabel,fieldLabel,fieldValue,fieldNameLabel} from '../utils/chineseDisplay';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -16,6 +17,7 @@ import {
   Table,
   Tag,
   Tooltip,
+  Typography,
   message,
 } from 'antd';
 import {
@@ -27,18 +29,24 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import {
   confirmCorrection,
+  rejectCorrection,
   generateCorrectionBatch,
   generateCorrections,
   listComplaintCorrections,
+  isCorrectionVersionConflict,
+  CORRECTION_CONFLICT_MESSAGE,
+  correctionEffectiveText,
 } from '../api/corrections';
 import { listPendingCorrectionComplaints } from '../api/corrections';
 import type { DispatchedFilter, PendingComplaintSummary } from '../api/corrections';
-import { listEnterprises } from '../api/enterprises';
+import { listEnterpriseOptions } from '../api/enterprises';
 import { getComplaint } from '../api/complaints';
-import type { AddressCandidateView, ComplaintDetail, CorrectionItem, EnterpriseListItem } from '../types/api';
-import TiandituLocationPicker from '../components/TiandituLocationPicker';
+import type { AddressCandidateView, ComplaintDetail, CorrectionItem, EnterpriseOption } from '../types/api';
+import LocationReviewPanel from '../components/LocationReviewPanel';
+import {useAppStore} from '../stores/appStore';
 import LocationClues from '../components/LocationClues';
-import InlineCorrectionField from '../components/InlineCorrectionField';
+import InlineCorrectionField, { type InlineCorrectionDraft } from '../components/InlineCorrectionField';
+import type {LocationCorrectionResult} from '../types/locationCorrection';
 import { useWriteAccess, WriteGate } from '../stores/roleAccess';
 import { useAdminAccess } from '../stores/roleAccess';
 import { previewAddressBackfill, executeAddressBackfill } from '../api/addressCandidates';
@@ -56,7 +64,7 @@ import type { AddressBackfillPreview, AddressBackfillSummary } from '../api/addr
  *  - 无法确认的项留在待纠偏，**不假装完成**；判定不成立时可「无需纠偏」并留依据。
  *  - 纠偏闭环仍是进入分析库的前置条件之一；分析库口径本批未变（未交办 / 误报归库不纳入分析），
  *    所以"队列里有未交办的件、但它们不会进分析库"是正常状态。
- *  - 存量 / 新入站诉求靠「补齐全部诉求纠偏待办」这个幂等入口收敛进队列，页面不造任何数据。
+ *  - 新入站与导入自动生成核验待办；历史缺失通过维护工具幂等补齐。
  */
 
 function errText(e: unknown): string {
@@ -114,7 +122,7 @@ export const AddressLocationEvidence: React.FC<{
   <LocationClues clues={clues} conflict={conflict} />
 </>;
 
-const POSITION_FIELDS = ['address', 'location_lng', 'location_lat'] as const;
+const POSITION_FIELDS = ['address', 'location_lng', 'location_lat','district_name'] as const;
 
 /** 交办轴筛选（两条轴并行，页面要能分别看） */
 const DISPATCHED_OPTIONS: Array<{ label: string; value: DispatchedFilter | 'all' }> = [
@@ -142,7 +150,7 @@ export function positionItemsMatchSelection(itemsLoading: boolean, itemsComplain
 export const AddressCandidateBackfillControls: React.FC<AddressCandidateBackfillControlsProps> = ({
   adminAccess: accessOverride, previewApi = previewAddressBackfill, executeApi = executeAddressBackfill,
 }) => {
-  const hookAccess = useAdminAccess();
+  const hookAccess = useAdminAccess('system.address.backfill');
   const adminAccess = accessOverride ?? hookAccess;
   const [preview, setPreview] = useState<AddressBackfillPreview | null>(null);
   const [execution, setExecution] = useState<AddressBackfillSummary | null>(null);
@@ -213,7 +221,7 @@ export const AddressCandidateBackfillControls: React.FC<AddressCandidateBackfill
   );
 };
 
-const AddressCorrection: React.FC = () => {
+const AddressCorrectionWorkbench: React.FC = () => {
   const [searchParams] = useSearchParams();
   const deepLinkHandledRef = useRef<string | null>(null);
   // ---- 左侧队列 ----
@@ -230,7 +238,7 @@ const AddressCorrection: React.FC = () => {
 
   // ---- 企业主数据：确认责任单位时的下拉（值=enterprise_code） ----
   // 不做本地兜底清单：手抄的编码与登记值不一致时，后端会直接拒绝写入，页面不该假装能填。
-  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseOption[]>([]);
   const [enterpriseLoading, setEnterpriseLoading] = useState(false);
   const [enterpriseError, setEnterpriseError] = useState<string | null>(null);
   const enterpriseSeqRef = useRef(0);
@@ -243,8 +251,12 @@ const AddressCorrection: React.FC = () => {
   const [selectedComplaintInfo, setSelectedComplaintInfo] = useState<{ complaintNo: string; title: string } | null>(null);
   const [selectedComplaintDetail, setSelectedComplaintDetail] = useState<ComplaintDetail | null>(null);
   const summarySeqRef = useRef(0);
+  const selectedComplaintIdRef = useRef<string | null>(null);
+  const selectionIsCurrent = useCallback((complaintId: string, epoch: number) =>
+    summarySeqRef.current === epoch && selectedComplaintIdRef.current === complaintId, []);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [items, setItems] = useState<CorrectionItem[]>([]);
+  const [inlineDrafts, setInlineDrafts] = useState<Record<string, InlineCorrectionDraft>>({});
   const [itemsComplaintId, setItemsComplaintId] = useState<string | null>(null);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
@@ -259,19 +271,17 @@ const AddressCorrection: React.FC = () => {
   const [verifyTarget, setVerifyTarget] = useState<CorrectionItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
+  const [versionConflict, setVersionConflict] = useState(false);
   const [verifyForm] = Form.useForm<{ basis: string }>();
-  const [positionForm] = Form.useForm();
-  const addressDraft = Form.useWatch('address', positionForm) as string | undefined;
-  const writeAccess = useWriteAccess();
-  const adminAccess = useAdminAccess();
-  const [positionModalOpen, setPositionModalOpen] = useState(false);
-  const [positionResult, setPositionResult] = useState<Array<{ label: string; ok: boolean; detail: string }>>([]);
+  const writeAccess = useWriteAccess('complaint.correct');
+  const adminAccess = useAdminAccess('system.address.backfill');
+  useEffect(() => () => { ++summarySeqRef.current; ++itemsSeqRef.current; ++seqRef.current; ++enterpriseSeqRef.current; selectedComplaintIdRef.current = null; }, []);
 
   const fetchEnterprises = useCallback(async (keyword?: string) => {
     const seq = ++enterpriseSeqRef.current;
     setEnterpriseLoading(true);
     try {
-      const res = await listEnterprises({
+      const res = await listEnterpriseOptions({
         keyword: keyword && keyword.trim() !== '' ? keyword.trim() : undefined,
         size: 100,
       });
@@ -305,6 +315,7 @@ const AddressCorrection: React.FC = () => {
         if (seq !== seqRef.current) return;
         setQueue(res.content);
         setQueueTotal(res.total);
+        return res;
       } catch (err) {
         if (seq !== seqRef.current) return;
         setLoadError(errText(err));
@@ -353,12 +364,16 @@ const AddressCorrection: React.FC = () => {
   const selectComplaint = useCallback(
     (complaintId: string, summary?: PendingComplaintSummary) => {
       const summarySeq = ++summarySeqRef.current;
+      selectedComplaintIdRef.current = complaintId;
       setSelectedComplaintId(complaintId);
+      setVersionConflict(false);
+      setSubmitting(false);
+      setSavingItemId(null);
+      setVerifyTarget(null);
+      setInlineDrafts({});
       setDrawerOpen(true);
       setItems([]);
       setItemsComplaintId(null);
-      setPositionModalOpen(false);
-      positionForm.resetFields();
       const row = summary ?? queue.find((item) => item.complaintId === complaintId);
       setSelectedComplaintDetail(null);
       void getComplaint(complaintId).then((detail) => {
@@ -378,7 +393,7 @@ const AddressCorrection: React.FC = () => {
       }
       void loadItems(complaintId);
     },
-    [loadItems, queue, positionForm]
+    [loadItems, queue]
   );
 
   /** 从规则命中诉求跳转时，自动定位并加载目标诉求；同一个 URL 只处理一次。 */
@@ -392,15 +407,19 @@ const AddressCorrection: React.FC = () => {
 
   /** 确认/无需纠偏之后：刷新该诉求的纠偏项与左侧队列；若已闭环则提示进入分析库 */
   const afterDecision = useCallback(
-    async (complaintId: string, analysisEntered?: boolean) => {
-      await loadItems(complaintId);
+    async (complaintId: string, analysisEntered?: boolean, analysisReason?: string | null) => {
+      const epoch = summarySeqRef.current;
+      if (selectedComplaintIdRef.current !== complaintId) return;
+      if (await refreshPositionSelection(complaintId, epoch) === null) return;
       await loadQueue(page, size, dispatched);
+      if (!selectionIsCurrent(complaintId, epoch)) return;
       // 「是否已进入分析库」用**后端返回的判定**（confirm/reject 响应里的 analysisEntered），
       // 不在前端靠"数还有没有 pending 项"来推断——那是猜测，不是事实。
       if (analysisEntered === true) {
         message.success('该项已处置，且该诉求纠偏已全部闭环——已进入分析库（可在「分析库」页查到）');
       } else {
         message.success('已处置该项纠偏');
+        if (analysisReason) message.info(analysisReason, 6);
       }
     },
     [loadItems, loadQueue, page, size, dispatched]
@@ -418,7 +437,7 @@ const AddressCorrection: React.FC = () => {
       if (res.created) {
         message.success('已生成 ' + res.total + ' 项纠偏待办');
       } else {
-        message.info('该诉求已有纠偏项（共 ' + res.total + ' 项），未重复生成');
+        message.info('已核对现有纠偏清单（共 ' + res.total + ' 项）；如有新的回传结果，请继续核验处置结果');
       }
       setGenId('');
       selectComplaint(res.complaintId);
@@ -463,17 +482,27 @@ const AddressCorrection: React.FC = () => {
 
   const saveInlineItem = async (item: CorrectionItem, newValue: string, basis: string) => {
     if (savingItemId !== null) return;
+    const epoch = summarySeqRef.current;
     try {
       setSavingItemId(item.correctionId);
       const res = await confirmCorrection(item.correctionId, {
         newValue,
+        expectedVersion: item.editVersion,
         basis: basis || undefined,
       });
-      await afterDecision(item.complaintId, res.analysisEntered === true);
+      if (!selectionIsCurrent(item.complaintId, epoch)) return;
+      setInlineDrafts((drafts) => {
+        const remaining = { ...drafts };
+        delete remaining[item.correctionId];
+        return remaining;
+      });
+      await afterDecision(item.complaintId, res.analysisEntered === true, res.analysisReason);
     } catch (err) {
-      message.error('保存纠偏失败：' + errText(err));
+      if (!selectionIsCurrent(item.complaintId, epoch)) return;
+      if (isCorrectionVersionConflict(err)) { setVersionConflict(true); message.warning(CORRECTION_CONFLICT_MESSAGE); }
+      else message.error('保存纠偏失败：' + errText(err));
     } finally {
-      setSavingItemId(null);
+      if (selectionIsCurrent(item.complaintId, epoch)) setSavingItemId(null);
     }
   };
 
@@ -484,107 +513,104 @@ const AddressCorrection: React.FC = () => {
 
   const submitVerifyOriginal = async () => {
     if (!verifyTarget) return;
+    const target = verifyTarget, epoch = summarySeqRef.current;
     let values: { basis: string };
     try {
       values = await verifyForm.validateFields();
     } catch {
       return;
     }
+    if (!selectionIsCurrent(target.complaintId, epoch)) return;
     setSubmitting(true);
     try {
-      const res = await confirmCorrection(verifyTarget.correctionId, {
-        newValue: verifyTarget.oldValue ?? '',
+      const res = await rejectCorrection(target.correctionId, {
+        expectedVersion: target.editVersion,
         basis: '核验无误：' + values.basis.trim(),
       });
-      const complaintId = verifyTarget.complaintId;
+      if (!selectionIsCurrent(target.complaintId, epoch)) return;
+      const complaintId = target.complaintId;
       setVerifyTarget(null);
       verifyForm.resetFields();
-      await afterDecision(complaintId, res.analysisEntered === true);
+      await afterDecision(complaintId, res.analysisEntered === true, res.analysisReason);
     } catch (err) {
-      message.error('核验未完成：' + errText(err));
-      await loadItems(verifyTarget.complaintId);
+      if (!selectionIsCurrent(target.complaintId, epoch)) return;
+      if (isCorrectionVersionConflict(err)) { setVersionConflict(true); message.warning(CORRECTION_CONFLICT_MESSAGE); }
+      else message.error('核验未完成：' + errText(err));
     } finally {
-      setSubmitting(false);
+      if (selectionIsCurrent(target.complaintId, epoch)) setSubmitting(false);
     }
   };
 
-  const positionItems = POSITION_FIELDS.map((fieldName) => items.find((item) => item.fieldName === fieldName));
-  const positionItemsReady = positionItemsMatchSelection(itemsLoading, itemsComplaintId, selectedComplaintId);
-  const canEditPositionGroup = positionItemsReady && Boolean(selectedComplaintInfo) && positionItems.every(Boolean) && positionItems.some((item) => item?.status === 'pending');
-
-  const openPositionGroup = () => {
-    if (!canEditPositionGroup) return;
-    const [address, lng, lat] = positionItems as [CorrectionItem, CorrectionItem, CorrectionItem];
-    setPositionResult([]);
-    positionForm.setFieldsValue({
-      address: address.newValue ?? address.oldValue ?? '',
-      lng: lng.newValue ?? lng.oldValue ?? '',
-      lat: lat.newValue ?? lat.oldValue ?? '',
-      basis: '',
-    });
-    setPositionModalOpen(true);
+  // Apply correction/version/detail as one selection result; preserve its mounted drafts.
+  const refreshPositionSelection = async (complaintId: string, epoch: number): Promise<CorrectionItem[] | null> => {
+    const [current, detail] = await Promise.all([listComplaintCorrections(complaintId), getComplaint(complaintId)]);
+    if (!selectionIsCurrent(complaintId, epoch)) return null;
+    if (detail.complaintId !== complaintId || current.some(item => item.complaintId !== complaintId)) {
+      throw new Error('诉求响应与当前选择不一致，请刷新核对');
+    }
+    setItems(current);
+    setItemsComplaintId(complaintId);
+    setSelectedComplaintDetail(detail);
+    return current;
   };
 
-  const savePositionGroup = async () => {
-    let values: { address: string; lng: string; lat: string; basis?: string };
+  const onLocationOutcome = async (result: LocationCorrectionResult | null, next: boolean) => {
+    if (!selectedComplaintId) return;
+    const id = selectedComplaintId, epoch = summarySeqRef.current;
     try {
-      values = await positionForm.validateFields();
-    } catch {
-      return;
-    }
-    const fields = [
-      { item: positionItems[0] as CorrectionItem, value: values.address.trim() },
-      { item: positionItems[1] as CorrectionItem, value: values.lng.trim() },
-      { item: positionItems[2] as CorrectionItem, value: values.lat.trim() },
-    ].filter(({ item }) => item.status === 'pending');
-    if (fields.length === 0) return;
-    if (fields.every(({ item, value }) => value === (item.oldValue ?? ''))) {
-      message.info('位置组没有任何新值；如原值无误，请逐项点“核验无误”');
-      return;
-    }
-    setSubmitting(true);
-    const outcomes: Array<{ label: string; ok: boolean; detail: string }> = [];
-    try {
-      for (const { item, value } of fields) {
-        const changed = value !== (item.oldValue ?? '');
-        try {
-          await confirmCorrection(item.correctionId, {
-            newValue: value,
-            basis: changed
-              ? values.basis?.trim() || '地图选点并人工核对位置'
-              : '位置组核验无误：' + (values.basis?.trim() || '操作员复核位置'),
-          });
-          outcomes.push({ label: item.fieldLabel ?? item.fieldName, ok: true, detail: changed ? '已保存纠偏' : '已核验原值' });
-        } catch (err) {
-          outcomes.push({ label: item.fieldLabel ?? item.fieldName, ok: false, detail: errText(err) });
-        }
+      if (await refreshPositionSelection(id, epoch) === null) return;
+      const fresh = await loadQueue(page, size, dispatched);
+      if (!selectionIsCurrent(id, epoch) || !fresh) return;
+      if (result?.analysisEntered) message.success('该诉求已进入分析库');
+      else if (result?.analysisReason) message.info(result.analysisReason, 6);
+      if (!next) return;
+      const priorIndex = queue.findIndex(row => row.complaintId === id);
+      const following = queue.slice(priorIndex + 1).map(row => row.complaintId);
+      let row = following.map(key => fresh.content.find(item => item.complaintId === key)).find(Boolean)
+        ?? fresh.content.find(item => item.complaintId !== id);
+      if (!row && fresh.total > page * size) {
+        const more = await loadQueue(page + 1, size, dispatched);
+        if (!selectionIsCurrent(id, epoch)) return;
+        row = more?.content.find(item => item.complaintId !== id);
+        if (row) setPage(page + 1);
       }
-      setPositionResult(outcomes);
-      await loadItems(selectedComplaintId ?? fields[0].item.complaintId);
-      await loadQueue(page, size, dispatched);
-      setPositionModalOpen(false);
-      positionForm.resetFields();
-      const successCount = outcomes.filter((outcome) => outcome.ok).length;
-      if (successCount === fields.length) {
-        message.success('本次提交的 ' + fields.length + ' 项位置字段均已处理完成');
-      } else {
-        message.warning('位置组已逐项提交：成功 ' + successCount + '/' + fields.length + '，失败 ' + (fields.length - successCount) + ' 项。已刷新服务端状态，失败项仍可从位置组继续处理。', 8);
+      if (!row && page > 1) {
+        const first = await loadQueue(1, size, dispatched);
+        if (!selectionIsCurrent(id, epoch)) return;
+        row = first?.content.find(item => item.complaintId !== id);
+        setPage(1);
       }
-    } finally {
-      setSubmitting(false);
+      if (row) selectComplaint(row.complaintId, row);
+      else message.info('当前筛选下没有其他待核验诉求；本条剩余事项仍可继续处理');
+    } catch (err) {
+      if (selectionIsCurrent(id, epoch)) message.error('操作已保存，刷新失败：' + errText(err));
     }
   };
 
-  const pendingCount = items.filter((x) => x.status === 'pending').length;
+  const pendingCount = items.filter((x) => !['confirmed', 'rejected'].includes(x.status)).length;
+  const unknownStatusCount = items.filter((x) => !['pending', 'confirmed', 'rejected'].includes(x.status)).length;
   /**
    * 该诉求在**交办轴**上的状态：取自服务端给的 hasDispatch，一条诉求的各行取值相同。
    * 面板还没加载到任何项时为 null——这时候就是不知道，不能猜成"未交办"。
    */
   const selectedHasDispatch = items.length > 0 ? items[0].hasDispatch : null;
+  const refreshConflict = async () => {
+    if (!selectedComplaintId) return;
+    const complaintId = selectedComplaintId, epoch = summarySeqRef.current;
+    try {
+      const current = await refreshPositionSelection(complaintId, epoch);
+      if (current === null) return;
+      if (verifyTarget) setVerifyTarget(current.find(item => item.correctionId === verifyTarget.correctionId && item.status === 'pending') ?? null);
+      setVersionConflict(false);
+      message.info('已刷新当前有效值与版本；请逐项核对保留的草稿后再提交');
+    } catch (err) { if (selectionIsCurrent(complaintId, epoch)) message.error('刷新核对失败：' + errText(err)); }
+  };
 
   return (
     <div>
-      <h2 style={{ marginBottom: 8 }}>整体纠偏</h2>
+      {versionConflict && <Alert type="warning" showIcon message={CORRECTION_CONFLICT_MESSAGE}
+        action={<Button onClick={() => void refreshConflict()}>刷新核对（保留草稿）</Button>} />}
+      <h2 style={{ marginBottom: 8 }}>诉求核验</h2>
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
           <Segmented
@@ -600,11 +626,11 @@ const AddressCorrection: React.FC = () => {
         </Space>
         <Collapse
           ghost
-          defaultActiveKey={['maintenance']}
+          defaultActiveKey={[]}
           style={{ marginTop: 8 }}
           items={[{
             key: 'maintenance',
-            label: '维护工具',
+            label: '维护工具（补齐历史数据）',
             forceRender: true,
             children: (
               <Space direction="vertical" style={{ width: '100%' }}>
@@ -617,11 +643,11 @@ const AddressCorrection: React.FC = () => {
                   style={{ width: 300 }}
                   allowClear
                 />
-                <Button type="primary" icon={<ThunderboltOutlined />} loading={generating} onClick={() => void doGenerate()}>
+                <Button type="primary" icon={<ThunderboltOutlined />} disabled={!writeAccess.can} loading={generating} onClick={() => void doGenerate()}>
                   生成纠偏待办
                 </Button>
                 <Tooltip title="只给尚无纠偏清单的诉求补挂，重复执行会跳过已有清单。">
-                  <Button icon={<TeamOutlined />} loading={batching} onClick={() => void doBatchGenerate()}>
+                  <Button icon={<TeamOutlined />} disabled={!writeAccess.can} loading={batching} onClick={() => void doBatchGenerate()}>
                     补齐全部诉求纠偏待办
                   </Button>
                 </Tooltip>
@@ -632,7 +658,7 @@ const AddressCorrection: React.FC = () => {
         />
       </Card>
 
-      <Card title={'待纠偏诉求（共 ' + queueTotal + ' 件）'} size="small">
+      <Card title={'待核验诉求（共 ' + queueTotal + ' 件）'} size="small">
             {loadError ? (
               <Result
                 status="error"
@@ -652,11 +678,7 @@ const AddressCorrection: React.FC = () => {
                 dataSource={queue}
                 locale={{
                   emptyText: firstLoaded ? (
-                    <Empty description="该口径下暂无待纠偏项；若有诉求从未生成清单，请点「补齐全部诉求纠偏待办」">
-                      <Button icon={<TeamOutlined />} loading={batching} onClick={() => void doBatchGenerate()}>
-                        补齐全部诉求纠偏待办
-                      </Button>
-                    </Empty>
+                    <Empty description="当前筛选下暂无待核验项。新诉求会自动生成待办，历史缺失可在维护工具中补齐。" />
                   ) : (
                     <span />
                   ),
@@ -683,13 +705,13 @@ const AddressCorrection: React.FC = () => {
                   { title: '诉求内容', dataIndex: 'title', ellipsis: true },
                   {
                     // 两条轴并行的交叉状态：交办与否不影响这条件不该进纠偏队列
-                    title: '待处理字段',
+                    title: '待核验项',
                     dataIndex: 'pendingCount',
                     width: 112,
                     render: (count: number) => <Tag color="warning">{count} 项待处理</Tag>,
                   },
                   {
-                    title: '交办轴',
+                    title: '交办状态',
                     dataIndex: 'hasDispatch',
                     width: 100,
                     render: (v: boolean) =>
@@ -699,7 +721,7 @@ const AddressCorrection: React.FC = () => {
                     title: '操作',
                     width: 100,
                     render: (_: unknown, row: PendingComplaintSummary) => (
-                      <Button type="link" onClick={() => selectComplaint(row.complaintId, row)}>打开纠偏</Button>
+                      <Button type="link" onClick={(event) => { event.stopPropagation(); selectComplaint(row.complaintId, row); }}>核验信息</Button>
                     ),
                   },
                 ]}
@@ -710,15 +732,15 @@ const AddressCorrection: React.FC = () => {
       <Drawer
         title={
           selectedComplaintId
-            ? '诉求纠偏 · ' +
+            ? '诉求核验 · ' +
               (selectedComplaintInfo?.complaintNo || selectedComplaintId)
-            : '诉求纠偏'
+            : '诉求核验'
         }
         open={drawerOpen}
         width="min(1120px, 96vw)"
         onClose={() => setDrawerOpen(false)}
         extra={selectedComplaintId ? (
-          <Button size="small" onClick={() => void loadItems(selectedComplaintId)}>刷新</Button>
+          <Button size="small" onClick={() => void refreshConflict()}>刷新</Button>
         ) : null}
       >
             {selectedInfoError ? <Alert type="error" showIcon style={{ marginBottom: 12 }} message={selectedInfoError} /> : null}
@@ -741,11 +763,10 @@ const AddressCorrection: React.FC = () => {
                   <Descriptions.Item label="诉求编号">
                     {selectedComplaintInfo?.complaintNo || selectedComplaintId}
                   </Descriptions.Item>
-                  <Descriptions.Item label="诉求 ID">{selectedComplaintId}</Descriptions.Item>
                   <Descriptions.Item label="诉求内容" span={2}>
                     {selectedComplaintInfo?.title || '正在读取…'}
                   </Descriptions.Item>
-                  <Descriptions.Item label="交办轴">
+                  <Descriptions.Item label="交办状态">
                     {selectedHasDispatch === null ? (
                       DASH
                     ) : selectedHasDispatch ? (
@@ -757,74 +778,30 @@ const AddressCorrection: React.FC = () => {
                   <Descriptions.Item label="待确认项">{pendingCount}</Descriptions.Item>
                   <Descriptions.Item label="全部项">{items.length}</Descriptions.Item>
                 </Descriptions>
-                <div style={{ marginBottom: 16 }}>
-                  <AddressLocationEvidence
-                    sourceAddress={selectedComplaintDetail?.address ?? null}
-                    candidate={selectedComplaintDetail?.addressCandidate ?? null}
-                    pending={false}
-                    conflict={selectedComplaintDetail?.locationConflict ?? false}
-                    clues={selectedComplaintDetail?.locationClues ?? []}
-                    onUse={() => undefined}
-                  />
-                </div>
-
                 {pendingCount === 0 && items.length > 0 && (
                   <Alert
                     type="success"
                     showIcon
                     style={{ marginBottom: 12 }}
                     message="该诉求纠偏已全部闭环"
-                    description={
-                      selectedHasDispatch
-                        ? '全部纠偏项已确认或判定无需，且该诉求走过督办链路——满足进入分析库的条件。'
-                        : '全部纠偏项已确认或判定无需；但该诉求没有交办记录，按现行分析库口径仍不纳入分析（只在总账可查）。'
-                    }
+                    description="字段核验已完成；是否进入分析库还需核对最新交办的最终处理结果及其核验状态，以系统返回结果为准。"
                   />
                 )}
+                {unknownStatusCount > 0 && <Alert type="warning" showIcon message={'有 ' + unknownStatusCount + ' 项历史状态待核验'}
+                  description="历史状态已保留，需核查处理依据；这些项不视为纠偏完成。" />}
 
-                {positionItems.some(Boolean) && (
-                  <Card size="small" title="位置组：地址与经纬度" style={{ marginBottom: 16 }}>
-                    <Alert
-                      type="info"
-                      showIcon
-                      style={{ marginBottom: 12 }}
-                      message="地址、经度、纬度作为一组核对"
-                      description="可在位置窗体输入地址搜索并选择地点，自动定位地图、回填待处理的地址与坐标；也可直接点地图。确认后再保存，搜索本身不会修改诉求。"
-                    />
-                    <Space wrap>
-                      <WriteGate allowed={writeAccess.can && canEditPositionGroup} tip={!selectedComplaintInfo ? '正在读取诉求编号与标题' : writeAccess.tip || '位置字段需全部存在且仍有待处理项'}>
-                        <Button type="primary" onClick={openPositionGroup}>打开位置组纠偏</Button>
-                      </WriteGate>
-                      {!canEditPositionGroup ? (
-                        <span style={{ color: '#8c8c8c' }}>位置字段需完整且仍有待处理项，才能保存未完成部分。</span>
-                      ) : null}
-                    </Space>
-                    {positionResult.length > 0 ? (
-                      <div style={{ marginTop: 12 }}>
-                        <Alert
-                          type={positionResult.every((result) => result.ok) ? 'success' : 'warning'}
-                          showIcon
-                          message="位置组逐项提交结果"
-                          description={
-                            <Space direction="vertical" size={0}>
-                              {positionResult.map((result) => (
-                                <span key={result.label}>
-                                  {result.ok ? '✓' : '✗'} {result.label}：{result.detail}
-                                </span>
-                              ))}
-                            </Space>
-                          }
-                        />
-                      </div>
-                    ) : null}
-                  </Card>
+                {selectedComplaintDetail && itemsComplaintId === selectedComplaintId && (
+                  <LocationReviewPanel key={selectedComplaintId} detail={selectedComplaintDetail} items={items}
+                    disabled={!writeAccess.can || itemsLoading || submitting || savingItemId !== null}
+                    onSaved={(result, next) => void onLocationOutcome(result, next)}
+                    onDeferred={(next) => void onLocationOutcome(null, next)} />
                 )}
 
                 <Table<CorrectionItem>
                   rowKey="correctionId"
                   size="small"
                   loading={itemsLoading}
-                  dataSource={items}
+                  dataSource={items.filter(item => !POSITION_FIELDS.includes(item.fieldName as typeof POSITION_FIELDS[number]))}
                   pagination={false}
                   locale={{ emptyText: <Empty description="该诉求暂无纠偏项" /> }}
                   columns={[
@@ -832,19 +809,31 @@ const AddressCorrection: React.FC = () => {
                       title: '字段',
                       dataIndex: 'fieldLabel',
                       width: 96,
-                      render: (v: string | null, r: CorrectionItem) => v ?? r.fieldName,
+                      render: (v: string | null, r: CorrectionItem) => fieldNameLabel(r.fieldName,v),
                     },
                     {
-                      title: '原值 / 纠偏后取值',
+                      title: '初始值 / 当前有效值 / 纠偏后取值',
                       width: 430,
                       render: (_: unknown, r: CorrectionItem) => (
                         <div style={{ lineHeight: 1.6 }}>
-                          <div><b>原值：</b>{r.oldValue ?? '—'}</div>
-                          {r.newValue && r.status !== 'pending' ? <div><b>确认值：</b>{r.newValue}</div> : null}
+                          <div><b>初始值：</b>{fieldValue(r.fieldName,r.oldValue)}</div>
+                          <div><b>当前有效值：</b>{fieldValue(r.fieldName,r.effectiveValue)}</div>
+                          {r.newValue && r.status !== 'pending' ? <div><b>确认值：</b>{fieldValue(r.fieldName,r.newValue)}</div> : null}
                           {r.status === 'pending' && !POSITION_FIELDS.includes(r.fieldName as typeof POSITION_FIELDS[number]) ? (
                             <div style={{ marginTop: 8 }}>
                               <InlineCorrectionField
                                 item={r}
+                                draft={inlineDrafts[r.correctionId]}
+                                onDraftChange={(change) => setInlineDrafts((drafts) => ({
+                                  ...drafts,
+                                  [r.correctionId]: {
+                                    ...(drafts[r.correctionId] ?? {
+                                      value: r.fieldName === 'enterprise_name' ? '' : correctionEffectiveText(r),
+                                      basis: r.basis ?? '',
+                                    }),
+                                    ...change,
+                                  },
+                                }))}
                                 enterpriseOptions={enterpriseOptions}
                                 enterpriseLoading={enterpriseLoading}
                                 enterpriseError={enterpriseError}
@@ -855,6 +844,13 @@ const AddressCorrection: React.FC = () => {
                               />
                             </div>
                           ) : null}
+                          {r.status !== 'pending' && inlineDrafts[r.correctionId] ? (
+                            <div style={{ marginTop: 8 }}>
+                              <Typography.Text type="warning">保留的未提交草稿（请与当前有效值核对）</Typography.Text>
+                              <div><b>草稿取值：</b>{inlineDrafts[r.correctionId].value || '—'}</div>
+                              <div><b>草稿依据：</b>{inlineDrafts[r.correctionId].basis || '—'}</div>
+                            </div>
+                          ) : null}
                         </div>
                       ),
                     },
@@ -863,7 +859,7 @@ const AddressCorrection: React.FC = () => {
                       dataIndex: 'status',
                       width: 92,
                       render: (v: string, r: CorrectionItem) => {
-                        const m = STATUS_TAG[v] ?? { color: 'default', text: r.statusName };
+                        const m = STATUS_TAG[v] ?? { color: 'default', text: namedLabel(v,r.statusName,'correction_status') };
                         const statusText =
                           v === 'confirmed' &&
                           r.newValue === r.oldValue &&
@@ -916,80 +912,6 @@ const AddressCorrection: React.FC = () => {
       </Drawer>
 
       <Modal
-        title={'位置组纠偏 · ' + (selectedComplaintInfo?.complaintNo || selectedComplaintId || '诉求')}
-        open={positionModalOpen}
-        onCancel={() => setPositionModalOpen(false)}
-        onOk={() => void savePositionGroup()}
-        confirmLoading={submitting}
-        okText="保存位置组"
-        width={1000}
-        destroyOnClose
-      >
-        <Form form={positionForm} layout="vertical">
-          <Descriptions size="small" column={1} bordered style={{ marginBottom: 12 }}>
-            <Descriptions.Item label="诉求 ID">{selectedComplaintId}</Descriptions.Item>
-            <Descriptions.Item label="诉求标题">{selectedComplaintInfo?.title || '正在读取…'}</Descriptions.Item>
-          </Descriptions>
-          <div style={{ marginBottom: 12 }}>
-            <AddressLocationEvidence
-              sourceAddress={selectedComplaintDetail?.address ?? null}
-              candidate={selectedComplaintDetail?.addressCandidate ?? null}
-              pending={positionItemsReady && positionItems[0]?.status === 'pending'}
-              conflict={selectedComplaintDetail?.locationConflict ?? false}
-              clues={selectedComplaintDetail?.locationClues ?? []}
-              onUse={() => {
-                if (positionItemsReady && positionItems[0]?.status === 'pending' && selectedComplaintDetail?.addressCandidate && !selectedComplaintDetail.locationConflict) {
-                  positionForm.setFieldsValue({ address: selectedComplaintDetail.addressCandidate.value });
-                }
-              }}
-            />
-          </div>
-          <Form.Item name="address" label="核实后的地址" rules={positionItems[0]?.status === 'pending' ? [{ required: true, whitespace: true, message: '请输入核实后的地址' }] : []}>
-            <Input disabled={positionItems[0]?.status !== 'pending'} placeholder="人工核对后填写地址" />
-          </Form.Item>
-          <Space style={{ display: 'flex' }} align="start" size={16}>
-            <Form.Item
-              name="lng"
-              label="经度"
-              style={{ flex: 1 }}
-              rules={positionItems[1]?.status === 'pending' ? [
-                { required: true, message: '请选择或输入经度' },
-                { pattern: /^-?\d+(\.\d+)?$/, message: '请输入有效经度' },
-                { validator: async (_, value) => { const n = Number(value); if (Number.isFinite(n) && n >= -180 && n <= 180) return; throw new Error('经度范围应为 -180 至 180'); } },
-              ] : []}
-            ><Input disabled={positionItems[1]?.status !== 'pending'} /></Form.Item>
-            <Form.Item
-              name="lat"
-              label="纬度"
-              style={{ flex: 1 }}
-              rules={positionItems[2]?.status === 'pending' ? [
-                { required: true, message: '请选择或输入纬度' },
-                { pattern: /^-?\d+(\.\d+)?$/, message: '请输入有效纬度' },
-                { validator: async (_, value) => { const n = Number(value); if (Number.isFinite(n) && n >= -90 && n <= 90) return; throw new Error('纬度范围应为 -90 至 90'); } },
-              ] : []}
-            ><Input disabled={positionItems[2]?.status !== 'pending'} /></Form.Item>
-          </Space>
-          <TiandituLocationPicker
-            address={addressDraft}
-            lng={String(positionItems[1]?.newValue ?? positionItems[1]?.oldValue ?? '')}
-            lat={String(positionItems[2]?.newValue ?? positionItems[2]?.oldValue ?? '')}
-            onPick={(point) => {
-              const values: { lng?: string; lat?: string } = {};
-              if (positionItems[1]?.status === 'pending') values.lng = point.lng;
-              if (positionItems[2]?.status === 'pending') values.lat = point.lat;
-              positionForm.setFieldsValue(values);
-            }}
-            onUseAddressSuggestion={positionItems[0]?.status === 'pending'
-              ? (address) => positionForm.setFieldsValue({ address })
-              : undefined}
-          />
-          <Form.Item name="basis" label="核对依据（可选）" style={{ marginTop: 12 }}>
-            <Input.TextArea rows={2} placeholder="例如：地图定位、现场核对、来电确认" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <Modal
         title="核验原值无误"
         open={verifyTarget !== null}
         onCancel={() => { setVerifyTarget(null); verifyForm.resetFields(); }}
@@ -1000,14 +922,16 @@ const AddressCorrection: React.FC = () => {
         width={560}
         destroyOnClose
       >
+        {versionConflict && <Alert type="warning" showIcon message={CORRECTION_CONFLICT_MESSAGE}
+          action={<Button onClick={() => void refreshConflict()}>刷新核对（保留草稿）</Button>} />}
         {verifyTarget ? (
           <>
             <Descriptions size="small" column={1} bordered style={{ marginBottom: 16 }}>
               <Descriptions.Item label="诉求编号">{selectedComplaintInfo?.complaintNo || verifyTarget.complaintId}</Descriptions.Item>
               <Descriptions.Item label="诉求标题">{selectedComplaintInfo?.title || '正在读取…'}</Descriptions.Item>
-              <Descriptions.Item label="字段">{verifyTarget.fieldLabel ?? verifyTarget.fieldName}</Descriptions.Item>
-              <Descriptions.Item label="当前原值">
-                {verifyTarget.oldValue === null || verifyTarget.oldValue === '' ? '当前为空' : verifyTarget.oldValue}
+              <Descriptions.Item label="字段">{fieldNameLabel(verifyTarget.fieldName,verifyTarget.fieldLabel)}</Descriptions.Item>
+              <Descriptions.Item label="当前有效值">
+                {correctionEffectiveText(verifyTarget) || '当前为空'}
               </Descriptions.Item>
             </Descriptions>
             <Form form={verifyForm} layout="vertical">
@@ -1023,4 +947,10 @@ const AddressCorrection: React.FC = () => {
   );
 };
 
+const AddressCorrection: React.FC = () => {
+  const token = useAppStore(state => state.token);
+  const user = useAppStore(state => state.userInfo);
+  const actor = JSON.stringify([token, user?.userId, user?.authorizationVersion, user?.roles, user?.permissions, user?.mustChangePassword]);
+  return <AddressCorrectionWorkbench key={actor} />;
+};
 export default AddressCorrection;

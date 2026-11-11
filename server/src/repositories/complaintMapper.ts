@@ -22,6 +22,8 @@ export const COMPLAINT_COLUMNS = [
   'c.content',
   'c.business_type',
   'c.complaint_type',
+  'c.major_category_code', 'c.minor_category_code', 'c.category_dictionary_version',
+  'c.source_major_category_code', 'c.source_minor_category_code', 'c.source_category_version',
   'c.urgency_level',
   'c.status',
   'c.is_sensitive',
@@ -32,6 +34,7 @@ export const COMPLAINT_COLUMNS = [
   'c.corrected_address',
   'c.location_lng',
   'c.location_lat',
+  'c.admin_grid_code','c.community_code','c.location_coordinate_system','c.location_coordinate_source',
   'c.correction_status',
   'c.correction_confidence',
   'c.enterprise_code',
@@ -45,6 +48,9 @@ export const COMPLAINT_COLUMNS = [
   'c.rule_confidence',
   'c.rule_version',
   'c.source_payload',
+  'c.source_fields',
+  'c.effective_field_state',
+  'c.edit_version',
   'c.source_reported_at',
   'c.source_updated_at',
   'c.source_event_status',
@@ -228,19 +234,27 @@ export function rowToListItem(r: ComplaintRow): ComplaintListItem {
   };
 }
 
-export type ComplaintDetailProjection = Omit<ComplaintDetail, 'addressCandidate' | 'locationClues' | 'locationConflict'>;
+export type ComplaintDetailProjection = Omit<ComplaintDetail, 'addressCandidate' | 'locationClues' | 'locationConflict' | 'sourceAddress' | 'effectiveAddress' | 'sourceDeadlineAt' | 'sourceCompletedAt' | 'sourceSnapshotAt' | 'businessTimeSource' | 'sourceFieldReasons'> & {sourcePayload:Record<string,unknown>|null;sourceFields:Record<string,unknown>|null;sourcePayloadHash:string|null};
 
 export function rowToDetail(r: ComplaintRow): ComplaintDetailProjection {
   return {
     ...rowToListItem(r),
+    category: r.major_category_code == null || r.category_dictionary_version == null ? null : {majorCode:String(r.major_category_code),minorCode:r.minor_category_code==null?null:String(r.minor_category_code),dictionaryVersion:String(r.category_dictionary_version)},
+    sourceCategory: r.source_major_category_code == null || r.source_category_version == null ? null : {majorCode:String(r.source_major_category_code),minorCode:r.source_minor_category_code==null?null:String(r.source_minor_category_code),dictionaryVersion:String(r.source_category_version)},
     content: toStr(r.content),
     address: toStr(r.address),
     correctedAddress: toStr(r.corrected_address),
     locationLng: toNum(r.location_lng),
     locationLat: toNum(r.location_lat),
+      adminGridCode:toStr(r.admin_grid_code),communityCode:toStr(r.community_code),
+      locationCoordinateSystem:r.location_coordinate_system==='WGS84'?'WGS84':r.location_coordinate_system==='CGCS2000'?'CGCS2000':toNum(r.location_lng)!==null&&toNum(r.location_lat)!==null?'unknown':null,
+      locationCoordinateSource:toStr(r.location_coordinate_source),
     ruleConfidence: toNum(r.rule_confidence),
     ruleVersion: toStr(r.rule_version),
     sourcePayload: parseJsonColumn(r.source_payload),
+    sourceFields: parseJsonColumn(r.source_fields),
+    effectiveFieldState: parseJsonColumn(r.effective_field_state),
+    editVersion: Number(r.edit_version ?? 1),
     sourceReportedAt: toIso(r.source_reported_at),
     sourceUpdatedAt: toIso(r.source_updated_at),
     closedAt: toIso(r.closed_at),

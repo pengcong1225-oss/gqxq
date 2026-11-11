@@ -1,3 +1,10 @@
+import { currentAccessContext } from '../auth/accessScope';
+import { dictionaryService, saveTypeSchema, saveItemSchema, parseDictionaryInput } from '../services/dictService';
+import { readDictionaryType } from '../services/dictService';
+import { pool } from '../db/pool';
+import { categoryOptions, reviseCategory, categoryHistory } from '../services/categoryService';
+import type { MasterDataContext } from '../types/masterData';
+import { assertAllScope } from '../auth/accessScope';
 import { Router } from 'express';
 import type { Request } from 'express';
 import { z } from 'zod';
@@ -5,7 +12,7 @@ import { AppError } from '../http/errors';
 import { ok } from '../http/respond';
 import { SUPPORTED_DICT_CODES, findDictItems, isSupportedDictCode } from '../repositories/dictRepo';
 import { ROLE_ADMIN } from '../auth/rolePolicy';
-import { requireRole } from '../middleware/requireRole';
+import { requirePermission } from '../middleware/requireRole';
 import {
   createSensitiveWord,
   executeSensitiveRescan,
@@ -56,7 +63,7 @@ const rescanSchema = z.object({
 });
 
 /** 敏感词管理：真实 dict_item 数据，admin 独占；无 DELETE，停用代替物理删除。 */
-dictsRouter.get('/dicts/sensitive-words', requireRole(ROLE_ADMIN), async (_req, res, next) => {
+dictsRouter.get('/dicts/sensitive-words', requirePermission('system.dict.manage'), async (_req, res, next) => {
   try {
     ok(res, await listManagedSensitiveWords());
   } catch (err) {
@@ -64,7 +71,7 @@ dictsRouter.get('/dicts/sensitive-words', requireRole(ROLE_ADMIN), async (_req, 
   }
 });
 
-dictsRouter.post('/dicts/sensitive-words', requireRole(ROLE_ADMIN), async (req, res, next) => {
+dictsRouter.post('/dicts/sensitive-words', requirePermission('system.dict.manage'), async (req, res, next) => {
   try {
     const body = parseOrThrow(
       createSensitiveWordSchema,
@@ -77,7 +84,7 @@ dictsRouter.post('/dicts/sensitive-words', requireRole(ROLE_ADMIN), async (req, 
   }
 });
 
-dictsRouter.patch('/dicts/sensitive-words/:itemId', requireRole(ROLE_ADMIN), async (req, res, next) => {
+dictsRouter.patch('/dicts/sensitive-words/:itemId', requirePermission('system.dict.manage'), async (req, res, next) => {
   try {
     const itemId = parseOrThrow(itemIdSchema, req.params.itemId, 'itemId 不合法');
     const body = parseOrThrow(
@@ -91,7 +98,7 @@ dictsRouter.patch('/dicts/sensitive-words/:itemId', requireRole(ROLE_ADMIN), asy
   }
 });
 
-dictsRouter.post('/dicts/sensitive-words/rescan-preview', requireRole(ROLE_ADMIN), async (req, res, next) => {
+dictsRouter.post('/dicts/sensitive-words/rescan-preview', requirePermission('system.dict.manage'), async (req, res, next) => {
   try {
     ok(res, await previewSensitiveRescan(undefined, ctxOf(req)));
   } catch (err) {
@@ -99,8 +106,9 @@ dictsRouter.post('/dicts/sensitive-words/rescan-preview', requireRole(ROLE_ADMIN
   }
 });
 
-dictsRouter.post('/dicts/sensitive-words/rescan', requireRole(ROLE_ADMIN), async (req, res, next) => {
+dictsRouter.post('/dicts/sensitive-words/rescan', requirePermission('system.dict.manage'), async (req, res, next) => {
   try {
+    assertAllScope();
     const body = parseOrThrow(rescanSchema, req.body ?? {}, '历史重扫参数不合法');
     ok(res, await executeSensitiveRescan(body.previewToken, ctxOf(req)), '历史诉求重扫完成');
   } catch (err) {
@@ -108,10 +116,26 @@ dictsRouter.post('/dicts/sensitive-words/rescan', requireRole(ROLE_ADMIN), async
   }
 });
 
+function masterContext(req:Request):MasterDataContext {return {...ctxOf(req),permissionCodes:req.user?.permissionCodes??[],access:req.accessContext??currentAccessContext()};}
+const expected=z.object({expectedVersion:z.number().int().nonnegative()}).strict();
+dictsRouter.get('/dict-types',requirePermission('system.dict.manage'),async(req,res,next)=>{try{ok(res,await dictionaryService.listTypes(masterContext(req)));}catch(e){next(e);}});
+dictsRouter.post('/dict-types',requirePermission('system.dict.manage'),async(req,res,next)=>{try{ok(res,await dictionaryService.saveType(parseDictionaryInput(saveTypeSchema,req.body),masterContext(req)));}catch(e){next(e);}});
+dictsRouter.patch('/dict-types/:code',requirePermission('system.dict.manage'),async(req,res,next)=>{try{ok(res,await dictionaryService.saveType(parseDictionaryInput(saveTypeSchema,{...req.body,code:req.params.code}),masterContext(req)));}catch(e){next(e);}});
+dictsRouter.delete('/dict-types/:code',requirePermission('system.dict.manage'),async(req,res,next)=>{try{const body=parseDictionaryInput(expected,req.body);ok(res,await dictionaryService.deleteType(String(req.params.code),body.expectedVersion,masterContext(req)));}catch(e){next(e);}});
+dictsRouter.get('/dict-types/:code/items',requirePermission('system.dict.manage'),async(req,res,next)=>{try{ok(res,await dictionaryService.items(String(req.params.code),masterContext(req)));}catch(e){next(e);}});
+dictsRouter.post('/dict-types/:code/items',requirePermission('system.dict.manage'),async(req,res,next)=>{try{ok(res,await dictionaryService.saveItem(parseDictionaryInput(saveItemSchema,{...req.body,typeCode:req.params.code}),masterContext(req)));}catch(e){next(e);}});
+dictsRouter.patch('/dict-types/:code/items/:itemCode',requirePermission('system.dict.manage'),async(req,res,next)=>{try{ok(res,await dictionaryService.saveItem(parseDictionaryInput(saveItemSchema,{...req.body,typeCode:req.params.code,code:req.params.itemCode}),masterContext(req)));}catch(e){next(e);}});
+dictsRouter.delete('/dict-types/:code/items/:itemCode',requirePermission('system.dict.manage'),async(req,res,next)=>{try{const body=parseDictionaryInput(expected,req.body);ok(res,await dictionaryService.deleteItem(String(req.params.code),String(req.params.itemCode),body.expectedVersion,masterContext(req)));}catch(e){next(e);}});
+dictsRouter.get('/dict-types/:code/references',requirePermission('system.dict.manage'),async(req,res,next)=>{try{ok(res,await dictionaryService.references(String(req.params.code),null,masterContext(req)));}catch(e){next(e);}});
+dictsRouter.get('/dict-types/:code/items/:itemCode/references',requirePermission('system.dict.manage'),async(req,res,next)=>{try{ok(res,await dictionaryService.references(String(req.params.code),String(req.params.itemCode),masterContext(req)));}catch(e){next(e);}});
+dictsRouter.get('/categories',async(_req,res,next)=>{try{ok(res,await categoryOptions());}catch(e){next(e);}});
+dictsRouter.post('/complaints/:complaintId/category',requirePermission('complaint.correct'),async(req,res,next)=>{try{const body=parseOrThrow(z.object({category:z.unknown(),expectedVersion:z.number().int().positive(),basis:z.string().trim().min(1).max(500)}).strict(),req.body,'分类纠偏参数不合法');ok(res,await reviseCategory({complaintId:String(req.params.complaintId),...body,category:body.category as any},masterContext(req)));}catch(e){next(e);}});
+dictsRouter.get('/complaints/:complaintId/category-history',async(req,res,next)=>{try{ok(res,await categoryHistory(String(req.params.complaintId),masterContext(req)));}catch(e){next(e);}});
+
 dictsRouter.get('/dicts/:code/items', async (req, res, next) => {
   try {
     const code = String(req.params.code);
-    if (!isSupportedDictCode(code)) {
+    if (!isSupportedDictCode(code) && !(await readDictionaryType(pool,code))) {
       throw AppError.notFound('未知字典类型：' + code + '（支持 ' + SUPPORTED_DICT_CODES.join(' / ') + '）');
     }
     ok(res, await findDictItems(code));

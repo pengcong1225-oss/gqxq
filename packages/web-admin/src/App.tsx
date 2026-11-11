@@ -2,8 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Result } from 'antd';
 import { useAppStore } from './stores/appStore';
-import { FORBIDDEN_MESSAGE, ROLE_ADMIN, useRoles } from './stores/roleAccess';
-import type { AppRole } from './types/api';
+import { FORBIDDEN_MESSAGE, usePermissionAccess } from './stores/roleAccess';
 import MainLayout from './layouts/MainLayout';
 import Dashboard from './views/Dashboard';
 import ComplaintList from './views/ComplaintList';
@@ -15,12 +14,19 @@ import DispatchArchive from './views/DispatchArchive';
 import CompanyList from './views/CompanyList';
 import GridManager from './views/GridManager';
 import HeatmapView from './views/HeatmapView';
+import HeatRuleManager from './views/HeatRuleManager';
+import UtilityTimeoutView from './views/UtilityTimeoutView';
 import ShutdownList from './views/ShutdownList';
 import PipelineList from './views/PipelineList';
 import ReportView from './views/ReportView';
 import DictManager from './views/DictManager';
 import UserManager from './views/UserManager';
+import RoleManager from './views/RoleManager';
+import AuditLogView from './views/AuditLogView';
+import ImportBatchList from './views/ImportBatchList';
+import ChangePassword from './views/ChangePassword';
 import Login from './views/Login';
+import TenderSupportView from './views/TenderSupportView';
 
 /**
  * 未登录直接跳登录页。
@@ -30,10 +36,12 @@ import Login from './views/Login';
  */
 const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const token = useAppStore((s) => s.token);
+  const userInfo = useAppStore(s=>s.userInfo);
   const location = useLocation();
   if (token === null || token === '') {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
+  if(userInfo?.mustChangePassword&&location.pathname!=='/change-password') return <Navigate to="/change-password" replace/>;
   return <>{children}</>;
 };
 
@@ -44,12 +52,12 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
  * 判定本身仍以后端为准（策略表 U1–U3 + requireRole('admin')）：
  * 就算有人绕过这层，接口也不会给他写成功。
  */
-const RequireRole: React.FC<{ allowed: AppRole[]; children: React.ReactNode }> = ({ allowed, children }) => {
-  const roles = useRoles();
+const RequireRole: React.FC<{ permission: string; children: React.ReactNode }> = ({ permission, children }) => {
+  const access = usePermissionAccess(permission);
   const userInfo = useAppStore((s) => s.userInfo);
   // 刷新后 userInfo 还在路上（MainLayout 正在拉 /auth/user-info），此刻不判定，避免闪一屏 403
   if (userInfo === null) return null;
-  if (allowed.some((r) => roles.includes(r))) return <>{children}</>;
+  if (access.can) return <>{children}</>;
   return (
     <Result
       status="403"
@@ -63,6 +71,7 @@ const App: React.FC = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/change-password" element={<RequireAuth><ChangePassword/></RequireAuth>}/>
       <Route path="/" element={<RequireAuth><MainLayout /></RequireAuth>}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
@@ -75,11 +84,17 @@ const App: React.FC = () => {
         <Route path="companies" element={<CompanyList />} />
         <Route path="grids" element={<GridManager />} />
         <Route path="heatmap" element={<HeatmapView />} />
-        <Route path="shutdowns" element={<ShutdownList />} />
-        <Route path="pipelines" element={<PipelineList />} />
+        <Route path="heat-rules" element={<RequireRole permission="heatmap.manage"><HeatRuleManager/></RequireRole>} />
+        <Route path="shutdowns" element={<RequireRole permission="shutdown.read"><ShutdownList /></RequireRole>} />
+        <Route path="utility-timeouts" element={<RequireRole permission="shutdown.read"><UtilityTimeoutView /></RequireRole>} />
+        <Route path="pipelines" element={<RequireRole permission="pipeline.read"><PipelineList /></RequireRole>} />
         <Route path="reports" element={<ReportView />} />
-        <Route path="dicts" element={<RequireRole allowed={[ROLE_ADMIN]}><DictManager /></RequireRole>} />
-        <Route path="system/users" element={<RequireRole allowed={[ROLE_ADMIN]}><UserManager /></RequireRole>} />
+        <Route path="tender-support" element={<RequireRole permission="statistics.read"><TenderSupportView/></RequireRole>} />
+        <Route path="dicts" element={<RequireRole permission="system.dict.manage"><DictManager /></RequireRole>} />
+        <Route path="system/roles" element={<RequireRole permission="system.roles.manage"><RoleManager/></RequireRole>} />
+        <Route path="system/audit-logs" element={<RequireRole permission="system.audit.read"><AuditLogView/></RequireRole>} />
+        <Route path="master-data/imports" element={<RequireRole permission="masterdata.import"><ImportBatchList/></RequireRole>} />
+        <Route path="system/users" element={<RequireRole permission="system.users.manage"><UserManager /></RequireRole>} />
       </Route>
     </Routes>
   );

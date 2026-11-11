@@ -1,3 +1,4 @@
+export type {ReportCreateInput,ReportArtifact,ReportPage} from './report';
 /**
  * 诉求平台管理后台 —— 接口类型定义
  *
@@ -30,6 +31,7 @@ export type ApiErrorCode =
   | 'NOT_FOUND'
   | 'DUPLICATE_CONFLICT'
   | 'INVALID_STATE_TRANSITION'
+  | 'REPORT_BUSY'
   | 'PAYLOAD_TOO_LARGE'
   | 'SOURCE_ADAPTER_UNAVAILABLE'
   | 'INTERNAL_ERROR'
@@ -127,7 +129,7 @@ export interface ComplaintListItem {
   complaintNo: string;
   title: string;
 
-  /** 来源系统（库里 source_system 直接存展示值，无独立 code->label 映射） */
+  /** 来源系统原值（界面通过中文映射展示，保留接口和数据库原值） */
   sourceSystem: string | null;
   sourceId: string | null;
   sourceChannel: string | null;
@@ -209,11 +211,27 @@ export interface LocationClueView {
 }
 
 export interface ComplaintDetail extends ComplaintListItem {
+  sourceSummary?: {caseType:string|null;majorCategory:string|null;minorCategory:string|null;department:string|null;secondaryDepartment:string|null;district:string|null;street:string|null;community:string|null;grid:string|null;supervisionStatus:string|null;deadlineRaw:string|null;completedRaw:string|null;result:string|null};
+  category?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
+  sourceCategory?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
+  sourceAddress: string | null;
+  effectiveAddress: string | null;
+  sourceDeadlineAt: string | null;
+  sourceCompletedAt: string | null;
+  sourceSnapshotAt: string | null;
+  businessTimeSource: 'source_reported_at' | 'platform_received_at' | 'unavailable';
+  sourceFieldReasons: {sourceAddress:string|null;sourceDeadlineAt:string|null;sourceCompletedAt:string|null;sourceSnapshotAt:string|null};
+  effectiveFieldState: Record<string, unknown> | null;
+  editVersion: number;
   content: string | null;
   address: string | null;
   correctedAddress: string | null;
   locationLng: number | null;
   locationLat: number | null;
+  adminGridCode:string|null;
+  communityCode:string|null;
+  locationCoordinateSystem:'WGS84'|'CGCS2000'|'unknown'|null;
+  locationCoordinateSource:string|null;
 
   ruleConfidence: number | null;
   ruleVersion: string | null;
@@ -221,10 +239,6 @@ export interface ComplaintDetail extends ComplaintListItem {
   locationClues: LocationClueView[];
   locationConflict: boolean;
 
-  /** 原始报文快照 */
-  sourcePayload: Record<string, unknown> | null;
-  /** 规范化 JSON 的 sha256；历史行为 null */
-  sourcePayloadHash: string | null;
   sourceUpdatedAt: string | null;
 
   responsibleMatchedAt: string | null;
@@ -266,6 +280,9 @@ export type Csv<T extends string = string> = T | readonly T[];
 export type OvertimeFilter = '1' | '0' | 'none';
 
 export interface ComplaintListParams {
+  /** 来源原始大小类名称或来源分类编码，精确匹配。 */
+  sourceMajorCategory?: string;
+  sourceMinorCategory?: string;
   /** 页码，默认 1 */
   page?: number;
   /** 每页条数 1–100，默认 20；超出服务端报 400 */
@@ -396,6 +413,7 @@ export interface DashboardOverview {
 /* ==================== 鉴权（方案 §5.9） ==================== */
 
 export interface UserInfo {
+  accountType: AccountType;
   /** 数值主键 */
   id: number;
   /** app_user.user_id 业务键 */
@@ -404,6 +422,8 @@ export interface UserInfo {
   realName: string;
   roles: string[];
   permissions: string[];
+  mustChangePassword: boolean;
+  authorizationVersion: number;
 }
 
 export interface LoginResult {
@@ -414,10 +434,11 @@ export interface LoginResult {
 /* ==================== 用户与权限（Task #35 三档 RBAC，镜像 server/src/types/api.ts） ==================== */
 
 /** 三档角色。真源是 server/src/auth/rolePolicy.ts 的 ROLES 与映射表 §1 */
-export type AppRole = 'admin' | 'handler' | 'readonly';
+export type AppRole = string;
 
 /** 用户管理列表项：**接口永不返回口令**（仓储层不 select password_hash） */
 export interface UserAdminItem {
+  accountType: AccountType;
   userId: string;
   username: string;
   realName: string;
@@ -429,6 +450,7 @@ export interface UserAdminItem {
   status: 0 | 1;
   lastLoginAt: string | null;
   createdAt: string | null;
+  mustChangePassword: boolean;
 }
 
 export interface UserAdminFilter {
@@ -442,6 +464,7 @@ export type UserAdminListResult = Paged<UserAdminItem>;
 
 /** POST /users：初始口令只在请求里出现一次，响应不回显 */
 export interface CreateUserRequest {
+  accountType?: AccountType;
   username: string;
   realName: string;
   role: AppRole;
@@ -450,6 +473,7 @@ export interface CreateUserRequest {
 
 /** PATCH /users/:userId：未传的字段不动。没有 DELETE —— 禁用代替删除 */
 export interface UpdateUserRequest {
+  accountType?: AccountType;
   realName?: string;
   role?: AppRole;
   status?: 0 | 1;
@@ -545,6 +569,8 @@ export interface SourceSyncResult {
 export type CorrectionItemStatus = 'pending' | 'confirmed' | 'rejected';
 
 export interface CorrectionItem {
+  editVersion: number;
+  effectiveValue: string | null;
   id: number;
   correctionId: string;
   complaintId: string;
@@ -560,7 +586,7 @@ export interface CorrectionItem {
   oldValue: string | null;
   newValue: string | null;
   basis: string | null;
-  status: CorrectionItemStatus;
+  status: CorrectionItemStatus | (string & {});
   statusName: string;
   confirmerId: string | null;
   confirmerName: string | null;
@@ -569,11 +595,13 @@ export interface CorrectionItem {
 }
 
 export interface CorrectionConfirmRequest {
+  expectedVersion: number;
   newValue?: string;
   basis?: string;
 }
 
 export interface CorrectionRejectRequest {
+  expectedVersion: number;
   basis?: string;
 }
 
@@ -675,10 +703,13 @@ export interface AnalysisDrilldown {
 /* ==================== G3/G4（与 server/src/types/api.ts 对齐） ==================== */
 
 export type PushResultKind =
+  | 'queued' | 'unknown'
   | 'success' | 'replay' | 'conflict' | 'auth_failed'
   | 'payload_too_large' | 'validation_failed' | 'timeout' | 'network_error';
 
 export interface PushDispatchResult {
+  deliveryState: DeliveryState;
+  nextAttemptAt: string | null;
   assignmentId: string;
   requestId: string;
   /** 本次推送被对方接受（HTTP 200）。**不表示是否首次创建** */
@@ -731,9 +762,12 @@ export interface ApprovalTraceItem {
 }
 
 export interface EnterpriseListItem {
+  sourceSystem?: 'public-utility' | null;
   id: number;
   enterpriseCode: string;
   enterpriseName: string;
+  displayOnScreen?: boolean | null;
+  screenName?: string | null;
   businessType: string;
   businessTypeName: string;
   uscc: string | null;
@@ -743,7 +777,13 @@ export interface EnterpriseListItem {
   status: string;
 }
 
+export interface PuEnterpriseSourceInfo {sourceSystem:string;sourceKind:string;sourceId:string;sourceEnterpriseId:string;sourceSubjectId:string|null;sourceAppCode:string|null;organizationCode:string|null;gqxqSubjectCode:string;sourceRevision:string;sourceStatus:string;ownedFields:string[];lastSyncedAt:string;accountReadiness:{hasActiveEnterpriseAccount:boolean;activeAccountCount:number;canReceiveTask:boolean}}
+export interface PuEnterpriseSyncStatus {restricted?:boolean;enabled:boolean;running:boolean;lastSuccessAt:string|null;lastError:string|null;syncedAt:string|null;sourceRevision:number|null;unclassifiedCount:number|null;departmentCount:number|null;unresolvedCount:number|null;synced:number|null;quarantined:number|null;rows:{sourceEnterpriseId:string;companyName:string;sourceRevision:string;sourceStatus:string;syncStatus:string;enterpriseCodes:string[];issues:string[]}[]}
 export interface EnterpriseDetail extends EnterpriseListItem {
+  source?:PuEnterpriseSourceInfo|null;
+  version?: number;
+  districtCode?: string | null;
+  address?: string | null;
   legalPerson: string | null;
   annualScore: number | null;
 }
@@ -757,6 +797,10 @@ export interface EnterpriseParams {
 }
 
 export interface DispatchOrderListItem {
+  deliveryState?: DeliveryState;
+  deliveryAttempts?: number;
+  deliveryNextAttemptAt?: string | null;
+  deliveryRetryAllowed?: boolean;
   id: number;
   assignmentId: string;
   orderNo: string;
@@ -857,3 +901,45 @@ export type DictCode =
   | 'source_system'
   /** 行政区划：由 M5 迁移登记（GB/T 2260），complaint 用 district_code 过滤 */
   | 'district';
+
+export type ScopeRule = {kind:'all'} | {kind:'restricted';enterpriseCodes:string[];districtCodes:string[]};
+export interface UserScope {scopeVersion:number;rules:ScopeRule[]}
+
+export interface ComplaintSourceDocument {complaintId:string;sourcePayload:Record<string,unknown>|null;sourceFields:Record<string,unknown>|null;sourcePayloadHash:string|null}
+
+export interface AuditLogFilter {
+ category?:'login'|'operation';from?:string;to?:string;actor?:string;module?:string;action?:string;
+ result?:'success'|'failed'|'rejected'|'duplicate'|'unknown';businessNo?:string;
+}
+export interface AuditLogView {
+ auditId:string;userId:string|null;category:'login'|'operation';appCode:string|null;module:string;action:string;
+ bizType:string|null;bizId:string|null;businessNo:string|null;result:'success'|'failed'|'rejected'|'duplicate'|'unknown';originalResult:string;
+ clientIp:string|null;createdAt:string|null;detail:Record<string,unknown>;
+}
+
+export interface EnterpriseOption { enterpriseCode:string; enterpriseName:string; businessType:string; status:string }
+export interface HouseholdVersion { enterpriseCode:string; households:number|null; validFrom:string; validTo:string|null; version:string }
+export interface EnterpriseWriteInput {displayOnScreen?:boolean|null;screenName?:string|null;enterpriseCode:string;enterpriseName:string;businessType:string;status:'enabled'|'disabled';expectedVersion?:number;districtCode?:string|null;uscc?:string|null;legalPerson?:string|null;contactPerson?:string|null;contactPhone?:string|null;serviceArea?:string|null;address?:string|null;disableReason?:string}
+export interface DepartmentMapping {sourceSystem:string;sourceDepartmentCode:string;sourceDepartmentName:string;enterpriseCode:string;entityType:'enterprise';aliases:string[];verified:boolean|number;version:number}
+
+export interface SourceProcessNode {
+  sourceSystem:string; sourceId:string; nodeId:string; sourceSequence:number|null; sourceVersion:string|null;
+  occurredAt:string|null; stage:string; department:string|null; contactName:string|null; opinion:string|null;
+}
+export interface SourceProcessRevision extends SourceProcessNode {revision:number; observedAt:string|null}
+export interface SourceProcessResult {
+  complaintId:string; nodes:SourceProcessRevision[]; revisions:SourceProcessRevision[]; complete:boolean;
+  cutoffAt:string|null; state:'unavailable'|'partial'|'complete'|'error'; syncError:string|null; missingTimeNodeIds:string[];
+}
+
+// C3 local facts and supervisor conclusions are independent of Q5 formal satisfaction.
+export type AccountType = 'internal'|'enterprise'|'unknown';
+export interface FollowupFacts {contacted:boolean;occurredAt:string;evaluationCode:'satisfied'|'dissatisfied'|null;dissatisfactionReason:string|null;notes:string|null}
+export interface FollowupInput extends FollowupFacts {complaintId:string;requestId:string}
+export interface FollowupView extends FollowupFacts {followupId:string;complaintId:string;ownerId:string;version:number;order:number;action:'create'|'revise'|'conclude';operatorId:string;operatorName:string;reason:string|null;createdAt:string;revisedAt:string;conclusion:string|null;concludedBy:string|null;concludedAt:string|null}
+export interface SourceEvaluationView {state:'available'|'unavailable'|'withheld';label:string|null;reason:string|null;provenance:string}
+export interface ComplaintFollowupsView {complaintId:string;records:FollowupView[];history:FollowupView[];sourceEvaluation:SourceEvaluationView;formalEvaluation:{state:'unavailable';reason:string}}
+export interface FollowupRevisionInput extends FollowupFacts {requestId:string;expectedVersion:number;reason:string}
+export interface FollowupConclusionInput {requestId:string;expectedVersion:number;conclusion:string;reason:string}
+
+export type DeliveryState = 'pending'|'sending'|'unknown'|'succeeded'|'failed';

@@ -21,7 +21,7 @@ const LocationClues: React.FC<{ clues: LocationClueView[]; conflict: boolean }> 
               <Typography.Text type="secondary">所属区县：{clue.districtName ?? '待核实'}</Typography.Text>
             </Space>
             <div><Typography.Text type="secondary">证据：{clue.evidence}（{clue.sourceField === 'title' ? '标题' : '正文'}）</Typography.Text></div>
-            <div><Typography.Text type="secondary">规则 {clue.extractorVersion} · 名录 {clue.snapshotId}</Typography.Text></div>
+
           </div>
         ))}
       </Space>

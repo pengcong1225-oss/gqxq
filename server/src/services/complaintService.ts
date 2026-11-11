@@ -1,3 +1,5 @@
+import { currentAccessContext } from '../auth/accessScope';
+import { projectComplaintDetail, projectAuditDetail } from './complaintProjection';
 // 诉求总账查询服务：参数解析/校验 + DTO 组装。
 // 校验口径见 docs/2026-09-17-诉求平台G1详细实施方案.md §5.4：
 //   size 必须在 1..100（超限 400）；sort 只允许白名单字段；startDate/endDate 按 +08:00 解析。
@@ -13,12 +15,14 @@ import type {
   LocationClueView,
 } from '../types/api';
 import { labelOf } from '../domain/enums';
-import { rowToDetail, rowToListItem } from '../repositories/complaintMapper';
+import { rowToListItem } from '../repositories/complaintMapper';
 import { findAddressCandidate } from '../repositories/addressCandidateRepo';
 import { findLocationClues } from '../repositories/locationClueRepo';
 import { hasLocationConflict } from './rules/locationExtract';
 import { getTownshipSnapshot } from './rules/townshipGazetteer';
 import { pool } from '../db/pool';
+import { insertAudit } from '../repositories/auditLogRepo';
+import { parseJsonColumn } from '../repositories/complaintMapper';
 import {
   findByIdOrNo,
   findPage,
@@ -183,6 +187,8 @@ export function parseListQuery(query: Record<string, unknown>): ParsedListQuery 
   const endRaw = firstString(query.endDate);
 
   const filter: ComplaintFilter = {
+    sourceMajorCategory: firstString(query.sourceMajorCategory),
+    sourceMinorCategory: firstString(query.sourceMinorCategory),
     keyword,
     businessType: stringList(query.businessType),
     complaintType: stringList(query.complaintType),
@@ -198,6 +204,8 @@ export function parseListQuery(query: Record<string, unknown>): ParsedListQuery 
     startDate: startRaw === undefined ? undefined : parseShanghaiBoundary(startRaw, 'startDate', 'start'),
     endDate: endRaw === undefined ? undefined : parseShanghaiBoundary(endRaw, 'endDate', 'end'),
   };
+
+  for(const field of ['sourceMajorCategory','sourceMinorCategory'] as const)if((filter[field]?.length??0)>128)throw AppError.validation('来源分类筛选最长 128 字符');
 
   return { filter, page, size, orderBy: parseSort(query.sort) };
 }
@@ -245,7 +253,7 @@ export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetai
     snapshotId: clue.snapshotId,
   }));
   return {
-    ...rowToDetail(row),
+    ...projectComplaintDetail(row,currentAccessContext()),
     addressCandidate: candidate ? {
       value: candidate.value,
       evidence: candidate.evidence,
@@ -258,6 +266,15 @@ export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetai
     locationClues,
     locationConflict: hasLocationConflict(storedClues),
   };
+}
+
+export async function getComplaintSourceDocument(idOrNo:string,clientIp:string|null):Promise<import('../types/api').ComplaintSourceDocument> {
+ const ctx=currentAccessContext();
+ if(!ctx.canReadSource)throw AppError.forbidden('缺少来源原件权限');
+ const row=await findByIdOrNo(idOrNo);
+ if(!row)throw AppError.notFound('诉求不存在');
+ await insertAudit(pool,{userId:ctx.userId,appCode:'gqxq',resourceCode:String(row.complaint_no),action:'SOURCE_DOCUMENT_READ',bizType:'complaint',bizId:String(row.complaint_id),result:'success',clientIp,detail:{scopeVersion:ctx.scopeVersion},createdAt:new Date()});
+ return {complaintId:String(row.complaint_id),sourcePayload:parseJsonColumn(row.source_payload),sourceFields:parseJsonColumn(row.source_fields),sourcePayloadHash:typeof row.source_payload_hash==='string'?row.source_payload_hash:null};
 }
 
 export interface TimelineResult {
@@ -297,6 +314,30 @@ const CHANGE_SOURCE_LABELS: Record<string, string> = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
+  INTAKE_CREATE: '接收诉求',
+  INTAKE_REJECTED: '拒绝接收诉求',
+  INTAKE_DUPLICATE_SAME: '重复接收诉求',
+  INTAKE_REDELIVERY: '更新来源诉求',
+  ASSIGN_ENTERPRISE: '分配责任企业',
+  COMPLAINT_DISPOSITION: '登记处置结果',
+  COMPLAINT_CLOSE: '办结诉求',
+  CATEGORY_REVISE: '调整诉求分类',
+  CORRECTION_GENERATE: '生成纠偏项',
+  CORRECTION_RESULT_REFRESH: '更新最终处置结果核验',
+  CORRECTION_CONFIRM: '确认纠偏',
+  CORRECTION_REJECT: '拒绝纠偏',
+  CORRECTION_RESOLVE: '完成纠偏',
+  CORRECTION_LOCATION_GROUP: '纠偏位置信息',
+  SOURCE_DOCUMENT_READ: '查看来源原始记录',
+  LOCATION_CLUE_BACKFILL_ROW: '补充位置线索',
+  ANALYSIS_INCLUDED: '纳入分析库',
+  DISPATCH_CREATE: '创建交办',
+  DISPATCH_PUSH: '推送交办',
+  DISPATCH_CANCEL: '撤销交办',
+  DISPATCH_ARCHIVE: '归档交办',
+  FOLLOWUP_CREATE: '登记回访',
+  FOLLOWUP_REVISE: '修订回访',
+  FOLLOWUP_CONCLUDE: '确认回访结论',
   create: '新建',
   update: '修改',
   delete: '删除',
@@ -386,7 +427,7 @@ function buildIntakeItems(rows: IntakeLogRow[], startSeq: number): PendingItem[]
 
 function buildFieldChangeItems(rows: FieldVersionRow[], startSeq: number): PendingItem[] {
   let seq = startSeq;
-  return rows.map((r) => {
+  return rows.filter(r=>Object.hasOwn(FIELD_LABELS,r.field_name)).map((r) => {
     const at = toDate(r.changed_at) ?? new Date(0);
     const fieldLabel = FIELD_LABELS[r.field_name] ?? r.field_name;
     return {
@@ -416,8 +457,8 @@ function buildOperationItems(rows: OperationLogRow[], startSeq: number): Pending
   return rows.map((r) => {
     const at = toDate(r.created_at) ?? new Date(0);
     const actionRaw = String(r.action ?? '');
-    const label = ACTION_LABELS[actionRaw] ?? (actionRaw === '' ? '操作' : actionRaw);
-    const parsed = parseDetailJson(r.detail);
+    const label = ACTION_LABELS[actionRaw] ?? (/^[\u3400-\u9fff\s]+$/.test(actionRaw) ? actionRaw : '其他操作');
+    const parsed = projectAuditDetail(r.detail);
 
     let summary = label;
     const note =
@@ -427,7 +468,10 @@ function buildOperationItems(rows: OperationLogRow[], startSeq: number): Pending
           ? parsed.message
           : null;
     if (note) summary += '：' + note;
-    if (r.result && r.result !== 'success') summary += '｜结果 ' + r.result;
+    if (r.result && r.result !== 'success') {
+      const results: Record<string, string> = {failed: '失败', denied: '已拒绝', rejected: '已拒绝', ignored: '已忽略'};
+      summary += '｜结果 ' + (results[r.result] ?? '未知结果');
+    }
 
     return {
       at,

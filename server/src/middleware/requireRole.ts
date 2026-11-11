@@ -1,19 +1,11 @@
-// 角色鉴权中间件。两条入口，一套真源（auth/rolePolicy 的 ROLE_POLICY）：
-//   * enforceRolePolicy()：挂在 requireAuth 之后的**全局**判定，按策略表放行 / 拒绝，
-//     表里没有的端点默认拒绝（视同 admin-only）——这条保证"新增路由漏声明"不会变成越权。
-//   * requireRole(...roles)：给单个 router 显式加闸用（用户管理三条按此双重设防）。
-//
-// 401 / 403 语义分开（映射表 §4-3）：
-//   没令牌 / 令牌失效 → requireAuth 已经给了 401，走不到这里；
-//   有令牌但角色不够 → 403，且写一条 ACCESS_DENIED 审计（**落到真实操作人**）。
-//   对外消息固定为「无权限，请联系管理员」，判定依据只进审计，不回给调用方
-//   （否则等于把策略表枚举给未授权的人看）。
+// Global endpoint policy and route-local capability guards use one permission
+// source. Rejection audits identify the authenticated actor, without request bodies.
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { GQXQ_APP_CODE } from '../services/intakeService';
 import { pool } from '../db/pool';
 import { insertAudit } from '../repositories/auditLogRepo';
 import { AppError } from '../http/errors';
-import { isAllowed, matchRule, type Role } from '../auth/rolePolicy';
+import { isAllowed } from '../auth/rolePolicy';
 
 /** 审计里 resource_code 记顶层路径段（列宽 128，够；也便于按模块筛） */
 function resourceOf(path: string): string {
@@ -74,25 +66,13 @@ export function enforceRolePolicy(): RequestHandler {
   };
 }
 
-/**
- * 显式角色闸门（router 级）。与全局策略**同时生效**，取更严的一方：
- * 用户管理三条即靠它做第二道闸，防止有人误改策略表里的 /users 行。
- */
-export function requireRole(...roles: Role[]): RequestHandler {
-  const wanted = new Set<string>(roles);
-  return async (req: Request, _res: Response, next: NextFunction) => {
-    const user = req.user;
-    if (user === undefined) {
-      next(AppError.unauthenticated('未认证或登录已过期'));
-      return;
-    }
-    const hit = user.roles.find((r) => wanted.has(r));
-    if (hit !== undefined) {
-      next();
-      return;
-    }
-    await logDenied(req, 'requireRole 显式闸门要求 ' + Array.from(wanted).join('/') +
-      '（端点策略：' + (matchRule(req.method, req.path)?.desc ?? '未声明，默认拒绝') + '）');
+/** Route-local guard uses the same capability as the global endpoint policy. */
+export function requirePermission(code: import('../auth/permissionCatalog').PermissionCode): RequestHandler {
+  return async (req, _res, next) => {
+    if (!req.user) return next(AppError.unauthenticated());
+    const adminProtected = code === 'system.users.manage' || code === 'system.roles.manage';
+    if ((!adminProtected || req.user.roles.includes('admin')) && req.user.permissionCodes?.includes(code) && !req.user.mustChangePassword) return next();
+    await logDenied(req, '缺少权限 '+code);
     next(AppError.forbidden());
   };
 }

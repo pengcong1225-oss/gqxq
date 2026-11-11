@@ -67,6 +67,8 @@ export function createApp(): express.Express {
   applyTrustProxy(app);
   app.use(cors());
   app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
+  app.use('/api/v1/utility/import', express.json({limit:'6mb'}));
+  app.use('/api/v1/tender-support/dataset',express.json({limit:'16mb'}));
   // 与 G3 契约一致的上限。
   // verify 把**原始请求字节**缓存下来：G4 回调的签名算法要对 exactBody 求 sha256，
   // 对 JSON.parse 后再 stringify 的结果求摘要会因键序/空白/转义差异而验签失败。

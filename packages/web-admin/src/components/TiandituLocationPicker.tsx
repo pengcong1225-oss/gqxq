@@ -30,6 +30,8 @@ export interface PlaceCandidate {
   address: string;
   lng: string;
   lat: string;
+  coordinateSystem:'unknown';
+  coordinateSource:string;
 }
 
 declare global {
@@ -46,7 +48,7 @@ declare global {
 
 let sdkPromise: Promise<TiandituSdk> | null = null;
 
-function loadSdk(key: string): Promise<TiandituSdk> {
+export function loadSdk(key: string): Promise<TiandituSdk> {
   if (window.T) return Promise.resolve(window.T);
   if (sdkPromise) return sdkPromise;
   sdkPromise = new Promise<TiandituSdk>((resolve, reject) => {
@@ -56,7 +58,7 @@ function loadSdk(key: string): Promise<TiandituSdk> {
     script.src = 'https://api.tianditu.gov.cn/api?v=4.0&tk=' + encodeURIComponent(key);
     script.async = true;
     script.onload = () => window.T ? resolve(window.T) : reject(new Error('天地图 JS API 未能初始化'));
-    script.onerror = () => reject(new Error('天地图 JS API 加载失败，请检查网络、Key 权限与域名白名单'));
+    script.onerror = () => reject(new Error('地图暂时不可用，可继续人工录入地址和坐标'));
     if (!existing) document.head.appendChild(script);
   }).catch((error: unknown) => {
     sdkPromise = null;
@@ -92,6 +94,7 @@ export async function searchTiandituPlaces(
 ): Promise<PlaceCandidate[]> {
   const term = keyword.trim();
   if (!term) return [];
+  if(term.length>80||/[\r\n，。！？；]|\d{7,}|停水|漏水|投诉|反映|联系|处理|解决|希望|电话/.test(term))throw new Error('请输入简短地点名称，不要输入诉求原文或电话号码');
   const query = new URLSearchParams({
     postStr: JSON.stringify({
       keyWord: term,
@@ -113,20 +116,28 @@ export async function searchTiandituPlaces(
   return (data.pois ?? []).flatMap((poi) => {
     const [lng = '', lat = ''] = (poi.lonlat ?? '').split(',').map((part) => part.trim());
     if (validCoordinate(lng, -180, 180) === null || validCoordinate(lat, -90, 90) === null) return [];
-    return [{ name: poi.name?.trim() || poi.address?.trim() || term, address: poi.address?.trim() || poi.name?.trim() || term, lng, lat }];
+    return [{ name: poi.name?.trim() || poi.address?.trim() || term, address: poi.address?.trim() || poi.name?.trim() || term, lng, lat,coordinateSystem:'unknown' as const,coordinateSource:'天地图地址搜索候选，坐标系未核实' }];
   });
 }
 
 export interface TiandituLocationPickerProps {
+  onSelectPlace?: (place: PlaceCandidate) => void;
+  contextKey?: string;
+  autoSearch?: string | null;
+  disabled?: boolean;
   address?: string | null;
   lng?: string | null;
   lat?: string | null;
-  onPick: (point: { lng: string; lat: string; addressSuggestion: string | null }) => void;
+  onPick: (point: { lng: string; lat: string; addressSuggestion: string | null;coordinateSystem:'unknown';coordinateSource:string }) => void;
   onUseAddressSuggestion?: (address: string) => void;
 }
 
 /** 地图点选只返回坐标和可选地址建议，不会直接改写地址字段。 */
-const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address, lng, lat, onPick, onUseAddressSuggestion }) => {
+const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address, lng, lat, onPick, onUseAddressSuggestion, autoSearch, disabled=false, onSelectPlace, contextKey }) => {
+  const callbacks = useRef({onPick,onUseAddressSuggestion,onSelectPlace,disabled});
+  callbacks.current={onPick,onUseAddressSuggestion,onSelectPlace,disabled};
+  const activePoint=useRef<{lng:string;lat:string}|null>(null);
+  const autoSearched=useRef(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<TiandituMap | null>(null);
   const markerRef = useRef<unknown>(null);
@@ -142,9 +153,15 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
   const [places, setPlaces] = useState<PlaceCandidate[]>([]);
   const key = import.meta.env.VITE_TIANDITU_TK?.trim() ?? '';
 
-  useEffect(() => { setSearchText(address ?? ''); }, [address]);
+  useEffect(() => { setSearchText(address ?? '');++searchIdRef.current;++requestIdRef.current;setPlaces([]);setSearching(false);setPicked(null); }, [address]);
+
+  useEffect(()=>{
+    const point=activePoint.current;
+    if(point&&(point.lng!==lng||point.lat!==lat)){++requestIdRef.current;activePoint.current=null;setPicked(null);setGeocoding(false);}
+  },[lng,lat,contextKey]);
 
   const searchAddress = async (value: string) => {
+    if(callbacks.current.disabled)return;
     const term = value.trim();
     const searchId = ++searchIdRef.current;
     setSearchError(null);
@@ -154,13 +171,13 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
       return;
     }
     if (!key) {
-      setSearchError('未配置天地图 Key，无法搜索定位');
+      setSearchError('地址搜索暂时不可用，可继续人工录入地址和坐标');
       return;
     }
     setSearching(true);
     try {
       const next = await searchTiandituPlaces(term, key);
-      if (searchId !== searchIdRef.current) return;
+      if (searchId !== searchIdRef.current || callbacks.current.disabled) return;
       setPlaces(next);
       if (next.length === 0) setSearchError('没有找到匹配地点，请补充区县、街道或门牌号后重试');
     } catch (cause) {
@@ -170,24 +187,24 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
     }
   };
 
+  useEffect(()=>{if(autoSearch&&!disabled&&!autoSearched.current){autoSearched.current=true;void searchAddress(autoSearch);}},[autoSearch,disabled]);
+  useEffect(()=>()=>{++searchIdRef.current;++requestIdRef.current;},[]);
+
   const selectPlace = (place: PlaceCandidate) => {
+    if(callbacks.current.disabled)return;
     const sdk = window.T;
     const map = mapRef.current;
-    if (!sdk || !map) {
-      setSearchError('地图尚未加载完成，请稍后再选');
-      return;
-    }
     ++requestIdRef.current; // 废弃更早的地图点选反查，避免旧地址覆盖搜索结果。
-    const location = new sdk.LngLat(Number(place.lng), Number(place.lat));
-    if (markerRef.current) map.removeOverLay(markerRef.current);
-    const marker = new sdk.Marker(location);
-    map.addOverLay(marker);
-    markerRef.current = marker;
-    map.centerAndZoom(location, 16);
-    const point = { lng: place.lng, lat: place.lat, addressSuggestion: place.address };
+    if(sdk&&map){
+      const location = new sdk.LngLat(Number(place.lng), Number(place.lat));
+      if (markerRef.current) map.removeOverLay(markerRef.current);
+      const marker = new sdk.Marker(location);map.addOverLay(marker);markerRef.current = marker;map.centerAndZoom(location, 16);
+    }
+    const point = { lng: place.lng, lat: place.lat, addressSuggestion: place.address,coordinateSystem:place.coordinateSystem,coordinateSource:place.coordinateSource };
+    activePoint.current=point;
     setPicked(point);
-    onPick(point);
-    onUseAddressSuggestion?.(place.address);
+    callbacks.current.onPick(point);
+    if(callbacks.current.onSelectPlace)callbacks.current.onSelectPlace(place);else callbacks.current.onUseAddressSuggestion?.(place.address);
     setPlaces([]);
     setSearchError(null);
   };
@@ -196,7 +213,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
     let active = true;
     if (!key) {
       setLoading(false);
-      setError('未配置 VITE_TIANDITU_TK。请在本机 packages/web-admin/.env.local 中配置天地图浏览器 Key。');
+      setError('地图暂时不可用，可继续人工录入地址和坐标');
       return () => { active = false; };
     }
     void loadSdk(key).then((sdk) => {
@@ -214,29 +231,30 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
         markerRef.current = marker;
       }
       map.addEventListener('click', (event) => {
-        if (!active || !event.lnglat) return;
+        if (!active || callbacks.current.disabled || !event.lnglat) return;
         const requestId = ++requestIdRef.current;
         const pickedLng = event.lnglat.getLng();
         const pickedLat = event.lnglat.getLat();
         if (!Number.isFinite(pickedLng) || !Number.isFinite(pickedLat)) return;
-        const point = { lng: pickedLng.toFixed(6), lat: pickedLat.toFixed(6), addressSuggestion: null as string | null };
+        const point = { lng: pickedLng.toFixed(6), lat: pickedLat.toFixed(6), addressSuggestion: null as string | null,coordinateSystem:'unknown' as const,coordinateSource:'天地图人工选点，坐标系未核实' };
         if (markerRef.current) map.removeOverLay(markerRef.current);
         const marker = new sdk.Marker(new sdk.LngLat(pickedLng, pickedLat));
         map.addOverLay(marker);
         markerRef.current = marker;
         map.panTo(new sdk.LngLat(pickedLng, pickedLat));
+        activePoint.current=point;
         setPicked(point);
-        onPick(point);
+        callbacks.current.onPick(point);
         setGeocoding(true);
         void reverseGeocode(key, pickedLng, pickedLat).then((address) => {
-          if (!active || requestId !== requestIdRef.current) return;
+          if (!active || callbacks.current.disabled || requestId !== requestIdRef.current) return;
           const nextPoint = { ...point, addressSuggestion: address };
           setPicked(nextPoint);
-          onPick(nextPoint);
+          // Reverse geocoding only updates the optional suggestion. Coordinate writes happen once at the click.
         }).catch(() => {
-          if (!active || requestId !== requestIdRef.current) return;
+          if (!active || callbacks.current.disabled || requestId !== requestIdRef.current) return;
           setPicked(point);
-          onPick(point);
+          // Keep the original point without a second parent write.
         }).finally(() => {
           if (active && requestId === requestIdRef.current) setGeocoding(false);
         });
@@ -247,7 +265,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
     }).catch((cause: unknown) => {
       if (active) {
         setLoading(false);
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setError('地图暂时不可用，可继续人工录入地址和坐标');
       }
     });
     return () => { active = false; mapRef.current = null; markerRef.current = null; };
@@ -258,6 +276,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
   return (
     <div>
       <Input.Search
+        disabled={disabled}
         aria-label="搜索地址并定位"
         value={searchText}
         onChange={(event) => setSearchText(event.target.value)}
@@ -270,16 +289,16 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
       {searchError ? <Alert type="warning" showIcon style={{ marginBottom: 8 }} message={searchError} /> : null}
       {places.length > 0 ? (
         <div style={{ maxHeight: 160, overflowY: 'auto', marginBottom: 8, border: '1px solid #d9d9d9', padding: 8 }}>
-          <Typography.Text type="secondary">请选择正确地点；选择后仅回填本窗体，仍需点击“保存位置组”</Typography.Text>
+          <Typography.Text type="secondary">请选择正确地点；选择后回填待确认地点，仍需人工确认保存</Typography.Text>
           {places.map((place, index) => (
             <div key={place.lng + ',' + place.lat + ':' + index}>
-              <Button type="link" onClick={() => selectPlace(place)}>{place.name} · {place.address}</Button>
+              <Button type="link" disabled={disabled} onClick={() => selectPlace(place)}>{place.name} · {place.address}</Button>
             </div>
           ))}
         </div>
       ) : null}
       {error ? <Alert type="warning" showIcon style={{ marginBottom: 8 }} message={error} /> : null}
-      {loading ? <div style={{ height: 380, display: 'grid', placeItems: 'center' }}><Spin tip="加载天地图…" /></div> : null}
+      {loading ? <div style={{ height: 380, display: 'grid', placeItems: 'center' }}><Spin aria-label="加载天地图" /></div> : null}
       <div ref={containerRef} style={{ height: 380, border: '1px solid #d9d9d9', visibility: loading || error ? 'hidden' : 'visible' }} />
       {picked ? (
         <Space direction="vertical" size={4} style={{ marginTop: 8 }}>
@@ -288,7 +307,7 @@ const TiandituLocationPicker: React.FC<TiandituLocationPickerProps> = ({ address
           {picked.addressSuggestion ? (
             <Space wrap>
               <Typography.Text type="secondary">地址建议（请人工核对）：{picked.addressSuggestion}</Typography.Text>
-              {onUseAddressSuggestion ? <Button size="small" onClick={() => onUseAddressSuggestion(picked.addressSuggestion as string)}>填入地址字段</Button> : null}
+              {onUseAddressSuggestion ? <Button size="small" disabled={disabled} onClick={() => onUseAddressSuggestion(picked.addressSuggestion as string)}>填入地址字段</Button> : null}
             </Space>
           ) : null}
         </Space>

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { AppError } from '../http/errors';
 import { ok } from '../http/respond';
 import { getOverview } from '../services/dashboardService';
+import {currentAccessContext} from '../auth/accessScope';
 
 // GET /dashboard/overview（G1.4）：全部指标来自 SQL 聚合，零兜底常量；
 // 无法计算的指标返回 null 并列入 unavailable[]（见 services/dashboardService.ts）。
@@ -28,7 +29,7 @@ dashboardRouter.get('/dashboard/overview', async (req, res, next) => {
       }
       days = n;
     }
-    ok(res, await getOverview(days));
+    ok(res, await getOverview(days,req.accessContext??currentAccessContext(),req.user?.permissionCodes??[]));
   } catch (err) {
     next(err);
   }

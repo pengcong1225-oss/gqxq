@@ -1,3 +1,5 @@
+import { currentAccessContext } from '../auth/accessScope';
+import { projectComplaintDetail } from './complaintProjection';
 // G5 分析库与待查报告：只读 + 下钻。
 // 入库逻辑在 correctionService.maybeEnterAnalysis（唯一入口），本文件不写任何业务表。
 import type {
@@ -15,7 +17,6 @@ import { findTodoByAnalysisId, findTodoPage, isReportTodoStatus } from '../repos
 import { listByComplaint } from '../repositories/correctionRepo';
 import { listTracesByAssignment } from '../repositories/approvalTraceRepo';
 import { findByIdOrNo } from '../repositories/complaintRepo';
-import { rowToDetail, type ComplaintDetailProjection } from '../repositories/complaintMapper';
 import { findOrderByAssignmentId, rowToDispatchDetail } from '../repositories/dispatchRepo';
 import { parsePageQuery, queryText } from './correctionService';
 
@@ -27,7 +28,7 @@ import { parsePageQuery, queryText } from './correctionService';
  */
 export interface AnalysisDrilldown {
   record: AnalysisRecordItem;
-  complaint: ComplaintDetailProjection | null;
+  complaint: ReturnType<typeof projectComplaintDetail> | null;
   dispatch: DispatchOrderDetail | null;
   approvalTraces: ApprovalTraceItem[];
   corrections: CorrectionItem[];
@@ -36,7 +37,8 @@ export interface AnalysisDrilldown {
 
 export async function listAnalysisRecords(
   query: Record<string, unknown>
-): Promise<Paged<AnalysisRecordItem>> {
+): Promise<Paged<AnalysisRecordItem>&{mode:'legacy-membership/no-date';projection:'entry_snapshot';timeBasis:null;notice:string}> {
+  if(['from','to','periodKind','projection','comparisonPolicyId','dataset','bucket','majorCode','minorCode','serviceGridCode'].some(k=>query[k]!==undefined))throw AppError.validation('日期统计须转 /statistics/complaints 并提供完整数据集、投影、期间及候选政策参数');
   const { page, size } = parsePageQuery(query);
   const districtCode = queryText(query.districtCode, 'districtCode', 64);
   const businessType = queryText(query.businessType, 'businessType', 32);
@@ -47,7 +49,7 @@ export async function listAnalysisRecords(
     page,
     size
   );
-  return { content, total, page, size, totalPages: Math.ceil(total / size) };
+  return { content, total, page, size, totalPages: Math.ceil(total / size),mode:'legacy-membership/no-date',projection:'entry_snapshot',timeBasis:null,notice:'入库记录浏览：保留已存入库字段；未按业务日期统计，不计算同比环比' };
 }
 
 /** 单条分析记录 + 诉求 / 交办 / 审批轨迹 / 纠偏项 / 待查待办，全部真实数据，失败即抛错。 */
@@ -56,7 +58,7 @@ export async function getAnalysisDrilldown(analysisId: string): Promise<Analysis
   if (!record) throw AppError.notFound('分析记录不存在');
 
   const complaintRow = await findByIdOrNo(record.complaintId);
-  const complaint: ComplaintDetailProjection | null = complaintRow ? rowToDetail(complaintRow) : null;
+  const complaint = complaintRow ? projectComplaintDetail(complaintRow,currentAccessContext()) : null;
 
   let dispatch: DispatchOrderDetail | null = null;
   if (record.assignmentId !== null) {

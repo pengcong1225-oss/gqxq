@@ -1,0 +1,13 @@
+import {Router,type Request} from 'express';
+import {currentAccessContext} from '../auth/accessScope';
+import {ok} from '../http/respond';
+import {AppError} from '../http/errors';
+import type {MasterDataContext} from '../types/masterData';
+import {createReport,getReport,listReports,retryReport,authorizeReportDownload} from '../services/reportService';
+export const reportsRouter=Router();
+const ctx=(r:Request):MasterDataContext=>({userId:r.user!.id,userName:r.user!.username,clientIp:r.ip??null,access:r.accessContext??currentAccessContext(),permissionCodes:r.user!.permissionCodes??[]});
+reportsRouter.post('/reports',async(r,s,n)=>{try{ok(s,await createReport(r.body,ctx(r)));}catch(e){n(e);}});
+reportsRouter.get('/reports',async(r,s,n)=>{try{if(Object.keys(r.query).some(k=>!['size','continuation'].includes(k))||r.query.continuation!==undefined&&typeof r.query.continuation!=='string')throw AppError.validation('报告分页参数无效');ok(s,await listReports(ctx(r),Number(r.query.size??20),r.query.continuation as string|undefined));}catch(e){n(e);}});
+reportsRouter.get('/reports/:id',async(r,s,n)=>{try{ok(s,await getReport(r.params.id,ctx(r)));}catch(e){n(e);}});
+reportsRouter.post('/reports/:id/retry',async(r,s,n)=>{try{if(r.body&&Object.keys(r.body).length)throw AppError.validation('报告重试不得修改快照或路径');ok(s,await retryReport(r.params.id,ctx(r)));}catch(e){n(e);}});
+reportsRouter.get('/reports/:id/download',async(r,s,n)=>{try{const b=await authorizeReportDownload(r.params.id,ctx(r));s.set({'Content-Type':b.mime,'Content-Length':String(b.bytes.length),'Content-Disposition':'attachment; filename="statistics-draft-v1.'+b.format+'"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Content-SHA256':b.hash});s.send(b.bytes);}catch(e){n(e);}});

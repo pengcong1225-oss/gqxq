@@ -1,0 +1,17 @@
+# PU权威企业同步与敏感交办承接契约
+
+企业档案权威来源是PU经营企业公司表；用水客户、监管部门和经营企业不混为同一主数据。稳定键为 `(sourceSystem=public-utility, sourceKind=company, sourceId=公司主键)`，不是企业名称。单个公司多业务时，gqxq本地企业编码为 `PU-COMPANY-id-water/gas/lpg`，推送使用binding内无后缀 `gqxqSubjectCode=PU-COMPANY-id`。来源来源证据、版本、状态、账号就绪状态与subjectAliases保留在pu_enterprise_binding。
+
+PU的 `IntegrationEnterpriseService.authority(code)` 是feed和敏感任务共用的只读身份依据：只接受已分类、明确非监管部门且业务类型可识别的company；canonical主体须精确匹配非空source_system/legacy_id且source_module=legacy_subject；别名仅沿 `REPORTING_COMPANY_<已证明主体ID>` 显式链扩展。名称相同、信用代码不唯一、组织编码相同均不赋予主体或账号权限。未证明身份返回空，不按新编码自动创建shadow主体。
+
+`GqxqEnterpriseAuthorityResolver` 从该集合中实时检查原subject仍ACTIVE、绑定用户为ACTIVE未锁定的ENTERPRISE及ENTERPRISE_USER角色、实际gqxq应用范围；原subject的source_app_code确实对应已注册应用时，原应用授权也必须仍有效，已注册但停用时拒绝；null或未注册的legacy迁移标记不被误当作必须授权的应用。预检和实际任务创建共用同一resolver。缺原主体为SUBJECT_UNMAPPED；缺实际有效填报人为ENTERPRISE_USER_UNAVAILABLE。任务直接保存有权原subject_id，企业列表/详情/签收继续使用现有“应用范围+原subject权限”授权。不会复制权限、重置密码或把验收账号铺到真实企业。后续正常绑定真实用户及范围后，实时预检自动认可，不依赖硬编码企业清单。
+
+gqxq发起任务时把本地企业编码、来源company稳定键、wire subjectCode和显式subjectAliases冻结到原始任务快照的 `metadata.enterpriseIdentity`。PU回调继续携带实际原subjectCode。gqxq只接受该冻结快照中ACTIVE的明确alias，同时仍严格验证complaintId、assignmentId、requestId、taskId、reportingItemId以及场景/模板版本，不能由“同名企业”或“最新交办”猜关联。后续feed变化不改历史快照。
+
+来源下架、停用或状态不明时，preparePush拒绝新推送；feed的accountReadiness用于界面呈现，实际授权以PU当前SQL事实为准，陈旧true不能绕过，合法新账号也不用等待旧快照false被人工修改。正式模板/审批代码保持GQXQ_SENSITIVE_DISPATCH / GQXQ_SUPERVISION_APPROVAL；审批人必须为真实业务范围内账号，正式表单GQXQ_SENSITIVE_DISPATCH v1已正常API发布；正式审批仍为草稿文件sensitive-dispatch-formal-draft.json，没有填入测试审批人。
+
+本次现场只读检查：真实经营企业原subject没有绑定ACTIVE企业账号，因此同步档案不等于具备实际填报能力。缺账号时继续明确阻断，不生成误发任务。敏感完整闭环由单独停用测试企业及DEMO双来源标记验证，证据与正式企业档案分开保存。
+
+验证：PU新跨app2回归覆盖无gqxqscope时预检失败且任务数不增、授权后原subject承接、同名无关账号拒绝、撤销原subject绑定后失效，以及保留编码不能回落造新主体。与预填/原任务/feed一起14项通过。gqxq wire/callback3项覆盖多业务本地键、冻结alias、错误公司/请求/任务/节点拒绝，配合重试和测试隔离7项。
+
+最终现场负向验证：真实PU-COMPANY-1在正式已发布模板v1下，实时预检仅返回缺企业账号和缺真实审批配置；实际create409，PU gqxq任务数4→4。证据为 `real-enterprise-no-account-evidence-20261110.json`。来源legacy标记未注册不被误当业务app；已注册但停用仍拒绝。feed和resolver最终共用EnterpriseAccountEligibility，后续真实开户、正常绑定原subject及gqxq授权后即可实时识别，没有测试账号自动授权。

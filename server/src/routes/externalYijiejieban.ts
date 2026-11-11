@@ -1,3 +1,4 @@
+import { runAsTrustedSystem } from '../auth/accessScope';
 // POST /api/v1/external/yijiejieban/appeal
 // 宜接就办入站接收：zod 严格校验 -> 单事务落库/幂等/重传留痕/人工字段保护/审计。
 // 认证口径：本路由挂在 /external 下，不要求 Bearer（由 routes/index.ts 保证）。
@@ -236,7 +237,7 @@ externalRouter.post(
       requestId,
     };
 
-    const result = await intakeAppeal(command, { receivedAt });
+    const result = await runAsTrustedSystem(() => intakeAppeal(command, { receivedAt }));
     const message = result.result === 'created' ? 'success' : result.result === 'duplicate_same' ? 'duplicate' : 'updated';
     ok(res, result, message);
   })

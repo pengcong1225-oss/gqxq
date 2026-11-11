@@ -1,10 +1,12 @@
+import { assertLockedComplaintAccess, currentAccessContext } from '../auth/accessScope';
+import { INTEGRATION_TEST_ENTERPRISE, mayDispatchToDisabledTestEnterprise } from '../domain/integrationTestPolicy';
 // G2 责任单位确认：enterprise_code / enterprise_name 的**唯一人工写实现**。
 //
 // 为什么只有一个实现（业主 2026-09-20 裁定「匹配责任单位收敛进纠偏入口」之后）：
-//   总账的「匹配单位」按钮已下线，责任单位现在有两个入口——
+//   总账的「匹配单位」按钮已下线，责任单位现在有三个入口——
 //   ① POST /complaints/:idOrNo/assignment（保留给外部/脚本复用）
 //   ② 纠偏确认「企业名称/归属」（correctionService 写回 complaint 时复用本文件的 confirmResponsibleEnterpriseInTx）
-//   两处都必须走同一段：主数据校验 + code/name 成对写 + 前后值留痕。
+//   ③ 创建交办时首次补责任单位；三处共用主数据校验 + 成对写 + 前后值留痕。
 //   分成两份实现必然漂移，漂移的结果就是 enterprise_code 与 enterprise_name 对上不上。
 //
 // G1 把这两列定义为「人工受保护字段」，外部重传不得覆盖（见 intakeService 的 PROTECTED_REQUEST_KEYS），
@@ -16,15 +18,17 @@ import { withTransaction } from '../db/tx';
 import { insertAudit } from '../repositories/auditLogRepo';
 import { lockComplaintByAnyKey } from '../repositories/dispatchRepo';
 import { insertAssignment, updateComplaintEnterprise } from '../repositories/assignmentRepo';
-import { findEnterpriseByCodeIn } from '../repositories/enterpriseRepo';
+import { findEnterpriseTargetIn } from '../repositories/enterpriseRepo';
 import { GQXQ_APP_CODE } from './intakeService';
 import { optionalText, requiredText, type OperatorContext } from './dispatchService';
+import { parseFieldState } from '../domain/effectiveFieldPolicy';
+import { insertFieldVersions } from '../repositories/complaintFieldVersionRepo';
 
 /** enterprise_code 与 complaint.enterprise_code 同为 varchar(64)，超长的输入必须在进库前被拒（对齐列宽，见 HANDOVER §6-④） */
 const ENTERPRISE_CODE_MAX = 64;
 
-/** 责任单位写回的触发入口，只进审计 detail，不参与业务判断 */
-export type ResponsibleEnterpriseSource = 'assignment' | 'correction';
+/** 责任单位写回入口：用于审计、保护依据及共享版本增量归属。 */
+export type ResponsibleEnterpriseSource = 'assignment' | 'correction' | 'dispatch';
 
 /**
  * 调用方**必须已经锁住**这条 complaint 行（for update），本函数不再自行加锁：
@@ -50,44 +54,68 @@ export interface ConfirmResponsibleEnterpriseInput {
 }
 
 /**
- * 确认责任单位：校验主数据 -> 成对写 code + name + responsible_matched_at -> 追加 complaint_assignment 留痕 -> 审计。
+ * 责任单位与交办目标共用主数据校验，返回登记的规范码名。
  *
  * 三条硬要求（2026-09-20 批次）：
  *   1) enterprise_code 必须是 enterprise 表里的登记值，匹配不到 -> 400 VALIDATION_FAILED（不是 500，也不静默写脏数据）；
  *   2) enterprise_code 与 enterprise_name 必须成对写，名称取主数据登记值，二者不可能各说一套；
  *   3) 调用方给的名称与登记值不一致时直接报错——悄悄用登记值覆盖操作员看到的名字，等于让他以为写进去的是另一个主体。
  */
+export async function assertTargetEnterprise(
+  tx: Tx,
+  code: string,
+  name: string | null,
+  fields = { code: 'enterpriseCode', name: 'enterpriseName' },
+  testDispatchComplaintId?: string
+): Promise<{ code: string; name: string }> {
+  const enterpriseCode = (code ?? '').trim();
+  if (enterpriseCode === '') {
+    throw AppError.validation('enterpriseCode 不能为空', [
+      { field: fields.code, message: '责任单位编码必填' },
+    ]);
+  }
+  if (enterpriseCode.length > ENTERPRISE_CODE_MAX) {
+    throw AppError.validation('enterpriseCode 长度不能超过 ' + ENTERPRISE_CODE_MAX, [
+      { field: fields.code, message: '最长 ' + ENTERPRISE_CODE_MAX + ' 字符' },
+    ]);
+  }
+
+  const master = await findEnterpriseTargetIn(tx, enterpriseCode);
+  if (master === null) {
+    throw AppError.validation(
+      '责任单位编码 ' + enterpriseCode + ' 不在企业主数据（enterprise 表）登记值里，本次不写回',
+      [{ field: fields.code, message: '必须从企业主数据里选，编码未登记' }]
+    );
+  }
+  if (master.status !== 'enabled' || enterpriseCode===INTEGRATION_TEST_ENTERPRISE) {
+    let testAllowed=false;
+    if(enterpriseCode===INTEGRATION_TEST_ENTERPRISE && ['enabled','disabled'].includes(master.status) && testDispatchComplaintId){
+      const [rows]=await tx.query('select source_system,source_id from complaint where complaint_id=? for update',[testDispatchComplaintId]);
+      const source=(rows as Array<Record<string,unknown>>)[0];
+      testAllowed=!!source && mayDispatchToDisabledTestEnterprise(enterpriseCode,source,currentAccessContext().roles);
+    }
+    if(!testAllowed)throw AppError.validation('目标企业已停用，不能新选');
+  }
+  const enterpriseName = master.enterpriseName;
+  if (name !== null && name.trim() !== '' && name.trim() !== enterpriseName) {
+    throw AppError.validation(
+      '企业名称与主数据登记值不一致：编码 ' + enterpriseCode + ' 的登记名称是「' + enterpriseName + '」',
+      [{ field: fields.name, message: '以企业主数据登记值为准' }]
+    );
+  }
+  return { code: master.enterpriseCode, name: enterpriseName };
+}
+
 export async function confirmResponsibleEnterpriseInTx(
   tx: Tx,
   target: EnterpriseWriteTarget,
   input: ConfirmResponsibleEnterpriseInput
 ): Promise<AssignEnterpriseResult> {
-  const enterpriseCode = (input.enterpriseCode ?? '').trim();
-  if (enterpriseCode === '') {
-    throw AppError.validation('enterpriseCode 不能为空', [
-      { field: 'enterpriseCode', message: '责任单位编码必填' },
-    ]);
-  }
-  if (enterpriseCode.length > ENTERPRISE_CODE_MAX) {
-    throw AppError.validation('enterpriseCode 长度不能超过 ' + ENTERPRISE_CODE_MAX, [
-      { field: 'enterpriseCode', message: '最长 ' + ENTERPRISE_CODE_MAX + ' 字符' },
-    ]);
-  }
-
-  const master = await findEnterpriseByCodeIn(tx, enterpriseCode);
-  if (master === null) {
-    throw AppError.validation(
-      '责任单位编码 ' + enterpriseCode + ' 不在企业主数据（enterprise 表）登记值里，本次不写回',
-      [{ field: 'enterpriseCode', message: '必须从企业主数据里选，编码未登记' }]
-    );
-  }
-  const enterpriseName = master.enterpriseName;
-  if (input.enterpriseName !== null && input.enterpriseName.trim() !== '' && input.enterpriseName.trim() !== enterpriseName) {
-    throw AppError.validation(
-      '企业名称与主数据登记值不一致：编码 ' + enterpriseCode + ' 的登记名称是「' + enterpriseName + '」',
-      [{ field: 'enterpriseName', message: '以企业主数据登记值为准' }]
-    );
-  }
+  await assertLockedComplaintAccess(tx,target.complaintId);
+  const master = await assertTargetEnterprise(tx, input.enterpriseCode, input.enterpriseName,
+    {code:'enterpriseCode',name:'enterpriseName'},input.source==='dispatch'?target.complaintId:undefined);
+  const enterpriseCode = master.code;
+  const enterpriseName = master.name;
 
   const beforeCode = target.currentEnterpriseCode;
   const beforeName = target.currentEnterpriseName;
@@ -120,6 +148,29 @@ export async function confirmResponsibleEnterpriseInTx(
     supervisionStatus: nextSupervision,
     updatedAt: input.now,
   });
+
+  await assertLockedComplaintAccess(tx,target.complaintId);
+
+  // Corrections own their increment; standalone assignment and first dispatch autofill own it here.
+  if (input.source !== 'correction') {
+    const [rows] = await tx.query('select edit_version, effective_field_state from complaint where complaint_id = ?', [target.complaintId]);
+    const row = (rows as Array<Record<string, unknown>>)[0];
+    if (!row) throw AppError.notFound('诉求不存在');
+    const nextVersion = Number(row.edit_version) + 1;
+    const states = parseFieldState(row.effective_field_state);
+    const protectionReason = (input.source === 'dispatch' ? '交办首次责任确认：' : '独立责任确认：') + (input.reason ?? '人工核验');
+    for (const [column, value] of [['enterprise_code', enterpriseCode], ['enterprise_name', enterpriseName]]) {
+      states[column] = { resolution: 'confirmed', value, version: nextVersion, reason: protectionReason };
+    }
+    await tx.execute('update complaint set effective_field_state = ?, edit_version = ? where complaint_id = ?',
+      [JSON.stringify(states), nextVersion, target.complaintId]);
+    await insertFieldVersions(tx, [
+      { fieldName: 'enterprise_code', oldValue: beforeCode, newValue: enterpriseCode },
+      { fieldName: 'enterprise_name', oldValue: beforeName, newValue: enterpriseName },
+    ].map(entry => ({ ...entry, complaintId: target.complaintId, changeSource: 'manual_edit' as const,
+      reason: protectionReason, operatorId: input.ctx.userId,
+      operatorName: input.ctx.userName, changedAt: input.now })));
+  }
 
   await insertAudit(tx, {
     userId: input.ctx.userId,

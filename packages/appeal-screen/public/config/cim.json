@@ -1,0 +1,5 @@
+{
+  "wmts": null,
+  "s3m": null,
+  "note": "正式资源须通过固定受控代理及资源方核验后配置；禁止在此放置凭据。WMTS 配置需指定 url、layer、style、format、tileMatrixSetID、tileMatrixLabels、minimumLevel、maximumLevel；S3M 配置需指定 url。"
+}

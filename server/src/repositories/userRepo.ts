@@ -2,7 +2,7 @@
 // 纪律：只写手写参数化 SQL，不引入 ORM，不用 select *（列清单与 M1 迁移逐字对应）。
 // 时间口径以 db/pool.ts 为准：列里存的是 **Asia/Shanghai 墙钟**，连接池 timezone='+08:00'；
 // 写库传 Date 即按墙钟落，读出的 Date 再 toISOString() 得到对外 UTC 串。
-import type { AppRole, UserInfo, UserAdminFilter, UserAdminItem } from '../types/api';
+import type { AccountType, AppRole, UserInfo, UserAdminFilter, UserAdminItem } from '../types/api';
 
 /**
  * 允许在「连接池」或「事务连接」上执行 SQL 的最小接口。
@@ -15,6 +15,7 @@ export interface SqlExecutor {
 type Row = Record<string, unknown>;
 
 export interface AppUserRow {
+  accountType: AccountType;
   id: number;
   userId: string;
   username: string;
@@ -24,10 +25,12 @@ export interface AppUserRow {
   permissions: string[];
   status: number;
   lastLoginAt: Date | null;
+  sessionVersion: number;
+  mustChangePassword: boolean;
 }
 
 const APP_USER_COLUMNS =
-  'id, user_id, username, password_hash, real_name, roles, permissions, status, last_login_at';
+  'id, user_id, username, password_hash, real_name, roles, permissions, status, last_login_at, session_version, must_change_password, account_type';
 
 function toStr(v: unknown): string {
   return v === null || v === undefined ? '' : String(v);
@@ -65,6 +68,7 @@ function toDateOrNull(v: unknown): Date | null {
 
 function mapRow(r: Row): AppUserRow {
   return {
+    accountType: accountTypeOf(r.account_type),
     id: toNum(r.id),
     userId: toStr(r.user_id),
     username: toStr(r.username),
@@ -74,6 +78,8 @@ function mapRow(r: Row): AppUserRow {
     permissions: toStringArray(r.permissions),
     status: toNum(r.status),
     lastLoginAt: toDateOrNull(r.last_login_at),
+    sessionVersion: toNum(r.session_version),
+    mustChangePassword: toNum(r.must_change_password) === 1,
   };
 }
 
@@ -111,23 +117,16 @@ export async function findByUserId(
   );
 }
 
-/**
- * 鉴权用的**最小身份视图**（Task #35 收尾补）。
- *
- * 为什么需要它：JWT 载荷里带着 `roles` 声明，TTL 8 小时。RBAC 上线后角色就是
- * 授权依据，如果 requireAuth 只验签名、直接拿令牌里的 roles，那么
- * PATCH /users 的「禁用」「降级」要等到对方令牌自然过期才生效 ——
- * 被降级的 admin 在这 8 小时里照样能进 /users。令牌只证明**身份**，
- * 档位与启停状态必须以这一条查询的结果为准（默认拒绝的延伸：查不到即拒绝）。
- *
- * 与 findByUsername/findByUserId 的区别：这里**绝不 select password_hash**
- * （每个鉴权请求都会走它，不该顺带把哈希读进内存），也不带 permissions（不参与鉴权）。
- */
+/** Minimal current identity/status/session view. Does not select password_hash.
+ * Effective role capabilities are read independently by resolveAuthorization. */
 export interface AuthIdentity {
+  accountType: AccountType;
   userId: string;
   username: string;
   roles: string[];
   status: number;
+  sessionVersion: number;
+  mustChangePassword: boolean;
 }
 
 export async function findAuthIdentity(
@@ -136,16 +135,19 @@ export async function findAuthIdentity(
 ): Promise<AuthIdentity | null> {
   const rows = await queryRows(
     exec,
-    'select user_id, username, roles, status from app_user where user_id = ? limit 1',
+    'select user_id, username, roles, status, session_version, must_change_password, account_type from app_user where user_id = ? limit 1',
     [userId]
   );
   const row = rows[0];
   if (row === undefined) return null;
   return {
+    accountType: accountTypeOf(row.account_type),
     userId: toStr(row.user_id),
     username: toStr(row.username),
     roles: toStringArray(row.roles),
     status: toNum(row.status),
+    sessionVersion: toNum(row.session_version),
+    mustChangePassword: toNum(row.must_change_password) === 1,
   };
 }
 
@@ -161,12 +163,15 @@ export async function touchLastLogin(
 /** 数据库行 -> 对外 DTO（契约唯一真源：types/api.ts 的 UserInfo） */
 export function toUserInfo(row: AppUserRow): UserInfo {
   return {
+    accountType: row.accountType,
     id: row.id,
     userId: row.userId,
     username: row.username,
     realName: row.realName,
     roles: row.roles,
     permissions: row.permissions,
+    mustChangePassword: row.mustChangePassword,
+    authorizationVersion: 0,
   };
 }
 
@@ -183,16 +188,19 @@ async function queryRows(exec: SqlExecutor, sql: string, values?: unknown[]): Pr
 }
 
 const ADMIN_USER_COLUMNS =
-  'id, user_id, username, real_name, roles, status, last_login_at, created_at';
+  'id, user_id, username, real_name, roles, status, last_login_at, created_at, session_version, must_change_password, account_type';
 
 /** 管理视图的行：与 AppUserRow 的差别只在没有 password_hash / permissions */
 export interface AdminUserRow {
+  accountType: AccountType;
   userId: string;
   username: string;
   realName: string;
   roles: string[];
   status: number;
   lastLoginAt: Date | null;
+  sessionVersion: number;
+  mustChangePassword: boolean;
   createdAt: Date | null;
 }
 
@@ -202,12 +210,15 @@ function toBoolStatus(v: number): 0 | 1 {
 
 function mapAdminRow(r: Row): AdminUserRow {
   return {
+    accountType: accountTypeOf(r.account_type),
     userId: toStr(r.user_id),
     username: toStr(r.username),
     realName: toStr(r.real_name),
     roles: toStringArray(r.roles),
     status: toNum(r.status),
     lastLoginAt: toDateOrNull(r.last_login_at),
+    sessionVersion: toNum(r.session_version),
+    mustChangePassword: toNum(r.must_change_password) === 1,
     createdAt: toDateOrNull(r.created_at),
   };
 }
@@ -283,13 +294,14 @@ export async function insertUser(
     realName: string;
     roles: AppRole[];
     permissions: string[];
+    accountType?: AccountType;
     now: Date;
   }
 ): Promise<void> {
   await exec.query(
     'insert into app_user ' +
-      '(user_id, username, password_hash, real_name, roles, permissions, status, created_at, updated_at) ' +
-      'values (?, ?, ?, ?, ?, ?, 1, ?, ?)',
+      '(user_id, username, password_hash, real_name, roles, permissions, status, created_at, updated_at, must_change_password, session_version, scope_rules, scope_provenance, account_type) ' +
+      "values (?, ?, ?, ?, ?, ?, 1, ?, ?, 1, 1, '[]', 'new-account-deny', ?)",
     [
       input.userId,
       input.username,
@@ -299,6 +311,7 @@ export async function insertUser(
       JSON.stringify(input.permissions),
       input.now,
       input.now,
+      input.accountType ?? 'unknown',
     ]
   );
 }
@@ -329,7 +342,7 @@ export async function findAdminUserByUserId(
 export async function countEnabledAdmins(exec: SqlExecutor): Promise<number> {
   const rows = await queryRows(
     exec,
-    "select count(*) as total from app_user where status = 1 and json_contains(roles, json_quote('admin'))"
+    "select count(*) as total from app_user where status = 1 and json_type(roles) = 'ARRAY' and json_length(roles) = 1 and json_contains(roles, json_quote('admin'))"
   );
   return Number(rows[0]?.total ?? 0);
 }
@@ -339,6 +352,7 @@ export async function updateUser(
   exec: SqlExecutor,
   userId: string,
   patch: {
+    accountType?: AccountType;
     realName?: string;
     roles?: AppRole[];
     status?: 0 | 1;
@@ -347,6 +361,7 @@ export async function updateUser(
 ): Promise<void> {
   const sets: string[] = ['updated_at = ?'];
   const params: unknown[] = [patch.now];
+  if (patch.accountType !== undefined) {sets.push('account_type = ?');params.push(patch.accountType);}
   if (patch.realName !== undefined) {
     sets.push('real_name = ?');
     params.push(patch.realName);
@@ -366,6 +381,7 @@ export async function updateUser(
 /** 管理视图 DTO（契约真源：types/api.ts 的 UserAdminItem）。roleNames 由服务层补。 */
 export function toAdminUserItem(row: AdminUserRow): Omit<UserAdminItem, 'roleNames'> {
   return {
+    accountType: row.accountType,
     userId: row.userId,
     username: row.username,
     realName: row.realName,
@@ -373,5 +389,8 @@ export function toAdminUserItem(row: AdminUserRow): Omit<UserAdminItem, 'roleNam
     status: toBoolStatus(row.status),
     lastLoginAt: row.lastLoginAt === null ? null : row.lastLoginAt.toISOString(),
     createdAt: row.createdAt === null ? null : row.createdAt.toISOString(),
+    mustChangePassword: row.mustChangePassword,
   };
 }
+
+export function accountTypeOf(value:unknown):AccountType {return value==='internal'||value==='enterprise'?value:'unknown';}

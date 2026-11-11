@@ -1,3 +1,4 @@
+import type { AccessContext } from '../auth/accessScope';
 import type { AuthUser } from '../http/errors';
 
 declare global {
@@ -6,6 +7,7 @@ declare global {
       requestId: string;
       remoteIp: string;
       user?: AuthUser;
+      accessContext?: AccessContext;
     }
   }
 }

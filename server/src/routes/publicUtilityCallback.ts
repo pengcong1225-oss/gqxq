@@ -1,3 +1,4 @@
+import { runAsTrustedSystem } from '../auth/accessScope';
 import { Router } from 'express';
 import type { Request } from 'express';
 import { fail } from '../http/respond';
@@ -35,7 +36,7 @@ publicUtilityCallbackRouter.post('/callback', async (req, res, next) => {
       return;
     }
 
-    const outcome = await handleCallback({
+    const outcome = await runAsTrustedSystem(() => handleCallback({
       rawBody: raw,
       keyId: headerOf(req, 'x-public-utility-key-id'),
       keyVersion: headerOf(req, 'x-public-utility-key-version'),
@@ -43,7 +44,7 @@ publicUtilityCallbackRouter.post('/callback', async (req, res, next) => {
       headerEventId: headerOf(req, 'x-public-utility-event-id'),
       signature: headerOf(req, 'x-public-utility-signature'),
       remoteIp: req.remoteIp ?? null,
-    });
+    }));
 
     if (outcome.retryAfterSeconds !== null) {
       res.setHeader('Retry-After', String(outcome.retryAfterSeconds));

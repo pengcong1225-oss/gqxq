@@ -56,6 +56,9 @@ export const env = {
   bootstrapAdminPassword: optRaw('GQXQ_BOOTSTRAP_ADMIN_PASSWORD'),
   /** G3 出站：向 public-utility 创建填报任务时的凭证与地址 */
   pu: {
+    deliveryWorkerEnabled: opt('GQXQ_PU_DELIVERY_WORKER_ENABLED','true')==='true',
+    recoveryMode: opt('GQXQ_PU_RECOVERY_MODE','manual'),
+    recoveryContractVersion: opt('GQXQ_PU_RECOVERY_CONTRACT_VERSION',''),
     reconciliationEnabled: opt('GQXQ_PU_RECONCILIATION_ENABLED','false')==='true',
     reconciliationIntervalMs: Number(opt('GQXQ_PU_RECONCILIATION_INTERVAL_MS','60000')),
     sceneCode: opt('GQXQ_PU_SCENE_CODE','GQXQ_SENSITIVE_DISPATCH'),

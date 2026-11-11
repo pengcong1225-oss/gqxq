@@ -1,0 +1,20 @@
+import {Router,type Request} from 'express';
+import {currentAccessContext} from '../auth/accessScope';
+import {ok} from '../http/respond';
+import type {MasterDataContext} from '../types/masterData';
+import {supportDataset,supportWarnings,supportMode,previewSupportImport,importSupportData,updateSupportWarnings} from '../services/tenderSupportService';
+import {renderSupportReport} from '../services/tenderSupportReport';
+import {AppError} from '../http/errors';
+export const tenderSupportRouter=Router();
+const ctx=(r:Request):MasterDataContext=>({userId:r.user!.id,userName:r.user!.username,clientIp:r.ip??null,access:r.accessContext??currentAccessContext(),permissionCodes:r.user!.permissionCodes??[]});
+tenderSupportRouter.get('/tender-support/dataset',async(r,s,n)=>{try{ok(s,await supportDataset(supportMode(r.query.mode),ctx(r)));}catch(e){n(e);}});
+tenderSupportRouter.get('/tender-support/warning-rules',async(r,s,n)=>{try{ok(s,await supportWarnings(supportMode(r.query.mode),ctx(r)));}catch(e){n(e);}});
+tenderSupportRouter.post('/tender-support/dataset/preview',async(r,s,n)=>{try{ok(s,await previewSupportImport(r.body,ctx(r)));}catch(e){n(e);}});
+tenderSupportRouter.put('/tender-support/dataset',async(r,s,n)=>{try{ok(s,await importSupportData(r.body,ctx(r)));}catch(e){n(e);}});
+tenderSupportRouter.put('/tender-support/warning-rules',async(r,s,n)=>{try{ok(s,await updateSupportWarnings(supportMode(r.query.mode),r.body,ctx(r)));}catch(e){n(e);}});
+tenderSupportRouter.get('/tender-support/report',async(r,s,n)=>{try{
+ const context=ctx(r);if(!['report.generate','report.download','report.read'].every(p=>context.permissionCodes.includes(p)))throw AppError.forbidden('需要报告生成、查询和下载权限');
+ const mode=supportMode(r.query.mode),format=r.query.format;if(format!=='docx'&&format!=='xlsx')throw AppError.validation('报告格式无效');
+ const d=await supportDataset(mode,context),c=await supportWarnings(mode,context),bytes=await renderSupportReport(d,c,String(r.query.from),String(r.query.to),format);
+ s.set({'Content-Type':format==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="${mode}-tender-report.${format}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}).send(bytes);
+ }catch(e){n(e);}});

@@ -1,3 +1,7 @@
+import { downloadCsv } from '../utils/csvExport';
+import {namedLabel,sourceLabel} from '../utils/chineseDisplay';
+import {useWriteAccess} from '../stores/roleAccess';
+import ComplaintImportDialog from '../components/ComplaintImportDialog';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -28,7 +32,6 @@ import {
   EyeOutlined,
   ExportOutlined,
   FileTextOutlined,
-  ImportOutlined,
   InboxOutlined,
   SearchOutlined,
   SendOutlined,
@@ -40,7 +43,7 @@ import { listComplaints } from '../api/complaints';
 import { applyDisposition } from '../api/complaintActions';
 import { createDispatch } from '../api/dispatch';
 import { getDictItems } from '../api/dicts';
-import { listEnterprises } from '../api/enterprises';
+import { listEnterpriseOptions } from '../api/enterprises';
 import { getSourceAdapterState } from '../api/source';
 import type {
   ApiError,
@@ -53,7 +56,7 @@ import type {
   DictCode,
   DictItem,
   DispositionKind,
-  EnterpriseListItem,
+  EnterpriseOption,
   OvertimeFilter,
   SourceAdapterState,
   SourceEventStatus,
@@ -75,6 +78,8 @@ const { RangePicker } = DatePicker;
 /* ---------------- 筛选条件 ---------------- */
 
 interface Filters {
+  sourceMajorCategory?: string;
+  sourceMinorCategory?: string;
   keyword?: string;
   businessType?: BusinessType;
   complaintType?: ComplaintType;
@@ -143,6 +148,8 @@ function fmtDateTime(iso: string | null): string {
 }
 
 const ComplaintList: React.FC = () => {
+  const createAccess=useWriteAccess('dispatch.create');
+  const dispositionAccess=useWriteAccess('complaint.disposition');
   const navigate = useNavigate();
 
   const [page, setPage] = useState(1);
@@ -211,6 +218,9 @@ const ComplaintList: React.FC = () => {
       page,
       size,
       keyword: filters.keyword,
+      districtCode: filters.districtCode,
+      sourceMajorCategory: filters.sourceMajorCategory,
+      sourceMinorCategory: filters.sourceMinorCategory,
       businessType: filters.businessType,
       complaintType: filters.complaintType,
       urgencyLevel: filters.urgencyLevel,
@@ -254,7 +264,7 @@ const ComplaintList: React.FC = () => {
   const stats = data?.stats;
   const firstLoading = loading && data === null;
 
-  /* ---------- G2：发起交办 / 归库（匹配单位已收敛进纠偏入口，见 AddressCorrection） ---------- */
+  /* ---------- G2：发起交办 / 不交办处理（匹配单位已收敛进纠偏入口，见 AddressCorrection） ---------- */
   const [dispatchTarget, setDispatchTarget] = useState<ComplaintListItem | null>(null);
   const [dispositionTarget, setDispositionTarget] = useState<{
     row: ComplaintListItem;
@@ -274,7 +284,7 @@ const ComplaintList: React.FC = () => {
   /* ---------- 企业主数据：发起交办时的企业选择 ---------- */
   // 企业清单来自服务端 GET /enterprises。这里**不做本地兜底**：
   // 手抄 enterprise_code 一旦与登记值不一致，后续交办就匹配不到同一主体。
-  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseOption[]>([]);
   const [enterpriseLoading, setEnterpriseLoading] = useState(false);
   const [enterpriseError, setEnterpriseError] = useState<string | null>(null);
   const enterpriseSearchTimer = useRef<number | null>(null);
@@ -284,7 +294,7 @@ const ComplaintList: React.FC = () => {
     const seq = ++enterpriseFetchSeq.current;
     setEnterpriseLoading(true);
     try {
-      const res = await listEnterprises({
+      const res = await listEnterpriseOptions({
         keyword: keyword && keyword.trim() !== '' ? keyword.trim() : undefined,
         size: 50,
       });
@@ -322,13 +332,13 @@ const ComplaintList: React.FC = () => {
 
   /** 选项文本：企业名称（编码）· 业务类型 */
   const toEnterpriseOptions = useCallback(
-    (list: EnterpriseListItem[]) =>
+    (list: EnterpriseOption[]) =>
       list.map((e) => ({
         value: e.enterpriseCode,
         label:
           e.enterpriseName +
           '（' + e.enterpriseCode + '）' +
-          (e.businessTypeName ? ' · ' + e.businessTypeName : ''),
+          (e.businessType ? ' · ' + e.businessType : ''),
       })),
     []
   );
@@ -338,18 +348,12 @@ const ComplaintList: React.FC = () => {
    * 注意这不是「硬编码企业清单」：值来自这条诉求自身已登记的责任单位，不是前端常量。
    */
   const withCurrentEnterprise = useCallback(
-    (list: EnterpriseListItem[], code?: string | null, name?: string | null): EnterpriseListItem[] => {
+    (list: EnterpriseOption[], code?: string | null, name?: string | null): EnterpriseOption[] => {
       if (!code || list.some((e) => e.enterpriseCode === code)) return list;
-      const current: EnterpriseListItem = {
-        id: -1,
+      const current: EnterpriseOption = {
         enterpriseCode: code,
         enterpriseName: name ?? code,
         businessType: '',
-        businessTypeName: '',
-        uscc: null,
-        contactPerson: null,
-        contactPhone: null,
-        serviceArea: null,
         status: 'enabled',
       };
       return [current, ...list];
@@ -364,7 +368,7 @@ const ComplaintList: React.FC = () => {
       showIcon
       style={{ marginBottom: 12 }}
       message={'企业列表加载失败：' + enterpriseError}
-      description="下拉将为空，不会被本地示例企业替代。"
+      description="请重试后选择企业。"
       action={
         <Button size="small" onClick={() => void fetchEnterprises()}>
           重试
@@ -389,7 +393,7 @@ const ComplaintList: React.FC = () => {
           style={{ marginBottom: 16 }}
           message="来源对接状态获取失败"
           description={
-            '无法确认宜接就办来源适配器当前是否已接入：' + sourceStateError + '。（不会用默认值假装未接入）'
+            sourceStateError
           }
           action={
             <Button size="small" onClick={() => void loadSourceState()}>
@@ -402,38 +406,7 @@ const ComplaintList: React.FC = () => {
     if (sourceState === null) return null; // 尚未取到：不做任何断言，避免误报
     if (sourceState.enabled) return null; // 已接入：不显示提示条
 
-    if (sourceState.misconfigured) {
-      return (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={'来源对接：适配器配置无效（批次 ' + (sourceState.batch ?? 'G6') + '）'}
-          description={
-            <>
-              {sourceState.message}
-              <br />
-              列表中的来源状态一律显示「未接入」，这是真实状态，不代表异常。
-            </>
-          }
-        />
-      );
-    }
-    return (
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message={'来源对接：未接入（批次 ' + (sourceState.batch ?? 'G6') + '）'}
-        description={
-          <>
-            {sourceState.message}
-            <br />
-            列表中的来源状态一律显示「未接入」，这是真实状态，不代表异常；本平台不展示任何模拟的来源进度。
-          </>
-        }
-      />
-    );
+    return sourceState.misconfigured ? <Alert type="warning" showIcon message="来源数据暂不可同步，请联系管理员。" style={{marginBottom:16}}/> : null;
   })();
 
   const reload = useCallback(() => {
@@ -499,13 +472,13 @@ const ComplaintList: React.FC = () => {
         reason: values.reason.trim(),
       });
       message.success(
-        target.kind === 'false_positive' ? '已按误报归库' : '已按无需交办归库'
+        target.kind === 'false_positive' ? '已按标记误报' : '已按无需交办'
       );
       setDispositionTarget(null);
       dispositionForm.resetFields();
       reload();
     } catch (err) {
-      message.error('归库失败：' + ((err as ApiError)?.message ?? '未知错误'));
+      message.error('不交办处理失败：' + ((err as ApiError)?.message ?? '未知错误'));
     } finally {
       setSubmitting(false);
     }
@@ -541,14 +514,14 @@ const ComplaintList: React.FC = () => {
         dataIndex: 'businessTypeCode',
         width: 90,
         render: (_: unknown, r) => (
-          <Tag color={BUSINESS_COLOR[r.businessTypeCode] ?? 'default'}>{r.businessTypeName}</Tag>
+          <Tag color={BUSINESS_COLOR[r.businessTypeCode] ?? 'default'}>{namedLabel(r.businessTypeCode,r.businessTypeName,'business_type')}</Tag>
         ),
       },
       {
         title: '诉求类型',
         dataIndex: 'complaintTypeCode',
         width: 90,
-        render: (_: unknown, r) => <Tag>{r.complaintTypeName}</Tag>,
+        render: (_: unknown, r) => <Tag>{namedLabel(r.complaintTypeCode,r.complaintTypeName,'complaint_type')}</Tag>,
       },
       {
         title: '紧急程度',
@@ -562,13 +535,13 @@ const ComplaintList: React.FC = () => {
         title: '来源系统',
         dataIndex: 'sourceSystem',
         width: 110,
-        render: (v: string | null) => (v ? <Tag color="blue">{v}</Tag> : DASH),
+        render: (v: string | null) => (v ? <Tag color="blue">{sourceLabel(v,'system')}</Tag> : DASH),
       },
       {
         title: '来源渠道',
         dataIndex: 'sourceChannel',
         width: 100,
-        render: (v: string | null) => v ?? DASH,
+        render: (v: string | null) => sourceLabel(v,'channel'),
       },
       {
         title: '督办状态',
@@ -576,7 +549,7 @@ const ComplaintList: React.FC = () => {
         width: 130,
         render: (_: unknown, r) => (
           <Tag color={SUPERVISION_COLOR[r.supervisionStatusCode] ?? 'default'}>
-            {r.supervisionStatusName}
+            {namedLabel(r.supervisionStatusCode,r.supervisionStatusName,'supervision_status')}
           </Tag>
         ),
       },
@@ -586,11 +559,11 @@ const ComplaintList: React.FC = () => {
         width: 110,
         render: (_: unknown, r) =>
           r.sourceEventStatusCode === 'unknown' ? (
-            <Tooltip title="宜接就办接口尚未对接（批次 G6），来源处置状态暂不可知">
-              <Tag color="default">{r.sourceEventStatusName}</Tag>
+            <Tooltip title="暂未获取来源处置状态">
+              <Tag color="default">{namedLabel(r.sourceEventStatusCode,r.sourceEventStatusName,'source_event_status')}</Tag>
             </Tooltip>
           ) : (
-            <Tag color="cyan">{r.sourceEventStatusName}</Tag>
+            <Tag color="cyan">{namedLabel(r.sourceEventStatusCode,r.sourceEventStatusName,'source_event_status')}</Tag>
           ),
       },
       {
@@ -655,7 +628,7 @@ const ComplaintList: React.FC = () => {
               详情
             </Button>
             {/* 责任单位不再在这里改：2026-09-20 裁定「匹配责任单位」收敛进纠偏入口，
-                总账只留详情 / 交办 / 归库——enterprise_code 与 enterprise_name 由纠偏成对写回。 */}
+                总账只留详情 / 交办 / 不交办处理——enterprise_code 与 enterprise_name 由纠偏成对写回。 */}
             {r.activeDispatchId ? (
               // 已有进行中交办：不再提供第二次交办，只能查看
               <Button
@@ -673,6 +646,7 @@ const ComplaintList: React.FC = () => {
                 type="link"
                 size="small"
                 icon={<SendOutlined />}
+                disabled={!createAccess.can}
                 onClick={() => {
                   dispatchForm.resetFields();
                   dispatchForm.setFieldsValue({
@@ -688,11 +662,11 @@ const ComplaintList: React.FC = () => {
               </Button>
             )}
             {r.activeDispatchId ? (
-              // 后端状态机要求：有进行中交办时归库会被拒（409 INVALID_STATE_TRANSITION）
-              <Tooltip title="该诉求已有进行中交办，请先到「敏感交办」受控撤销后再归库">
+              // 后端状态机要求：有进行中交办时不交办处理会被拒（409 INVALID_STATE_TRANSITION）
+              <Tooltip title="该诉求已有进行中交办，请先到「敏感交办」受控撤销后再不交办处理">
                 <span>
                   <Button type="link" size="small" icon={<InboxOutlined />} disabled>
-                    归库
+                    不交办处理
                   </Button>
                 </span>
               </Tooltip>
@@ -700,8 +674,8 @@ const ComplaintList: React.FC = () => {
               <Dropdown
                 menu={{
                   items: [
-                    { key: 'no_dispatch_needed', label: '无需交办归库' },
-                    { key: 'false_positive', label: '误报归库' },
+                    { key: 'no_dispatch_needed', label: '无需交办' },
+                    { key: 'false_positive', label: '标记误报' },
                   ],
                   onClick: ({ key }) => {
                     dispositionForm.resetFields();
@@ -709,8 +683,8 @@ const ComplaintList: React.FC = () => {
                   },
                 }}
               >
-                <Button type="link" size="small" icon={<InboxOutlined />}>
-                  归库
+                <Button type="link" size="small" icon={<InboxOutlined />} disabled={!dispositionAccess.can}>
+                  不交办处理
                 </Button>
               </Dropdown>
             )}
@@ -718,7 +692,7 @@ const ComplaintList: React.FC = () => {
         ),
       },
     ],
-    [navigate, dispatchForm, dispositionForm, clearEnterpriseError, fetchEnterprises]
+    [navigate, dispatchForm, dispositionForm, clearEnterpriseError, fetchEnterprises,createAccess.can,dispositionAccess.can]
   );
 
   return (
@@ -731,39 +705,39 @@ const ComplaintList: React.FC = () => {
           showIcon
           style={{ marginBottom: 16 }}
           message={'筛选字典加载失败：' + dictError}
-          description="筛选下拉项来自服务端字典接口，加载失败时下拉为空；表格数据不受影响。"
+          description="部分筛选条件暂不可用，请稍后重试。"
         />
       )}
 
       {sourceStatusAlert}
 
-      <Row gutter={12} style={{ marginBottom: 16 }}>
-        <Col span={4}>
+      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="总诉求" value={stats ? stats.total : '—'} loading={firstLoading} prefix={<FileTextOutlined />} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="未交办" value={stats ? stats.notDispatchedCount : '—'} loading={firstLoading} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="待匹配" value={stats ? stats.pendingMatchCount : '—'} loading={firstLoading} valueStyle={{ color: '#faad14' }} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="已交办" value={stats ? stats.activeDispatchCount : '—'} loading={firstLoading} prefix={<ClockCircleOutlined />} valueStyle={{ color: '#1677ff' }} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="敏感诉求" value={stats ? stats.sensitiveCount : '—'} loading={firstLoading} prefix={<WarningOutlined />} valueStyle={{ color: '#ff4d4f' }} />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Statistic title="本系统办结" value={stats ? stats.closedInSystemCount : '—'} loading={firstLoading} prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} />
           </Card>
@@ -771,9 +745,11 @@ const ComplaintList: React.FC = () => {
       </Row>
 
       <Card>
-        <Space style={{ marginBottom: 16 }} wrap>
+        <Space className="filter-bar" wrap>
+          <Input.Search aria-label="来源案件主类型" placeholder="来源案件主类型（原值精确查询）" allowClear maxLength={128} style={{width:250}} onSearch={value=>applyFilter({sourceMajorCategory:value.trim()||undefined})} onChange={event=>{if(!event.target.value)applyFilter({sourceMajorCategory:undefined});}}/>
+          <Input.Search aria-label="来源案件二级类型" placeholder="来源案件二级类型（原值精确查询）" allowClear maxLength={128} style={{width:250}} onSearch={value=>applyFilter({sourceMinorCategory:value.trim()||undefined})} onChange={event=>{if(!event.target.value)applyFilter({sourceMinorCategory:undefined});}}/>
           <Input.Search
-            placeholder="搜索编号/标题/内容/地址"
+            placeholder="搜索编号/来源公文号/标题/内容/地址"
             prefix={<SearchOutlined />}
             value={keywordInput}
             allowClear
@@ -868,25 +844,18 @@ const ComplaintList: React.FC = () => {
               applyFilter({ range: next });
             }}
           />
-          <Tooltip title="导出与批量导入尚未实现（后端未提供接口）">
-            <Button icon={<ExportOutlined />} disabled>
-              导出Excel
-            </Button>
+          <Tooltip title="导出当前页已加载的诉求，可用 Excel 打开">
+            <Button icon={<ExportOutlined />} disabled={loading || !!error || !data?.content.length}
+              onClick={() => downloadCsv([
+                ['诉求编号','诉求标题','业务类型','诉求类别','所属区县','交办单位','敏感诉求','纠偏状态','受理时间'],
+                ...(data?.content ?? []).map(row => [row.complaintNo,row.title,row.businessTypeName,row.complaintTypeName,
+                  row.districtName,row.enterpriseName,row.isSensitive?'是':'否',row.correctionStatusName,row.receivedAt])
+              ], '诉求列表-本页.csv')}>导出本页</Button>
           </Tooltip>
-          <Tooltip title="批量导入尚未实现（后端未提供接口）">
-            <Button icon={<ImportOutlined />} disabled>
-              批量导入
-            </Button>
-          </Tooltip>
+          <ComplaintImportDialog onImported={reload}/>
         </Space>
 
-        <div style={{ marginBottom: 12 }}>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            统计卡片为当前筛选条件下的全量口径（不受分页影响）。来源状态「未接入」表示宜接就办接口尚未对接（批次 G6），不代表处置进度。
-            <br />
-            「超期」是时效维度，只由来源同步路径派生（批次 G6／迁移 M11）；「无时效信息」= 来源没给结论，不等于「未超期」，历史存量尚未回填。
-          </Typography.Text>
-        </div>
+
 
         {error ? (
           <Result
@@ -940,18 +909,12 @@ const ComplaintList: React.FC = () => {
           setDispatchTarget(null);
           dispatchForm.resetFields();
         }}
-        onOk={() => void handleCreateDispatch()}
+        okButtonProps={{disabled:!createAccess.can}} onOk={() => void handleCreateDispatch()}
         confirmLoading={submitting}
         okText="创建交办"
         width={560}
       >
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="同一诉求同一轮只能有一条有效交办"
-          description="该约束由数据库唯一键保证，不依赖前端判断。若并发下已存在交办，后端返回 created=false，此处会提示「该诉求已有交办」并刷新，不会产生第二条。"
-        />
+
         {enterpriseErrorAlert}
         <Form form={dispatchForm} layout="vertical">
           <Form.Item
@@ -1005,22 +968,22 @@ const ComplaintList: React.FC = () => {
         </Form>
       </Modal>
 
-      {/* ---------- G2：归库（无需交办 / 误报） ---------- */}
+      {/* ---------- G2：不交办处理（无需交办 / 误报） ---------- */}
       <Modal
         title={
           dispositionTarget
-            ? (dispositionTarget.kind === 'false_positive' ? '误报归库 - ' : '无需交办归库 - ') +
+            ? (dispositionTarget.kind === 'false_positive' ? '标记误报 - ' : '无需交办 - ') +
               dispositionTarget.row.complaintNo
-            : '归库'
+            : '不交办处理'
         }
         open={dispositionTarget !== null}
         onCancel={() => {
           setDispositionTarget(null);
           dispositionForm.resetFields();
         }}
-        onOk={() => void handleDisposition()}
+        okButtonProps={{disabled:!dispositionAccess.can}} onOk={() => void handleDisposition()}
         confirmLoading={submitting}
-        okText="确认归库"
+        okText="确认不交办处理"
         width={520}
       >
         <Alert
@@ -1029,16 +992,16 @@ const ComplaintList: React.FC = () => {
           style={{ marginBottom: 12 }}
           message={
             dispositionTarget?.kind === 'false_positive'
-              ? '误报归库会取消该诉求的敏感标记'
-              : '无需交办归库不产生交办记录'
+              ? '标记误报会取消该诉求的敏感标记'
+              : '无需交办不产生交办记录'
           }
-          description="两种归库都会写入留痕（操作者、时间、原因），都不产生交办、不推送企业。此操作不可撤销，如需交办请重新发起。"
+          description="处理后仍保留在诉求总账，不会直接进入分析库，也不会推送企业。系统会记录处理人、时间和原因；后续需要交办时可重新发起。"
         />
         <Form form={dispositionForm} layout="vertical">
           <Form.Item
             name="reason"
-            label="归库原因"
-            rules={[{ required: true, message: '必须填写归库原因' }]}
+            label="不交办处理原因"
+            rules={[{ required: true, message: '必须填写不交办处理原因' }]}
           >
             <Input.TextArea rows={3} placeholder="例如：经人工复核为一般咨询，无需交办" />
           </Form.Item>

@@ -1,0 +1,2567 @@
+[
+  {
+    "path": "public/lib/Cesium/Cesium-es6.d.ts",
+    "sha256": "a8bf46a9a015e075a5985b39a1ee0522fb38fd27e735a0a59175a1451f4c1197",
+    "bytes": 1398778
+  },
+  {
+    "path": "public/lib/Cesium/Cesium-es6.js",
+    "sha256": "b0fa0cb506c70dee6490caf685e2d1e2ba85c1777ec705c9b1176e7e0f104151",
+    "bytes": 14013956
+  },
+  {
+    "path": "public/lib/Cesium/Cesium.js",
+    "sha256": "da54d3f35c6dbd6cc45c22f0f04a9c55b392421a0ed9b7097b282f8f80ff3401",
+    "bytes": 5690361
+  },
+  {
+    "path": "public/lib/Cesium/version.txt",
+    "sha256": "0dbf28d61dc7f1bff1bfb901448b271321a80cf5d83e1a4d7fd344cb84ad43d2",
+    "bytes": 10
+  },
+  {
+    "path": "public/lib/Cesium/Assets/approximateTerrainHeights.json",
+    "sha256": "617137b21255fb81da6dc5e00d2211093156b1501e5d2758baefbe87b9faa946",
+    "bytes": 528939
+  },
+  {
+    "path": "public/lib/Cesium/gltf/CMan0005.jpg",
+    "sha256": "35e77c245afde211137e7d4d08042f616ec7c1a812308945720d468935d4973d",
+    "bytes": 573526
+  },
+  {
+    "path": "public/lib/Cesium/gltf/man.gltf",
+    "sha256": "2164daba8f624850c0fefde845502560570e3351b16e19b517490e46641ea8c8",
+    "bytes": 2136620
+  },
+  {
+    "path": "public/lib/Cesium/gltf/walk.bin",
+    "sha256": "12e85607f2087a3b1692b7f6750295d77b6c9192981255c465b54762ebad7ade",
+    "bytes": 537076
+  },
+  {
+    "path": "public/lib/Cesium/gltf/walk.gltf",
+    "sha256": "9db9a3651c9d311a56792bdc9e37dda556fce3214cc79b111954f9790d12fd30",
+    "bytes": 34919
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/basis_transcoder.wasm",
+    "sha256": "96849a2719b431008533806199ad4e513ef5a5f632b87e452fb1eea961d5730e",
+    "bytes": 500839
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/crunch.js",
+    "sha256": "fe4e090aeb7a19d67525379ff82b173e694ec5b82d921eb47fa7b2dc394dffce",
+    "bytes": 19211
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/crunch.wasm",
+    "sha256": "b2181ba9ca738931ee1fd9d38f4afe62e5bde9e93cd20c87e655b932cb1e9c02",
+    "bytes": 40377
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/draco_decoder.wasm",
+    "sha256": "369f516e49b6807cd0718410be9af5acf30c16af521c535042aefdad297fcb89",
+    "bytes": 330634
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/draco_decoder_new.wasm",
+    "sha256": "92322d1cabaa55c8e216c983e58670043b063af59d86a7b6ae8201452ff7987f",
+    "bytes": 281481
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/earcut.wasm",
+    "sha256": "6991c8495244be73e68a445cc4790231c41e2f37267222974ba4a9f3ac95cc4f",
+    "bytes": 67856
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/Module.wasm",
+    "sha256": "62890c011c27c2556eca0b0433c63ae4fb62131ba71b60ff60c9d65b31ef9680",
+    "bytes": 12078
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/OSGBToS3M.wasm",
+    "sha256": "f4adadfb4a337ccf61a1581178ab983b9944e9e9d11fc23771d21e13cdfde1bb",
+    "bytes": 15021057
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/lighter.css",
+    "sha256": "6b9f2e394659c606ab734d464235f30935649dc0ca281c86e2678b046869a25b",
+    "bytes": 4997
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/lighterShared.css",
+    "sha256": "00cf7a38db2f02d7b52340caa6d1861a34b1c8d737bb8932a192236f8cd436bf",
+    "bytes": 878
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/shared.css",
+    "sha256": "0785e7f7f4cf067b76338f9ab1ef988cb4a8f3b8239d7434b00bca20c5519358",
+    "bytes": 1575
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/widgets.css",
+    "sha256": "7814776016d071a93000ecbe6d8a3c2e1f06aedfde4186f4612b38f05b3eb897",
+    "bytes": 25907
+  },
+  {
+    "path": "public/lib/Cesium/Workers/ArcType-29cf2197.js",
+    "sha256": "0df4103cc3f12118f04b58373324747176a0d92255bd93eae61857171afc1b12",
+    "bytes": 110
+  },
+  {
+    "path": "public/lib/Cesium/Workers/arrayFill-4513d7ad.js",
+    "sha256": "916df929ad5f85f53b4bb863968aadda9b667995ca22cdd7293a97b12a4ef00d",
+    "bytes": 335
+  },
+  {
+    "path": "public/lib/Cesium/Workers/arrayRemoveDuplicates-d2f048c5.js",
+    "sha256": "80213bdbbbebb6092a76579071a747514cdb83908b9bffbc4023ef14db69ae82",
+    "bytes": 499
+  },
+  {
+    "path": "public/lib/Cesium/Workers/AttributeCompression-90851096.js",
+    "sha256": "be23203aa90d6accef0d8bae7fc786733e0a4b97e11052db01efe6a88fcffe3c",
+    "bytes": 2597
+  },
+  {
+    "path": "public/lib/Cesium/Workers/BoundingRectangle-3ed8ca6d.js",
+    "sha256": "2cde926ddb7c3f9d84b7c70e6a88e168a75a26dc60650dd9c5da232de533d5db",
+    "bytes": 2276
+  },
+  {
+    "path": "public/lib/Cesium/Workers/BoundingRectangle-4da544fa.js",
+    "sha256": "0a1d6174ffdd5995ba1f569ed34ae404f58164da404d1afc3ef61d7d427783fa",
+    "bytes": 2275
+  },
+  {
+    "path": "public/lib/Cesium/Workers/BoundingRectangle-602e4bac.js",
+    "sha256": "6ab1f42093e59cf8b27354bce42d60afb94c730bb4abf5354801e773a6347667",
+    "bytes": 2275
+  },
+  {
+    "path": "public/lib/Cesium/Workers/BoxGeometry-96a5dbc5.js",
+    "sha256": "acfff00b7aaa06655a5ad186216f7b94d75265d6573c9826ad9c919727a8cb93",
+    "bytes": 7873
+  },
+  {
+    "path": "public/lib/Cesium/Workers/BoxGeometry-b7ff4b7f.js",
+    "sha256": "313fbbb7acf294cd4ca1a5e2ef067d32524221202aa94149900870f05a7abd65",
+    "bytes": 7843
+  },
+  {
+    "path": "public/lib/Cesium/Workers/BoxGeometry-d7be4edf.js",
+    "sha256": "fd7a710cb8b0a475406d9061061f762805c5867d628e1dae1d515ba4d6d14ff2",
+    "bytes": 7843
+  },
+  {
+    "path": "public/lib/Cesium/Workers/buildModuleUrl-3addfe33.js",
+    "sha256": "01fe535d03e0c6350abf832783e4eb992d9349cf8cf004ba903c38019ed1acae",
+    "bytes": 34141
+  },
+  {
+    "path": "public/lib/Cesium/Workers/buildModuleUrl-4e1b81e7.js",
+    "sha256": "683739c8230879a91e01ac0cc7e0ce41e9221c9c1686776e1b3f523b776e9600",
+    "bytes": 45457
+  },
+  {
+    "path": "public/lib/Cesium/Workers/Cartesian2-47311507.js",
+    "sha256": "9f2e8c68d18ec8b78300e7edf72cd7157af1c5550ac580f66d2cc4b9fe56315f",
+    "bytes": 15335
+  },
+  {
+    "path": "public/lib/Cesium/Workers/Cartesian4-3ca25aab.js",
+    "sha256": "b54b6d26543310ce40bcff6b8ce44223a884cc46fd7ebce3f4047c6cda220d05",
+    "bytes": 4810
+  },
+  {
+    "path": "public/lib/Cesium/Workers/Cartographic-3309dd0d.js",
+    "sha256": "79643526f3508504b315b271b907f6a53212a9677d2e79f3af0a241cde39f82c",
+    "bytes": 8810
+  },
+  {
+    "path": "public/lib/Cesium/Workers/cesiumWorkerBootstrapper.js",
+    "sha256": "3eb6fdd6714607740f6d88afd5eead96445673beafe0722d34175794269aaf9f",
+    "bytes": 17503
+  },
+  {
+    "path": "public/lib/Cesium/Workers/Check-7b2a090c.js",
+    "sha256": "2c8a748f84fc77aa0e70fd033ae3b353a0328fb8e20b291f49ca55825b2f03bb",
+    "bytes": 2031
+  },
+  {
+    "path": "public/lib/Cesium/Workers/Color-5008547b.js",
+    "sha256": "df833dc5716edcab74830f49648a48849a77ae82a94c2e00bb57ce31ba1d6fc6",
+    "bytes": 14762
+  },
+  {
+    "path": "public/lib/Cesium/Workers/combineGeometry.js",
+    "sha256": "6574fd180e8bdafcc6d86c2a0dc47dc5b764da89e031c4829e56c5ee799210c4",
+    "bytes": 922
+  },
+  {
+    "path": "public/lib/Cesium/Workers/ComponentDatatype-c140a87d.js",
+    "sha256": "bdaf0774febbd7e3643d30f3117a0bd0214927d277033a7c8e524487342ca9df",
+    "bytes": 2559
+  },
+  {
+    "path": "public/lib/Cesium/Workers/CompressedTextureBuffer-290a1ff4.js",
+    "sha256": "b0dd6a638fdae98e2b4676c5899057fcdb4dc3cfa3edbf657f1d2cf1ff93a5e1",
+    "bytes": 631
+  },
+  {
+    "path": "public/lib/Cesium/Workers/computeShadowRatio.js",
+    "sha256": "eb8bcbcc201503a2ee3a156c54a51df0ea1f973fec1e0217f29f11a12b10c3a9",
+    "bytes": 1362
+  },
+  {
+    "path": "public/lib/Cesium/Workers/CoplanarPolygonGeometryLibrary-2f69c0dd.js",
+    "sha256": "b2a2277ad2ccfad04ecfe08ebb9cb937cbeb058b887f0f59259058b9ef208176",
+    "bytes": 1517
+  },
+  {
+    "path": "public/lib/Cesium/Workers/CoplanarPolygonGeometryLibrary-91a09d4d.js",
+    "sha256": "a4ca856fcf514bafcacc1dbc852d62b0223a72d33559e11b7a363f7f149fdb38",
+    "bytes": 1517
+  },
+  {
+    "path": "public/lib/Cesium/Workers/CoplanarPolygonGeometryLibrary-e9907932.js",
+    "sha256": "7f8d65c84d91bca1d97d928664e71aa89cd735c191d4a06bcbca9ed6526ff878",
+    "bytes": 1517
+  },
+  {
+    "path": "public/lib/Cesium/Workers/CorridorGeometryLibrary-3fc03967.js",
+    "sha256": "105a652a652253c9f064d6eecb9447ab09e96dc92586a8a197a8d79a524fb96b",
+    "bytes": 5221
+  },
+  {
+    "path": "public/lib/Cesium/Workers/CorridorGeometryLibrary-882a6a8d.js",
+    "sha256": "dbeb2c39c35789bb6cd36c656df50c4c8598cfaa380f44bd735e3b393759fcc6",
+    "bytes": 5221
+  },
+  {
+    "path": "public/lib/Cesium/Workers/CorridorGeometryLibrary-ae9330fc.js",
+    "sha256": "3d2d17f7cc47556181180c608ca4ef828b4c4bbc0b87939042a3dce6858e68ea",
+    "bytes": 5221
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createBoxGeometry.js",
+    "sha256": "06e7eb28829056e8cd179fc0aa37b41529d9408a79c27f1ae289377aa1c64c72",
+    "bytes": 672
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createBoxOutlineGeometry.js",
+    "sha256": "e08abac9d209071a4105443ab1520d3e3227e071288bca80f2b6dd3f520a463c",
+    "bytes": 3104
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createCircleGeometry.js",
+    "sha256": "e3dcc9591bc3718a37d2484aab30f602c1d2e30e5d14c4d0335a42abc7dcc6d5",
+    "bytes": 3148
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createCircleOutlineGeometry.js",
+    "sha256": "44c0a5984c6d740c3d8958dcb4ed422b63af067f4fd46467560b61fc86ceb8f5",
+    "bytes": 2258
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createCoplanarPolygonGeometry.js",
+    "sha256": "e2d7516445079dfacb736d04b9a233078978604d48965f9b782637d5aa549ccc",
+    "bytes": 6408
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createCoplanarPolygonOutlineGeometry.js",
+    "sha256": "ace232493a060813a5a6e4bccab6adeb64e5c8d0c43e28039bce2e031ca2ef99",
+    "bytes": 2886
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createCorridorGeometry.js",
+    "sha256": "df085fd97838f8a91fa89c7caec7c5c98a5984111ebd8a87f9efd7b87d946c0f",
+    "bytes": 16941
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createCorridorOutlineGeometry.js",
+    "sha256": "14e13af9e3251b2a66d6c4573b318a9116636beff74fed00321cc478719cf910",
+    "bytes": 7490
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createCylinderGeometry.js",
+    "sha256": "5abd0a826fe417e4fd051410e37610867b56a0d0df0d973fd6e852471d48d501",
+    "bytes": 755
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createCylinderOutlineGeometry.js",
+    "sha256": "0cdda1fb0a5cfeb2f21bd6bd21e6ecf8567f6f0474c13703f4c6a244629081dd",
+    "bytes": 2925
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createEllipseGeometry.js",
+    "sha256": "ad2158e3d98200d3613c927a04bb10daac2513af82f9538e840e3dc6dbe04ed9",
+    "bytes": 1023
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createEllipseOutlineGeometry.js",
+    "sha256": "e4e36244d760cbb9bd70112215017ae7dabc5b8d92b6d7514951b434059b4138",
+    "bytes": 829
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createEllipsoidGeometry.js",
+    "sha256": "98e39270324387a03135456dec2b8f621578376e40a2e5ed9b13f043659dc435",
+    "bytes": 719
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createEllipsoidOutlineGeometry.js",
+    "sha256": "5de01076ff48fb5519c3f0ac5c24a6516862212ebd91d9f29db32806635ca365",
+    "bytes": 719
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createFrustumGeometry.js",
+    "sha256": "570424b050fb1b5c0c153ccb5a3b2f909ed26370c8cf2138918ee46c99a7bcb5",
+    "bytes": 641
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createFrustumOutlineGeometry.js",
+    "sha256": "0269a1cde8b57f85d2220208c9756a4787d55ecd13fd5c20ad6d6a3a2d5dc287",
+    "bytes": 3005
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createGeometry.js",
+    "sha256": "379f25e739b1565dad597b5f124a9554e5856431d6ba51a65ed9a4328d797805",
+    "bytes": 1174
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createGroundPolylineGeometry.js",
+    "sha256": "9d984b54a1ac31f3e079f007bc89a66a74a26627acff8a0f3709c602222dc849",
+    "bytes": 19893
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createPlaneGeometry.js",
+    "sha256": "753f68fe1e8db2e14abb1f63c2945a174c6ab9c570afdfe5724f0428ee35c5a0",
+    "bytes": 2644
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createPlaneOutlineGeometry.js",
+    "sha256": "859a5a0d3f82d9de90918b5393f8249d263ed2e189bb77e09ebe2bf7b197d9fa",
+    "bytes": 1291
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createPolygonGeometry.js",
+    "sha256": "fdaaed1272b6f1a9b48cdfc77e1caff7e5f39c89c28aa2a7b26b35ea0dd8914c",
+    "bytes": 15409
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createPolygonOutlineGeometry.js",
+    "sha256": "286649265a2eaa00970a66d557789f772fac221b8543f326f026061ed345157e",
+    "bytes": 7556
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createPolylineGeometry.js",
+    "sha256": "9662030c1eea4e9b51bec03f1696c83133114882008781c5e946d46db5a67bf8",
+    "bytes": 7555
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createPolylineVolumeGeometry.js",
+    "sha256": "8ed63d13afdc432f337fbe04e2d3d812b42b637471f755ac331efed3c84f9e8b",
+    "bytes": 5938
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createPolylineVolumeOutlineGeometry.js",
+    "sha256": "ca07c7856f35811e23985cc116b31f2b90953eba4ad3ab02d1105d14c9cad9d0",
+    "bytes": 3725
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createRectangleGeometry.js",
+    "sha256": "b7a745b2e55b36655d4d80097ad244ce14cafa8d635fc258f3ea36ee486245f7",
+    "bytes": 16042
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createRectangleOutlineGeometry.js",
+    "sha256": "e497de94a41619c569e7333b363eacf617d2a7b3f2ba8f9359553e620ed63ad0",
+    "bytes": 6040
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createSimplePolylineGeometry.js",
+    "sha256": "8d84e7bd0483d0ca5dd9415c989cec6bd6a73feff864cefefcee2970ff32a9c2",
+    "bytes": 5420
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createSphereGeometry.js",
+    "sha256": "d1a2c00f368cdd1cb07cfbc890647a73a70db1d596b467bea384371d9744af71",
+    "bytes": 1672
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createSphereOutlineGeometry.js",
+    "sha256": "111572a866e7f25932c3ea7989c1312b676586244682be26eee4c45cb77485ff",
+    "bytes": 1658
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createTaskProcessorWorker.js",
+    "sha256": "c7f0a57a42aef95d79302ef734ccc1e27c51854cf39bb7ecedae6b004405106a",
+    "bytes": 812
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createVectorTileGeometries.js",
+    "sha256": "831e40a76a6f20c63fea479d01a1f03b6c885fdebdbfc810a26e30e63608a6ba",
+    "bytes": 5491
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createVectorTilePoints.js",
+    "sha256": "6d2e1d995599006af00bfa6bf3d79d09f4ecc0e34146d390911ab44cf5820aa2",
+    "bytes": 1038
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createVectorTilePolygons.js",
+    "sha256": "e0dc9f66268d70b1dcd8c95f481bae0c6c109fb4d24c2ee6170d17a0eb5deff9",
+    "bytes": 5200
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createVectorTilePolylines.js",
+    "sha256": "96aa77e2dffb450a3d54ad99814b58b6539442ec501dc20f21aa0e88a733a680",
+    "bytes": 2733
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createVerticesFromGoogleEarthEnterpriseBuffer.js",
+    "sha256": "9504e062cdd40b950511e32cac1b0248c803eeb9ee052f8abc4992685166f1c6",
+    "bytes": 7583
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createVerticesFromHeightmap.js",
+    "sha256": "302db88e82ef49e7929455bcfb3e999d27c22eadbead7463d879de2d1071a4fa",
+    "bytes": 26917
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createVerticesFromQuantizedTerrainMesh.js",
+    "sha256": "420990b219ed15b9d840a36d106af76f5740eccc232cac7ca3ac955a3d11e57d",
+    "bytes": 10486
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createWallGeometry.js",
+    "sha256": "170aba788cba665f1a1d09247cf5f124b9f6a62f3c484c5543193b2912b48fd6",
+    "bytes": 6977
+  },
+  {
+    "path": "public/lib/Cesium/Workers/createWallOutlineGeometry.js",
+    "sha256": "ba864cf9fd68117b5ee3edccc9a80b6fca5148bb9d4bcf5fafe002e62e6f8928",
+    "bytes": 4010
+  },
+  {
+    "path": "public/lib/Cesium/Workers/CylinderGeometry-493cb0cd.js",
+    "sha256": "8b45551888b97bc40862c24f02694f50519332602613ff93d79ac1b14a96072d",
+    "bytes": 4884
+  },
+  {
+    "path": "public/lib/Cesium/Workers/CylinderGeometry-5c5fc56f.js",
+    "sha256": "184af98dceeb369ab41cafc64be365d95aed17221627432c5e55ed9809d624f7",
+    "bytes": 4916
+  },
+  {
+    "path": "public/lib/Cesium/Workers/CylinderGeometry-c7466b40.js",
+    "sha256": "a0e93f74df76eb94f3a34cd56a10356c04f58b3db02a2bead82cec4a992798a1",
+    "bytes": 4884
+  },
+  {
+    "path": "public/lib/Cesium/Workers/CylinderGeometryLibrary-aa453214.js",
+    "sha256": "4f5dfed474131babb38212b192c88452be8cfa465bbf0b34f7e82c3efa05ee32",
+    "bytes": 467
+  },
+  {
+    "path": "public/lib/Cesium/Workers/decodeDraco.js",
+    "sha256": "d84f7aa8a2690c5e7b55722f2fd7500835af4114b56fbe93675687dd49e79df3",
+    "bytes": 4010
+  },
+  {
+    "path": "public/lib/Cesium/Workers/decodeGoogleEarthEnterprisePacket.js",
+    "sha256": "04ac11a9c22c3bbdf5a3136c062c332b4b7773a9c35fe550077734e98c3228f9",
+    "bytes": 4109
+  },
+  {
+    "path": "public/lib/Cesium/Workers/earcut-2.2.1-20c8012f.js",
+    "sha256": "882097775b6747907a6704aadc7f9fdd3b04d157fde67071d151da92529694da",
+    "bytes": 6439
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipseGeometry-56e329a6.js",
+    "sha256": "a5816cb7f5176d10b767eb77219c9a25bd274aa0a4b1dab8390add12ac9831f6",
+    "bytes": 15506
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipseGeometry-7f9740a6.js",
+    "sha256": "ac800922617f5e5f430082dbcbac35e7ef50e1063eaed4637d562a98ca15e522",
+    "bytes": 15459
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipseGeometry-ca96332b.js",
+    "sha256": "a4f8d7b8fb1a4b89f398f1ad0d8c4ce66ab9c3a04bbfe1b5dfc87c03d2ce93e0",
+    "bytes": 15459
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipseGeometryLibrary-3ba74aff.js",
+    "sha256": "673f169517cefa59256182668906b478ac7cd02c097c7c2a1c7c6538fea8ae59",
+    "bytes": 2941
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipseGeometryLibrary-518dda08.js",
+    "sha256": "922af86d688fc786a6a91ea2b2bb03130c9a31b259a6fcfb98ab1d6fc37605b9",
+    "bytes": 2941
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipseGeometryLibrary-96261ee5.js",
+    "sha256": "59ec7b0d4ea5ac8f1043bf08e54dd7732b1c65054dcc1e16522923ac068a95bc",
+    "bytes": 2941
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipseOutlineGeometry-309bf945.js",
+    "sha256": "67c67b01431996a95824538ff5c053ef1728689d48c0095afdc6744659ec242d",
+    "bytes": 6085
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipseOutlineGeometry-4e6de759.js",
+    "sha256": "aee71afbf1dc5dd4ab59281f1d42a62bc11522750fdf83290d9ced5c2a9720a9",
+    "bytes": 6115
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipseOutlineGeometry-751c295d.js",
+    "sha256": "35c8109848abdb43bc52409db5f1d0bb6fe3d7339f94dd6b18b76c434379fd96",
+    "bytes": 6085
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipsoidGeodesic-0f19ac62.js",
+    "sha256": "c799c2a7f40a9b64f4d1fd402d08c9b2edd1835dcceea976e695de2b68fc28fb",
+    "bytes": 3855
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipsoidGeometry-a1b2cd83.js",
+    "sha256": "722ca1f43385eb1f4e33242718cf19a2cc3f1254b5cadfbb6822bade673dba31",
+    "bytes": 7179
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipsoidGeometry-a51b99b3.js",
+    "sha256": "499ebb319d9ab3302d580ec0a629faaf9d506c9e79cf92b67b83e47b30d12535",
+    "bytes": 7179
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipsoidGeometry-be29e04c.js",
+    "sha256": "615bfb9ffe59645d348c6d9acbdd696efbf8fada1805760657e439971e668a95",
+    "bytes": 7213
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipsoidOutlineGeometry-7e6fabdb.js",
+    "sha256": "c393ad9f7df173f915f0a3c2d250d8c0605d78e22e3ee1df8036023048ed362a",
+    "bytes": 4904
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipsoidOutlineGeometry-9c25a52a.js",
+    "sha256": "81e90f29de3fd247e1419c83c9954d69fc4de5c24021070ec111ae04d5e48ebd",
+    "bytes": 4874
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipsoidOutlineGeometry-e7aeaf6b.js",
+    "sha256": "8ff04e328eaf9d62332866fe8802cd334293206297f066dde235338593fee401",
+    "bytes": 4874
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipsoidRhumbLine-ed1a6bf4.js",
+    "sha256": "1c4214ca7971f83a90d5f61a5f2e03642f52f59adc18a72baddde64229067d13",
+    "bytes": 6341
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipsoidTangentPlane-1bcfe5c5.js",
+    "sha256": "51116b968cc80ce633a0378a238b425269e7df7199822ad761b93d682f073f4c",
+    "bytes": 4849
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipsoidTangentPlane-806cff3c.js",
+    "sha256": "fe59e2172e2d0df951f7b1fede91307028e8ff885f32a8e3f5228b76f7374f1c",
+    "bytes": 4849
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EllipsoidTangentPlane-edb321d3.js",
+    "sha256": "5c420a32ab917b23acae33e0ce0add6742137fadde9916e14f60fc97509b824a",
+    "bytes": 4879
+  },
+  {
+    "path": "public/lib/Cesium/Workers/EncodedCartesian3-f1396b05.js",
+    "sha256": "bffed41348edf8da7110ecc38a963731c8106dc1444bae0a6f1bb356905a5211",
+    "bytes": 793
+  },
+  {
+    "path": "public/lib/Cesium/Workers/Event-16a2dfbf.js",
+    "sha256": "62ca93706a1bdab68ad456c213b92989b0dfa14fb570853775a02762f947c2a9",
+    "bytes": 1085
+  },
+  {
+    "path": "public/lib/Cesium/Workers/FeatureDetection-c3b71206.js",
+    "sha256": "42209796134561b5126b5e13eb839f11958cd79cf12d4f10d42a3de9bbea1ea4",
+    "bytes": 5748
+  },
+  {
+    "path": "public/lib/Cesium/Workers/FrustumGeometry-9829a27c.js",
+    "sha256": "97392a5083e204f451abef822c1b01be0f7a322129441e556ef459f02c432171",
+    "bytes": 20765
+  },
+  {
+    "path": "public/lib/Cesium/Workers/FrustumGeometry-9d84ae9b.js",
+    "sha256": "1586d103ae044687cdf1dec4c2d777238bbcdd01afb2a3d34eff257804844209",
+    "bytes": 20804
+  },
+  {
+    "path": "public/lib/Cesium/Workers/FrustumGeometry-9e43638e.js",
+    "sha256": "6c562ae0dad1c0fcf9a9eec8a23585d8df0d1a746e41bfab2c5b57d41093674b",
+    "bytes": 20765
+  },
+  {
+    "path": "public/lib/Cesium/Workers/GeometryAttribute-288c5fa0.js",
+    "sha256": "09baa26839685e01a178b9bc77fd21e68d7daac694f2e6d26996706f74909b48",
+    "bytes": 49027
+  },
+  {
+    "path": "public/lib/Cesium/Workers/GeometryAttribute-3a88ba31.js",
+    "sha256": "536844a18ed64a0edee6e6dff4cf816903a8939d45deb67a588ef0dfe60903c6",
+    "bytes": 49027
+  },
+  {
+    "path": "public/lib/Cesium/Workers/GeometryAttribute-b20c1286.js",
+    "sha256": "3a53b331940df87eb2be8bbfba863f5028ab3c4ca1cdfe7cbce47d5d2e9e8606",
+    "bytes": 49027
+  },
+  {
+    "path": "public/lib/Cesium/Workers/GeometryAttributes-252e9929.js",
+    "sha256": "40af9babb36e0cf43b67b793ad19eca4ca3ca67561347c59351c74c094dcf840",
+    "bytes": 279
+  },
+  {
+    "path": "public/lib/Cesium/Workers/GeometryInstance-333cbc9d.js",
+    "sha256": "13562e1e536106e11dc9f3c6b0d99a2b3c8c267949b4f7c24a49e1fd532902ea",
+    "bytes": 473
+  },
+  {
+    "path": "public/lib/Cesium/Workers/GeometryInstance-68aae013.js",
+    "sha256": "978d64b644eb6978354fdca347c3b4a961ba6b27875708ef9a1c9d521d80b71a",
+    "bytes": 473
+  },
+  {
+    "path": "public/lib/Cesium/Workers/GeometryInstance-d02653d4.js",
+    "sha256": "5f7795679cb6b4311be453e831b94f2a608136b30ab458994df727997636b065",
+    "bytes": 473
+  },
+  {
+    "path": "public/lib/Cesium/Workers/GeometryOffsetAttribute-fbeb6f1a.js",
+    "sha256": "063eea285648ef5c674d59fcd77b7d4b61896dfd4233ed45007e3847df18f4cc",
+    "bytes": 119
+  },
+  {
+    "path": "public/lib/Cesium/Workers/GeometryPipeline-5a4cfceb.js",
+    "sha256": "c871d81da2682a82b3df9aa7cfbf125a3ef7644acf7e45fb8ec3072dbeedce0f",
+    "bytes": 30608
+  },
+  {
+    "path": "public/lib/Cesium/Workers/GeometryPipeline-9d1ef0b6.js",
+    "sha256": "61bfefbdd72c4d7f3c98f72b13e03564cd96303a25cc0ca4660724c76dc4fd8c",
+    "bytes": 30642
+  },
+  {
+    "path": "public/lib/Cesium/Workers/GeometryPipeline-db4d917c.js",
+    "sha256": "c11d3ca157a308d8cc6bdd76a37c4212e9ab676c2de4b7e3ea91fec5468c31d3",
+    "bytes": 30608
+  },
+  {
+    "path": "public/lib/Cesium/Workers/getStringFromTypedArray-c37342c0.js",
+    "sha256": "ca1cc31e675663a022184ef0381211e5f265b151bfc4076751d27f35cc7f2cad",
+    "bytes": 1159
+  },
+  {
+    "path": "public/lib/Cesium/Workers/IndexDatatype-8a5eead4.js",
+    "sha256": "efcd61f8339e291fe348a6fe24d1fc3af8aa34fbf0257df8080cdc95c2504988",
+    "bytes": 1024
+  },
+  {
+    "path": "public/lib/Cesium/Workers/indexedDBWorker.js",
+    "sha256": "015deba36db163186ef756a62b670d4124fe9680d847d171ef44e2ef6ec43622",
+    "bytes": 7224
+  },
+  {
+    "path": "public/lib/Cesium/Workers/IntersectionTests-6eb562ca.js",
+    "sha256": "2e33af3a82b920038ac9b6f99a5ca3a1d38cf49ae916aad8aaccca2b60feff27",
+    "bytes": 13086
+  },
+  {
+    "path": "public/lib/Cesium/Workers/IntersectionTests-7386ffbf.js",
+    "sha256": "062a1ab2675bd14cf9e04cb40066449e133073a39bdb7aec89f80eb8511bb468",
+    "bytes": 13116
+  },
+  {
+    "path": "public/lib/Cesium/Workers/IntersectionTests-b121a969.js",
+    "sha256": "60b15896b00570341fd908386c96faa1264fa275b4fd8827baaed137e6f9c164",
+    "bytes": 13086
+  },
+  {
+    "path": "public/lib/Cesium/Workers/Math-119be1a3.js",
+    "sha256": "6181b221618b0569a0b5cfd6d6b2560dc428727b6406cca9c8246bf8f58890b7",
+    "bytes": 6518
+  },
+  {
+    "path": "public/lib/Cesium/Workers/MVTWorker.js",
+    "sha256": "4f3dc671a4eed712e8513cf42c66ca7d9ac7df478a079a5551c2777209fbe70c",
+    "bytes": 152779
+  },
+  {
+    "path": "public/lib/Cesium/Workers/MVTWorkTile.js",
+    "sha256": "f48e33dd5fa19db2d23a5f1f7cc3c1e3a2b10b3c9a24920f9165c9978349a601",
+    "bytes": 262217
+  },
+  {
+    "path": "public/lib/Cesium/Workers/OrientedBoundingBox-5ed98d81.js",
+    "sha256": "450ff336ffc054fbd9b18832dc4959246c839e910f324b6e763a55ec28b3b9e2",
+    "bytes": 13761
+  },
+  {
+    "path": "public/lib/Cesium/Workers/OrientedBoundingBox-87d59c2a.js",
+    "sha256": "3d4fc5b8251bab8058f3e0fb7bf4778a3e700de591fee3684478b402caaf9012",
+    "bytes": 13795
+  },
+  {
+    "path": "public/lib/Cesium/Workers/OrientedBoundingBox-bfa2f286.js",
+    "sha256": "af46cc9a0db95d4377162c29abcd4f7c86e559979ad22c600874a2ac7c69eef3",
+    "bytes": 13761
+  },
+  {
+    "path": "public/lib/Cesium/Workers/OSGBToS3M-caf1aa52.js",
+    "sha256": "0c33017315f3404b522e6db6b03f9b880ae0a36115ed3b703b46d16cfadd143f",
+    "bytes": 153295
+  },
+  {
+    "path": "public/lib/Cesium/Workers/pako_inflate-f73548c4.js",
+    "sha256": "037cd2d1c2bd9f5ad3707cbf2b1e13154512e14978e9a2d04771942466ae60a3",
+    "bytes": 23068
+  },
+  {
+    "path": "public/lib/Cesium/Workers/pbf-2b242707.js",
+    "sha256": "f96b39349128a2187ef23e949b6ce6a96bd09d768319b621a3a25631505e6817",
+    "bytes": 10195
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PixelFormat-fd637eac.js",
+    "sha256": "369da2715ebbd08210e410fab8f4dfed016b844402eb247d5ca5aa52f6e7e695",
+    "bytes": 4420
+  },
+  {
+    "path": "public/lib/Cesium/Workers/Plane-7ad10060.js",
+    "sha256": "79d867ce18fa587d538235815a644688dac191d3d2f7ace6ad669cfed7fa5623",
+    "bytes": 1519
+  },
+  {
+    "path": "public/lib/Cesium/Workers/Plane-7ae8294c.js",
+    "sha256": "4cf372c9b3e126db472c9f0f59717ac21c87d9de23b5b423ccfa570fe61836db",
+    "bytes": 1519
+  },
+  {
+    "path": "public/lib/Cesium/Workers/Plane-e2d409ef.js",
+    "sha256": "1a724a8bd6759c315f7d7b4c7c383b7eadf542bd968fa9802caf3da5d6c0a62d",
+    "bytes": 1519
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolygonGeometryLibrary-3442038e.js",
+    "sha256": "31407e12ca4a884c6106e18e3b751d12b6fd3e8641d1efd753558d8f00bd1685",
+    "bytes": 8566
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolygonGeometryLibrary-92af6f1e.js",
+    "sha256": "6b07d2d13dc6a2cb2498ac8cd45933c91b1dcc3b2eceb5b62495da762c8388e9",
+    "bytes": 8566
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolygonGeometryLibrary-d0ae0c37.js",
+    "sha256": "46947be63995df292e9bf22c952f196118cddf4ae11d2ee7975b31c7fc49ea16",
+    "bytes": 8566
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolygonPipeline-03d66105.js",
+    "sha256": "2c966d5d16a1d177201dd1765d77d437d1d7187d604969a84e923a94a03f64cb",
+    "bytes": 5014
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolygonPipeline-660e1625.js",
+    "sha256": "d0bfdfa0b69ac9f1b5c3cb1dc339c224bdf0bcd4417d35ad29376782ed1dbc32",
+    "bytes": 5041
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolygonPipeline-7dde113e.js",
+    "sha256": "c47c91546e868adf24e628abb9a6627cf621b0f6b06736702ce6e318bd52408e",
+    "bytes": 5014
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolylinePipeline-145ba528.js",
+    "sha256": "c0a09278eb777f7e88388d002ee8aac0b9bad692ada1e5da789c9f0573c4cc89",
+    "bytes": 5429
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolylinePipeline-2fe9092e.js",
+    "sha256": "f9ef7e934cc5bea0800707a92afbf8a495248d725d011bafac43252ceaeec432",
+    "bytes": 5429
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolylinePipeline-3dc1685e.js",
+    "sha256": "1d9539b146a3c42560bfa8db3d6ba7c4fd6ee83483dea1684f92b6099e09c53f",
+    "bytes": 5429
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolylineVolumeGeometryLibrary-4a7c15e7.js",
+    "sha256": "985d8329c0ee66ecd889c741645c742edeb9ac4530d049fe40dd16150444b677",
+    "bytes": 10102
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolylineVolumeGeometryLibrary-4e266dd3.js",
+    "sha256": "4f10106b6ddc1ccefd319a548e81d7b9f60c680ce7d64a3c0131e287f2f8abff",
+    "bytes": 10102
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PolylineVolumeGeometryLibrary-9eff1196.js",
+    "sha256": "da6de82c94650e1e3a65fe4cbc99b1448e331d4f817b934137e1ec851c503a94",
+    "bytes": 10102
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PrimitivePipeline-0b3267ef.js",
+    "sha256": "eaa8f58556a3d32440c480cd4d0526c028d8f504bcad76ef6bcbbebf1babe620",
+    "bytes": 9973
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PrimitivePipeline-3b9da2a6.js",
+    "sha256": "cb370d4d6721c054ae980a01999320eea9a9cd52f323d25185c5db10b801d12a",
+    "bytes": 10003
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PrimitivePipeline-41a83738.js",
+    "sha256": "bea9ac6d0b71c9ee61ff329460f770229f97b33c0ddc38b854277fb128b90034",
+    "bytes": 9973
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PrimitiveType-108f83af.js",
+    "sha256": "9beede30bfbc9bff2c245a5a6f307f12bcc4d056ecab78dea929d7f82694cf63",
+    "bytes": 36946
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PrimitiveType-a54dc62f.js",
+    "sha256": "026ccbc4b8372cd62ec56918f6b4c7dfbf727e608c4657ecae33486ca24ff5a2",
+    "bytes": 25167
+  },
+  {
+    "path": "public/lib/Cesium/Workers/PrimitiveType-fdf5fb28.js",
+    "sha256": "276250dba8bf81d622b4ec207a23aed489093e803bed9eca0820aad632851328",
+    "bytes": 36946
+  },
+  {
+    "path": "public/lib/Cesium/Workers/RectangleGeometryLibrary-58857ef1.js",
+    "sha256": "7780b5e432b9428ab8ccbc1e7f055456c49edd46c948d5df739bffca7ab2ffc9",
+    "bytes": 2431
+  },
+  {
+    "path": "public/lib/Cesium/Workers/RectangleGeometryLibrary-9785d88b.js",
+    "sha256": "d47c973d31f1417e7845034902aaefde6083d369919d2bdfd67a87438f190e8a",
+    "bytes": 2432
+  },
+  {
+    "path": "public/lib/Cesium/Workers/RectangleGeometryLibrary-c5e00a95.js",
+    "sha256": "e94436129954f4d505b1ca895414066494906b8ec1e413d0fa3831468a27e7c6",
+    "bytes": 2431
+  },
+  {
+    "path": "public/lib/Cesium/Workers/RuntimeError-4a5c8994.js",
+    "sha256": "d8428da7ae8f72e348b3516618e206c7fc20a57fcfce5ed715acce0a7db80cbf",
+    "bytes": 426
+  },
+  {
+    "path": "public/lib/Cesium/Workers/S3MBTilesParser.js",
+    "sha256": "1012c263441a408a65f1736053602d14c5fa17e1800712365ac0a976d27e6e29",
+    "bytes": 246763
+  },
+  {
+    "path": "public/lib/Cesium/Workers/S3MCompressType-03fe8ae5.js",
+    "sha256": "e6430254cbe434cad6fcdb27046cb580a7a436a39d4b853c21fc43868e6fb428",
+    "bytes": 31044
+  },
+  {
+    "path": "public/lib/Cesium/Workers/S3MCompressType-2fb457d2.js",
+    "sha256": "f9cae7a74a8815ae43e1522a5ee8d5ecc139ee9574c8b3669a3b95519c8ddbbb",
+    "bytes": 31044
+  },
+  {
+    "path": "public/lib/Cesium/Workers/S3MCompressType-555475e4.js",
+    "sha256": "5850ba44874c7d14b6883fa190ffd05aec5c114fdfc97cdc0a4cc952e040215f",
+    "bytes": 20987
+  },
+  {
+    "path": "public/lib/Cesium/Workers/S3MTilesParser.js",
+    "sha256": "c88de01ba1fd080be4070787760e051595cad9cbe0147eaba0e575ca694c67f4",
+    "bytes": 12060
+  },
+  {
+    "path": "public/lib/Cesium/Workers/TerrainEncoding-0cf4c59f.js",
+    "sha256": "ea6cc7c97085faa204fd55379a59ddd3f5b89a93391d17de7be6b05e87018bd9",
+    "bytes": 8771
+  },
+  {
+    "path": "public/lib/Cesium/Workers/TerrainEncoding-48d8e248.js",
+    "sha256": "ad03e34cd078cd25ff7339d0b6cdc0e4a4c10301d3f46944479a16e25f332213",
+    "bytes": 8741
+  },
+  {
+    "path": "public/lib/Cesium/Workers/TerrainEncoding-6cd76d6e.js",
+    "sha256": "04236855a22e091c2c628ae5a0dbda1374c4ca41febffed9df7ad71650e44ed2",
+    "bytes": 8741
+  },
+  {
+    "path": "public/lib/Cesium/Workers/TerrainEncoding-c4158481.js",
+    "sha256": "830716ae03224beb49f60d2d041d4e10d79e184217b0d9b8e7f8e6768f5fa3ec",
+    "bytes": 9160
+  },
+  {
+    "path": "public/lib/Cesium/Workers/transcodeCRNToDXT.js",
+    "sha256": "781fbc3a62eaefe7e9a88396cdb3ef0d6324c7761b527d2fe187b9c586b19d8d",
+    "bytes": 2999
+  },
+  {
+    "path": "public/lib/Cesium/Workers/transcodeCRNToDXTprevious.js",
+    "sha256": "70789c8f9bae23dea5448bf8bfde66b0ed319fb26cceaae848a41e04e1271f7a",
+    "bytes": 140056
+  },
+  {
+    "path": "public/lib/Cesium/Workers/transcodeKTX2.js",
+    "sha256": "aaa2ed1183b75a3f7a8d7459db340603f168cb274afd6d0b8796787c1bec4bcf",
+    "bytes": 19275
+  },
+  {
+    "path": "public/lib/Cesium/Workers/transferTypedArrayTest.js",
+    "sha256": "055f5f6f2fbe01cfea1a2a99cd036a122dedc8545dbb1051c9e273178256b0fb",
+    "bytes": 183
+  },
+  {
+    "path": "public/lib/Cesium/Workers/UnZipData.js",
+    "sha256": "8c51bb2cb03a7b4af30eaf3c16b1cf257b9e72189dbcbda4f79049603e21bfdd",
+    "bytes": 2555
+  },
+  {
+    "path": "public/lib/Cesium/Workers/UnZipTerrainData.js",
+    "sha256": "f8e86b70fc9abdf62897497dfd991264d16d26ea7afab194e3d90232f9e895e1",
+    "bytes": 37881
+  },
+  {
+    "path": "public/lib/Cesium/Workers/upsampleQuantizedTerrainMesh.js",
+    "sha256": "73fe3d42ada588a982fdd6293b33605684b462334aa5c9648aa155b55bd7d64b",
+    "bytes": 9145
+  },
+  {
+    "path": "public/lib/Cesium/Workers/VertexFormat-6446fca0.js",
+    "sha256": "9f8493c5c435fb68422452beb63852cdbe6159115af3313e2ddf6e6f6caf4438",
+    "bytes": 1424
+  },
+  {
+    "path": "public/lib/Cesium/Workers/WallGeometryLibrary-81096bc7.js",
+    "sha256": "1f88820778d8ad9767656bee2c8cfbdef83a6ae3fca34508bd1bffde0a4c2028",
+    "bytes": 2713
+  },
+  {
+    "path": "public/lib/Cesium/Workers/WallGeometryLibrary-b09494a6.js",
+    "sha256": "d6d438410e28d561de7f65b3ab588c77fad8da46fe9c0b435811bcad663a7f58",
+    "bytes": 2713
+  },
+  {
+    "path": "public/lib/Cesium/Workers/WallGeometryLibrary-f13a584f.js",
+    "sha256": "08747cb12c0b57f0686bfb64b27a23ccf9b8c7cbcb262824b3127eb5fa2cea73",
+    "bytes": 2713
+  },
+  {
+    "path": "public/lib/Cesium/Workers/WebGLConstants-4ae0db90.js",
+    "sha256": "d4bb1a37b24ca9f9d4670edfdaca642ae8ca941fb6ff9e75b34ed1e235cc2431",
+    "bytes": 13385
+  },
+  {
+    "path": "public/lib/Cesium/Workers/WebMercatorProjection-01b1b5e7.js",
+    "sha256": "c854f27d569c99c4eeba64aae28fc5f40186dd77a64cfacac8074bdfd84502cb",
+    "bytes": 1211
+  },
+  {
+    "path": "public/lib/Cesium/Workers/websocketTaskProcessor.js",
+    "sha256": "8636ac7e723ea2b8eff9c555cc3558c591047f72f01eae3dbda1cbdcc5d997d2",
+    "bytes": 2652
+  },
+  {
+    "path": "public/lib/Cesium/Workers/when-b60132fc.js",
+    "sha256": "80f8d42fdc06aaf9373a3f1937ba2e5ee30060846684eed93463320516df5705",
+    "bytes": 4239
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_0.json",
+    "sha256": "e237150cd0eea0a7ed0b7f22e4b6747df004f942c935a1e7ffdd80cd577cd1a6",
+    "bytes": 67428
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_1.json",
+    "sha256": "1ab7d87ff25a4bebf72935747f12915be4639c48fc6b533845fa734fa4af5139",
+    "bytes": 67315
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_10.json",
+    "sha256": "b37c4639e6f613fa94ad0609a0eeabc9807d617344aa7a67bebc77e27968db67",
+    "bytes": 65986
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_11.json",
+    "sha256": "68cb136cdd4ca779a5b0bd066fbb9a042bc7d3dc3b9b0d956cd31e314bad6de5",
+    "bytes": 65012
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_12.json",
+    "sha256": "1b64211eed315944c39f2a7b9c4dc13737a51b70713f423eee28bb95d4f170e3",
+    "bytes": 64664
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_13.json",
+    "sha256": "c11cf78c83d149c8302e778add401a381cd25d4959d3a70e44f89d3f8261facb",
+    "bytes": 65854
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_14.json",
+    "sha256": "759e5e31e0235ed6975f91ea5fa5485dafb98c2239678c2dc6d04c679947da86",
+    "bytes": 65547
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_15.json",
+    "sha256": "2eb51008e1c922bac9cd61694027b3f1accf45c773495c07038f7a35f18d4712",
+    "bytes": 65711
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_16.json",
+    "sha256": "999d4b8d9111568d737e8b01737a673826b0e4b04798b9f345a51e7fc847be19",
+    "bytes": 66031
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_17.json",
+    "sha256": "4620d32d59cdf240964fba25e927e0c7a59182c3a12bcacfebb326d4351c69e9",
+    "bytes": 65624
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_18.json",
+    "sha256": "61d8732d7463698aeb1090c8c1900de3948bfe99f88b0b324cfc57424bec974a",
+    "bytes": 65311
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_19.json",
+    "sha256": "2cf182d747d0e172a4d3a1c2414c56c482afc7d57e45973b219e761f9a08021b",
+    "bytes": 65539
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_2.json",
+    "sha256": "19f8256e619f6ccbdfd577a071958d98371e91f5332a93ab830c2776c242fc54",
+    "bytes": 67804
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_20.json",
+    "sha256": "5fcd008bcc1deba6240d168872b2b41ef458bee5fc5ede7b31c5bf95d0c3fb13",
+    "bytes": 65331
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_21.json",
+    "sha256": "6b23f620712e72b82ba463c54d801e0adeed28f903a95c3c7ca85cae51aee620",
+    "bytes": 64845
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_22.json",
+    "sha256": "9d81109cfdad7d1c78b075373f7f5b80276daec090f2e5a9d7bd8f29dc1e70bf",
+    "bytes": 64979
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_23.json",
+    "sha256": "866a84651a1701c58a7ab066e3e36378f3ce1279993371acf61dc46b690d65ff",
+    "bytes": 66086
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_24.json",
+    "sha256": "dbe57a21439e06dc55cd94508c02133012a92a362350be317ab918193582a69a",
+    "bytes": 64896
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_25.json",
+    "sha256": "23adb13c3fbadf0cfae41b083384d7eb4ba29a35615f61490b8f0dcd298f72c4",
+    "bytes": 64955
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_26.json",
+    "sha256": "df6bdef5aca9c34c379590988d8c66a6cdc3d2fa403e351af4ec4afe0dc61740",
+    "bytes": 65312
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_27.json",
+    "sha256": "0d766e1bc1f6f88685bdefaae524999188c2e4f8c671b9d91bb0b81283ced670",
+    "bytes": 27598
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_3.json",
+    "sha256": "2226a38698b243a3464901db80fad9667d7ec05cd0d5b6d4e9b8d0f953b195d9",
+    "bytes": 66408
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_4.json",
+    "sha256": "153b5ecc8bf6a8dae923c8ec073859a7b29e018e4a0695259df24271c176254a",
+    "bytes": 65903
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_5.json",
+    "sha256": "f99e90568c6d961adc5c5f30fb03cf871dc0c825a0590dc795e52bcdfa0e8ab7",
+    "bytes": 65381
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_6.json",
+    "sha256": "b0368f10597f5755b319db8bccf66dd8226660037cc48b0ec5498088221a114f",
+    "bytes": 65594
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_7.json",
+    "sha256": "78c49b0f838a32882cea5bb190c6d7366f8d228c16c32489cac82b68b2d73aa9",
+    "bytes": 67101
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_8.json",
+    "sha256": "45966fbccb8db0773c2cd3d698b3277454f334681ff889f3c894ba96c464f291",
+    "bytes": 66932
+  },
+  {
+    "path": "public/lib/Cesium/Assets/IAU2006_XYS/IAU2006_XYS_9.json",
+    "sha256": "974390959a3130c6fd6e9e4e9021164a7a19f05600de9e635ac3a016ab63824f",
+    "bytes": 66859
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Images/bing_maps_credit.png",
+    "sha256": "e5c3467a2532a0986ca0f90189e9bdae3222d3f1580d2e8c0261fb2bc2b4417f",
+    "bytes": 18831
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Images/cesium_credit.png",
+    "sha256": "20dadec44d030ec7de6193b0ee98329a896c4dcb4ed8f7a26d4781127b6fa989",
+    "bytes": 4242
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Images/google_earth_credit.png",
+    "sha256": "d4c3719a707ca487d847d7c8ea8ffc590f1297f987e95d1acf88d433b92c1c3f",
+    "bytes": 7703
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Images/ion-credit.png",
+    "sha256": "721870c1417e20d25e2d1b834e80c66908418e459dcf76c95bf2997dc0733289",
+    "bytes": 6028
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Images/logo.png",
+    "sha256": "1a4c52930b9543495e72e119e99fb75b6f3aa420297de00d8cb3fc82254bde59",
+    "bytes": 8825
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/arrow.png",
+    "sha256": "b54763cb672e1213f8f3c363b218a384874cc23c94c9d392e25191e3caf6d067",
+    "bytes": 18495
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/edgeStrokesTexture.png",
+    "sha256": "a6122690bc2f1a75f8121271fe11075803b22f9cadf568270db635696799f9f9",
+    "bytes": 15794
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/excavationregion_side.jpg",
+    "sha256": "120da7f04d8f36e570449a287f485e26ac7f4415d1db5f1e6b009fb49defa00a",
+    "bytes": 423392
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/excavationregion_side_Normal.jpg",
+    "sha256": "87440ef6954b85561ece4093a8081576ee21e13109976e738e302280e2e089bf",
+    "bytes": 538330
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/excavationregion_top.jpg",
+    "sha256": "df41643b60d0e33aac153fa6aade120aef39d83b5c4b8a4f02d7c28e575268a7",
+    "bytes": 264163
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/excavationregion_top_Normal.jpg",
+    "sha256": "0020e1f6d21b8224d1d43f979e7471f3a1b217c1982a0d47964fc5bbe3a20cbb",
+    "bytes": 742360
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/GlobalBkLayer.jpg",
+    "sha256": "9258cf9c7f357c6e6e932710b6fa14fc7e47253de0bb5e7e13a70e980d587c22",
+    "bytes": 208130
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/middle-edit.png",
+    "sha256": "847eba098c177a002fab220190573df92963906437e335a5ec0443755742d74c",
+    "bytes": 388
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/moonSmall.jpg",
+    "sha256": "380fa69424e1cd2268816e346dc56393bd1c809b8e0cb078e705ec469a5847db",
+    "bytes": 18196
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/noise.png",
+    "sha256": "c7bf482adf58ceb258f12c6ffaf7bd60778faf2ae7302a3c764a82e746c40ca7",
+    "bytes": 102510
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NoiseAndGrain.png",
+    "sha256": "6f24b13d9ac630f4538bd949bf71e763852e242b77599fa988aa52eb2a6865e7",
+    "bytes": 6677
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/pin.svg",
+    "sha256": "0d80bf787ae3b97d010f50195605d541501c08740994fb0b403f76449c007019",
+    "bytes": 348
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/smoke.png",
+    "sha256": "36b51646bfed01f6d701d85761aeb985754695105e5711e274ea272804b0fdf1",
+    "bytes": 38115
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/vertex-edit.png",
+    "sha256": "0b7947978b46a06457a313361e753cb6a60660e3a8a20120c8cc5740f02e6046",
+    "bytes": 410
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/waterNormals.jpg",
+    "sha256": "9ab17625d9a2b0541c14a1b24ae8e3e192b40882cc77729c46b5de5648a991a8",
+    "bytes": 294196
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/waterNormalsSmall.jpg",
+    "sha256": "ef35a21e3cbff36032d118ff1df951ad88c023c39562c44f5b2d46f308e98858",
+    "bytes": 34121
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Terrain/0/0/0.terrain",
+    "sha256": "943b95cfd4ecc28a68e8ad87d3f818e325a6817816f5e17618ded4cbdb93d641",
+    "bytes": 297610
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Terrain/0/1/0.terrain",
+    "sha256": "64c36d804dc28842dc705c606cdc3c5abf76a3e36e2e7ebb811a1cfd4a55cfb8",
+    "bytes": 297610
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/LensFlare/DirtMask.jpg",
+    "sha256": "3d06a15d04154f027e0b2b110c7c9952329b385682c327cdeb71e0e3c720f3d4",
+    "bytes": 113718
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/LensFlare/StarBurst.jpg",
+    "sha256": "c42ecef9345e34549fb9528e25cac8f38c9f8c43f73d812c2ccaf5909ab249a5",
+    "bytes": 195728
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/airfield.png",
+    "sha256": "9607228765a05a29c5feb0ded034ee7f2aa2e9641faf512fb122fba03e443b29",
+    "bytes": 1188
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/airport.png",
+    "sha256": "fbdde1b757753fbf54811a7733e78d43af43ffee204fa8169b295a3610e889fa",
+    "bytes": 1554
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/alcohol-shop.png",
+    "sha256": "920cc1449428757a73aee044d07e72a9c5e17535feb5754cfc43b4a1e6652cf6",
+    "bytes": 1293
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/america-football.png",
+    "sha256": "ed7a66dc97a71fb689cb1b5c1f5d2832644152668be8d011aee23310e34bbd3b",
+    "bytes": 2595
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/art-gallery.png",
+    "sha256": "b57e75127fe217af9fc0b9cfc67f53b3db7aa72b06b30ce443be89c0764b2b4a",
+    "bytes": 3159
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/bakery.png",
+    "sha256": "7f8fa5241c76569cee88f34bd21afc54d1cdcbffe8a1633fe91df23b28a3486a",
+    "bytes": 2714
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/bank.png",
+    "sha256": "fcb114b2229e1c2b01a21032958c49f405ef04e106b27cf91512852944b610d4",
+    "bytes": 936
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/bar.png",
+    "sha256": "be2709f48516f1b4203d3f10a9a24159e7761d91fe8f2276f860259d0ea73851",
+    "bytes": 1435
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/baseball.png",
+    "sha256": "24db293dfeabe9e77c3e1cd2f5ca26b61b8919961cf3415880d017be1aa0d3b3",
+    "bytes": 1838
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/basketball.png",
+    "sha256": "96bae0a41bccd20ccd8b496376df9415364dfc008b8eb6aaddff68371b5d0e96",
+    "bytes": 1318
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/beer.png",
+    "sha256": "8ad8f0c1414f5574103cb7e0d14c136292e847583ef06154c27f7765b6208474",
+    "bytes": 1403
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/bicycle.png",
+    "sha256": "d998b6e08bbcaa658ae6679e7197349518cf4cfd610ec1f69c8643a4f007186d",
+    "bytes": 3989
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/building.png",
+    "sha256": "d4375df9fc15b0eeb0b54680e27423a2d6d60ad17f515f99236510dbc246c6af",
+    "bytes": 1765
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/bus.png",
+    "sha256": "834a867a10afd8078f3ddee6d4231bf136b46c603afe31f6c089dfb55e47a9de",
+    "bytes": 998
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/cafe.png",
+    "sha256": "07ff7a0dd1da1496aeff569291ae3add49ede31dd35674858bf5fcf9d21d5728",
+    "bytes": 1518
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/camera.png",
+    "sha256": "c6dfe806ebed73bd168fbace390d6402a64c54bb7cdccd17ba5813d4469f90d6",
+    "bytes": 1976
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/campsite.png",
+    "sha256": "e3ed13ecf426166fded98e86057423ca2333ce3c3795a0efa5f8c3b8063475cb",
+    "bytes": 2411
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/car.png",
+    "sha256": "189c871c1ed9a60000276fcc375b368f06d0a72b2c1de1032ba1caddbc04f8f6",
+    "bytes": 1498
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/cemetery.png",
+    "sha256": "d066f21dea8cb8e667326b5c7399bc55c293881cc8b731acdc621b804a508d79",
+    "bytes": 967
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/cesium.png",
+    "sha256": "d5857cc955c248b95c0c12f2c533629e9c83f324b89eb56aa1b12a68a1f64256",
+    "bytes": 3610
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/chemist.png",
+    "sha256": "d4852a72e3baaa9efd61293963db89a72d4d0c910aec0419e92af630a1cd6390",
+    "bytes": 1603
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/cinema.png",
+    "sha256": "eba78ccef08d317d931b796b5630db396a4c6647f8d4b57764357e5e24d2599b",
+    "bytes": 1492
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/circle-stroked.png",
+    "sha256": "4a609e3399a2fad31b9e75bfdd17c4cc95e5b2f260f1d902aa1cb5b040c66523",
+    "bytes": 2126
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/circle.png",
+    "sha256": "05b7a313a6d4e47d7e13591f06dae1c4fc706146632fc7d9758d59f687d84ea9",
+    "bytes": 1459
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/city.png",
+    "sha256": "92539b16e075cb79b26daffffbff2bafaf1f09c91d5cda5b6a9ef8cbb4327341",
+    "bytes": 788
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/clothing-store.png",
+    "sha256": "34a527cd4f0d4ae5759e98921dbfe23699b4708288985f85b64ff75353b3ca97",
+    "bytes": 2037
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/college.png",
+    "sha256": "26a9bd248ba058414c36f7d140ff148c513b72170432b892c3ec5ce0f12bd146",
+    "bytes": 2502
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/commercial.png",
+    "sha256": "0deb24e319298a2d2890e76b44c4120c29ec89f6daf73cc2151bf28dbd960946",
+    "bytes": 1002
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/cricket.png",
+    "sha256": "07cc9f8540e7574d426cdd05fdab1bb71cdbe3b22c59f88ce6c9f20929d8ecaf",
+    "bytes": 1677
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/cross.png",
+    "sha256": "fb878dd32c44ca83370a944d766b0e992ee5a01accb54d81b19867beef03a2d0",
+    "bytes": 1888
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/dam.png",
+    "sha256": "2ab3ed160681f8894b76e6640de3c103caedb65f14e4565dcf123ed413502345",
+    "bytes": 1703
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/danger.png",
+    "sha256": "c268ee6d675c9db3562f44aaa7b46bca2815124f520365d3f517ccf3430e9e43",
+    "bytes": 2429
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/disability.png",
+    "sha256": "b2293d6411ae95ed7113bb6b7de19b5863164a697212d9642ddddef23634da45",
+    "bytes": 3437
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/dog-park.png",
+    "sha256": "6b3b662c50623e31e69e44b6ab80aad116a9cbe406814acc60920e7bb8b46c31",
+    "bytes": 3146
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/embassy.png",
+    "sha256": "83c902b90a4f5de175631f7b91ec2b1c3f461e0395f34507cb007572e1550137",
+    "bytes": 1680
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/emergency-telephone.png",
+    "sha256": "2b374c00679109719202b61c5f1ca4b108ba859318e4a12d27d9d65081491b5c",
+    "bytes": 1533
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/entrance.png",
+    "sha256": "ee93d08539b460126b32691e71781e26585003390dbab05ff9037d2b41722edc",
+    "bytes": 1307
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/farm.png",
+    "sha256": "a1ea51ae83cb6db984bda6f451de81b232cf1c193176142cb44f0664692f0772",
+    "bytes": 1686
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/fast-food.png",
+    "sha256": "24d42a6409ff1f518c776997ef7b07ecb76c4cf446248551f22814d8bbf4e99b",
+    "bytes": 2019
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/ferry.png",
+    "sha256": "97fcf2915ffe3ef62e8ee5a05672ae6dbdabd24d6aa1b4cb709302487ee06b2a",
+    "bytes": 2879
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/fire-station.png",
+    "sha256": "9e17c8f458a6e7a525eace12875c4f16acd4e6750a19271448bd0e926da860b2",
+    "bytes": 2228
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/fuel.png",
+    "sha256": "9e59bcba3f758998a6a55bf15174727e779207abf5a4f324c2cf5593fbac983a",
+    "bytes": 1741
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/garden.png",
+    "sha256": "9c860cde4e54fbec8709b243052f37700e0d64fb9aa61f33818b0fe838b7a8ae",
+    "bytes": 2057
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/gift.png",
+    "sha256": "4814551df01639c36c1333de3a99fb9b5a9d758dab186fc7132579d984ebcf96",
+    "bytes": 1606
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/golf.png",
+    "sha256": "9e447b620baddad979776dc4fa4634f6cc96c0e00682282e008f2041c6f98e57",
+    "bytes": 1999
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/grepin.png",
+    "sha256": "5030ae056e5a4f75391c61fcf12bbbc7d43a9d9f2e5a836730a09f3948895d2f",
+    "bytes": 6205
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/grocery.png",
+    "sha256": "6970b52af4509ab118d1d898a959bf631ae21e457803214fa9fab337770e8ca5",
+    "bytes": 1425
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/hairdresser.png",
+    "sha256": "ea92df398c4ced256fa144958d3a8b7d60ece46c226dcb8832868ffb1df7f7d5",
+    "bytes": 3301
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/harbor.png",
+    "sha256": "506545526fcfa6655206d840da1392b14d8a53ed63bb40ba907c1e503834fd90",
+    "bytes": 2048
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/heart.png",
+    "sha256": "f648f8d38ae47696c6596c106c6ef4b3984cfbbab2a83a82b911f5be7621067f",
+    "bytes": 1745
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/heliport.png",
+    "sha256": "4c5ec82bae0ef3ed3b38bd8089ce0ae64b4a9a2de6202855b22c736281f65440",
+    "bytes": 2059
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/hospital.png",
+    "sha256": "0ba68595b4d670a16c953894b2c1a0c342c072a2003cec4dbe630aa10efa1568",
+    "bytes": 909
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/ice-cream.png",
+    "sha256": "9ee2b16f1ae408f624d79cdbde704284579238c9daadda5938382abe1c4d543e",
+    "bytes": 1602
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/industrial.png",
+    "sha256": "4bc573a1d392c228c94d8a397a830cbb7093cb969469eda44019634e3885d5a1",
+    "bytes": 1092
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/land-use.png",
+    "sha256": "261d7de6098521628cc6c6bfa02a47d17931fe521cc8e47dc56bc5d83aa28443",
+    "bytes": 1773
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/laundry.png",
+    "sha256": "303c0bd8319b88b139997cabfba201eccb5afd1f7d5401eabd90c2c66ca2a43b",
+    "bytes": 2407
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/library.png",
+    "sha256": "511b7f8d3b1a2ea2205d8466b5d5129855a12af6cf1f5baba2f4b8a4dd5e562c",
+    "bytes": 1355
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/lighthouse.png",
+    "sha256": "dbccce865f1789f5326566145401366fa94913b6462672c5f252be803014c714",
+    "bytes": 1944
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/lodging.png",
+    "sha256": "02c1d81ef957255d27cb5fce70ef4f3bee79f4f8ec3b222f559f4375ef7ea6ac",
+    "bytes": 1362
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/logging.png",
+    "sha256": "056e8893c58ba30f5a0d9905194b0e60e4f31d9c1a59b5711d53647e4749528c",
+    "bytes": 1378
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/london-underground.png",
+    "sha256": "f8a41f09994d53d27335bbc70aab29a3d042583bb6b4520afaaffd0dd3f8e2fa",
+    "bytes": 2979
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/marker-stroked.png",
+    "sha256": "e21d955606f5911a981e4674ba1a491b68bdf37c7ed698be2bc210d7e86c9bc1",
+    "bytes": 3414
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/marker.png",
+    "sha256": "f8fcf45e3b3355ed9fba1050a26380927732300b54d8bb00b80fecf7bdcfc7d7",
+    "bytes": 2448
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/minefield.png",
+    "sha256": "aa1634ca37adee2849fba655285fed160763f53b7c5163f2753609c506312d64",
+    "bytes": 1907
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/mobilephone.png",
+    "sha256": "07e26f366da18b3fdeb53b6f29ff5bacdab5513758bbd6217ac41ebe5fdc104e",
+    "bytes": 1474
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/monument.png",
+    "sha256": "707a32e0c3b943941c396b18d6caa08fb0620a0ed07d84496ffad42cdb2d57e6",
+    "bytes": 1376
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/museum.png",
+    "sha256": "384ccd2fe0977c7b7a51635c6a16e81f6c906a355635ccda2ff33d897c16bd93",
+    "bytes": 2578
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/music.png",
+    "sha256": "c6bd30e02b950aeb2f5da711011d9b0bd5dbec687adc39a2f8f27025c8fb8508",
+    "bytes": 1371
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/oil-well.png",
+    "sha256": "f0c99b3662e9f1abe63a387c1da5cadd5336b155650d3daf678a8f18401c2fd5",
+    "bytes": 3357
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/park.png",
+    "sha256": "b5ee53a16dd03e32630218a2453065f3f6435ec9246028fa08785eb1d52ef54a",
+    "bytes": 2059
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/park2.png",
+    "sha256": "7fd262afad32b6d2aabeb0839b746468671e131b234a6265b40cb284a4003c4f",
+    "bytes": 2284
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/parking-garage.png",
+    "sha256": "251d73325620f24a16357f542967dc0112dce10679b27db3e7f489fd05ab9ded",
+    "bytes": 1563
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/parking.png",
+    "sha256": "3e62ecf1573c7b13d7be9cc28ffe9576e6e30963fb5d1df6dace01acd72dd447",
+    "bytes": 1250
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/pharmacy.png",
+    "sha256": "d382d9b8a06ac3a089b35a8137848c74fd41bf465b5d4b1a975ecebe4a992163",
+    "bytes": 2258
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/pitch.png",
+    "sha256": "abe872e09e244eab94237c254926b866dc1685a999833d95f443ac013fc976f3",
+    "bytes": 3288
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/place-of-worship.png",
+    "sha256": "03755fe12b0b412835dc807fde64973e6316df623d6a6e81ca052d750d85d344",
+    "bytes": 1111
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/playground.png",
+    "sha256": "0fac0aa78869da09e39e88632af82177d98723dd38141e81ab6b09a29129a7d8",
+    "bytes": 3856
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/police.png",
+    "sha256": "51592091904f75f4a25e37f87b326dc576bfacac9317aa6dfae2d0e0a8f117ba",
+    "bytes": 2194
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/polling-place.png",
+    "sha256": "0c4c8a5d1bbc1cc0f137cc1a357d418a442ad0bd3074a32819e9704fcbb265be",
+    "bytes": 1772
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/post.png",
+    "sha256": "cff1c2c20e77dece1eecf3dfb0fe10f139309ac78a2523bc9f01b4279e98e291",
+    "bytes": 1273
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/prison.png",
+    "sha256": "64636c8abe45f5cb8c3dc9ab73111683c4aa345691a5f17c327f909c774c0a0e",
+    "bytes": 1371
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/rail-above.png",
+    "sha256": "1b4555bb2169307c5ee1bc8afbd9ad97cfb36121e87e6413ae6ae137fb501109",
+    "bytes": 2071
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/rail-light.png",
+    "sha256": "e989ebe529a979dd7600f5a6c8039c32972bf424b70558baf134f779901f1703",
+    "bytes": 2816
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/rail-metro.png",
+    "sha256": "b89c202b5fdea739ce812932a22a3a15ab921a1aa2ceb0d801d4913f763095a5",
+    "bytes": 2249
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/rail-underground.png",
+    "sha256": "2be6c183a1b8604551a8c88d6437e826680da8b5fc75237b5e7108f38f347e11",
+    "bytes": 1996
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/rail.png",
+    "sha256": "4965beb812449d4abc1cdb9e30a3d1a5f7c18999571794e38eb92c8ad98cb048",
+    "bytes": 2073
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/religious-christian.png",
+    "sha256": "a74c5e18bacf1469c22e6ff84736a63187b0c21048799885acabd5fac25d5cc0",
+    "bytes": 948
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/religious-jewish.png",
+    "sha256": "fe5d53b2f1cc5e80a2e2fb6b9163ca27748c2a031ea2df4d0c614ffd338adba1",
+    "bytes": 2384
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/religious-muslim.png",
+    "sha256": "5b06c277d3638ee79172fb4ff89d84f1e475a1b25434953f19cb343e2b7c9fd1",
+    "bytes": 3925
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/restaurant.png",
+    "sha256": "85031df6b2174e72ec76dc0de6f4e54ab348426c7f738b11d8b7eb22bb72722e",
+    "bytes": 2499
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/roadblock.png",
+    "sha256": "d455530701e372698538f32a4d71029897e297e6124fb68550e5f323fee40bb0",
+    "bytes": 1312
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/rocket.png",
+    "sha256": "a167e92802b80e5bc5f78bea77d051007524782979a1b89eab9288d1e80ff5db",
+    "bytes": 1653
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/school.png",
+    "sha256": "1cc6087b652577de5e60525b5daa20c07cc126b526fd461f04381ae586a7025d",
+    "bytes": 3838
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/scooter.png",
+    "sha256": "4aa704ae97edb9bc514c0fc0ebe7adf2aa3f515ba3a15c6c17c25e17c8c1b8d6",
+    "bytes": 2942
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/shop.png",
+    "sha256": "1742dceb33d3ecd6dc66e5f5f1e637c65da7f4d92b066a2379dcb7e7e642ffc0",
+    "bytes": 1544
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/skiing.png",
+    "sha256": "576d29be1492b2973ffbaf688c7e8b8044f350c29317ad29060e3db29c3dc751",
+    "bytes": 3345
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/slaughterhouse.png",
+    "sha256": "69a20fc6dff36897cf3152a525d36752799d5805bf5f01ae5bcdeaa55abdd84c",
+    "bytes": 2270
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/soccer.png",
+    "sha256": "34308b14fe61df1608ddae5a8cd42e246487f11368f91867cb80e43590bfd4a0",
+    "bytes": 2420
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/square-stroked.png",
+    "sha256": "2b48882145df7a64dcfa5f94789875a3818eb5976494198a72dcfbd2ecc2984c",
+    "bytes": 650
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/square.png",
+    "sha256": "68ba096d343037fed0dd1271ef8cc0bad600a134ec6082ff613f1a340f3c0ed8",
+    "bytes": 582
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/star-stroked.png",
+    "sha256": "41f15812c35881118eee7b8eb3487538f2617ef8523f22ca738e2901e5752469",
+    "bytes": 3460
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/star.png",
+    "sha256": "58e516f3e338a1784198a5d3c05a486d41b55dca4122bf5c40986a9e0528460a",
+    "bytes": 2703
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/suitcase.png",
+    "sha256": "066e75d3303b4edf97086acd70e6e9aebf1165faf9c40adbf58f6585bc04552c",
+    "bytes": 1129
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/swimming.png",
+    "sha256": "3e7e12dc1197399ee43900a77444e7d8cfeba04732a7547f5b13d0e99fe70b63",
+    "bytes": 2106
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/telephone.png",
+    "sha256": "3d6da688ab5735a1137207e041fb0023dbb1d6d40e328c63664c8a2c737c5391",
+    "bytes": 1702
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/tennis.png",
+    "sha256": "7138863b8e10b5e78f5f0a02cf78b5f1f8912a97da433fe2df2c60f3b18ed556",
+    "bytes": 1658
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/theatre.png",
+    "sha256": "cb45d9d94385e3d164fddceb40c00cd6f3654de4fd44df0fa9d539ce1f68fecd",
+    "bytes": 3233
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/toilets.png",
+    "sha256": "e08a3ff947299d4f110fd7fd4ff30719d433d95cd52337341915f0e06c2f2f74",
+    "bytes": 2917
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/town-hall.png",
+    "sha256": "33b7f1bcd10f771f821de464367d785c20545075142bf341b250e5822124795e",
+    "bytes": 2005
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/town.png",
+    "sha256": "1402be94a92ac7884d0e0b0344db84f1b74170ed7012b7d95982e072b38eab59",
+    "bytes": 1125
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/triangle-stroked.png",
+    "sha256": "880ea63998f0cbe79730df17e22d2b6f87941a535408b06d5ef62df4b3d6fdba",
+    "bytes": 2837
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/triangle.png",
+    "sha256": "6ccfb06da43d5969424510d418e75b18c9c06fbbac2c6531105ccee98d26c551",
+    "bytes": 2137
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/village.png",
+    "sha256": "3e73ebd0f5c2bfa83764a1fd74a4e4de855e43a38acc9b75aaf423a8a63342d2",
+    "bytes": 2145
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/warehouse.png",
+    "sha256": "90fe8a1799906e59ed8fe7e0b35ca2ec66a39a592c3a8e5c8fe8f93a06eef387",
+    "bytes": 1908
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/waste-basket.png",
+    "sha256": "5ef33ea09aaf66f1f429efb735cd0b2fcc7b8372305f9acdc2d27f621b8fb889",
+    "bytes": 1917
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/water.png",
+    "sha256": "a1b40fc3d50e119865ed8b98fccee6b0d2d1da2133731074d3df8f1f5f5b38c9",
+    "bytes": 2411
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/wetland.png",
+    "sha256": "bdbb392ad5fd31edcc9973f72e1ebc03911204d98c2e786b07bb4adae65ca7b2",
+    "bytes": 2151
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/maki/zoo.png",
+    "sha256": "3c8d46e2412476547805180fb62d0c5fc23d7cbd65c71a6738ecb668effbcdcb",
+    "bytes": 2681
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/tilemapresource.xml",
+    "sha256": "23f2983b716914e8fb3f011c62d975e67b3ad72c17c92657cd956315d6694529",
+    "bytes": 780
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/SkyBox/tycho2t3_80_mx.jpg",
+    "sha256": "59ea5a16926909beb035795d180595cd07f6464bc89c24cc0ea2a4dcfa48767c",
+    "bytes": 134462
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/SkyBox/tycho2t3_80_my.jpg",
+    "sha256": "4f91253867a232935639438b093a67715ce494172dc204f658f7d4f56023c350",
+    "bytes": 167849
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/SkyBox/tycho2t3_80_mz.jpg",
+    "sha256": "081f40694bfca3257b70cce8effd0b0d0901166c32d7fd6f9beeca26797aa3bd",
+    "bytes": 183677
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/SkyBox/tycho2t3_80_px.jpg",
+    "sha256": "b25d3ce63547b5b7492d0e3f4f66f762ed891dfbe3be724beb943178c48dcc79",
+    "bytes": 138551
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/SkyBox/tycho2t3_80_py.jpg",
+    "sha256": "9697aa832d081683cc282d3bf265bed492cc16e3df039c78a7066667c9f162c9",
+    "bytes": 168829
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/SkyBox/tycho2t3_80_pz.jpg",
+    "sha256": "81cf9fd3cf3c7642c4b6337b461df90538ce16ae83d03f02008d0b7ca184835a",
+    "bytes": 168640
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/0/0/0.jpg",
+    "sha256": "919864197d2f27a165420331d47458614a056c36dcdf306ce89ed2248bd0041d",
+    "bytes": 12067
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/0/1/0.jpg",
+    "sha256": "f336509772ab57ee14e15c72579dd9fb0297c779c853d4c65db04bef78305b48",
+    "bytes": 14055
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/1/0/0.jpg",
+    "sha256": "3f40b94a0adb4efe212899374d3dd2bc7abe0491ce3a30d89f4392f498a328cf",
+    "bytes": 7278
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/1/0/1.jpg",
+    "sha256": "76393f9322c791564a9dc9529822637fdcc8b63418be502f4ef0ab9ca2708664",
+    "bytes": 11399
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/1/1/0.jpg",
+    "sha256": "cec03089c65ac612ef0655739fd1c66e068a98739aec325ba8743aca7338e6f1",
+    "bytes": 10652
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/1/1/1.jpg",
+    "sha256": "b1b860b99fd3fdc1a91eb09576563efd5cc91d95f4e869fb436a35c4ff8994c6",
+    "bytes": 13142
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/1/2/0.jpg",
+    "sha256": "7c59ff20319379afea17d029fca11ea497fd16a4f9da574137948b0631c71c63",
+    "bytes": 9643
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/1/2/1.jpg",
+    "sha256": "ed0209ef589d9cc34a26663f8c9ecdd63de705482692290328cfd2fff984451d",
+    "bytes": 15312
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/1/3/0.jpg",
+    "sha256": "d7fa5cd581a7b1d004d6dfcf329a09cd51859dd503f864a85756a35a456a0030",
+    "bytes": 10532
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/1/3/1.jpg",
+    "sha256": "8637acf2981f7209ec449a5812c855650a7eeeca5bd8a9d328310bb2a5295b39",
+    "bytes": 13262
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/0/0.jpg",
+    "sha256": "d12e2e52ae4d2e0c23ec15de8a1e006ccae0d3142b286578670cb4a8fd3f2311",
+    "bytes": 8157
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/0/1.jpg",
+    "sha256": "87a7ea00d62fe0517680cb58953e46faf9b325b9ce8e982c5a68b7e6c6c46822",
+    "bytes": 9307
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/0/2.jpg",
+    "sha256": "eecc7078cc54ec05f96cdf472519d5f159797015afaad23c2e56bed2fb79b481",
+    "bytes": 7891
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/0/3.jpg",
+    "sha256": "3d4dc525adaed0c3ddf5e5047bd1b348f2df473449c50b6b8175d5d073e7d88b",
+    "bytes": 10341
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/1/0.jpg",
+    "sha256": "e586e2884f6fe3a78291776b5bd4b190ffa0c9129c146ef78c7918e570e40e07",
+    "bytes": 7852
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/1/1.jpg",
+    "sha256": "bd0b39a8e734b137e8017cb02f1bae541452bea034be5bc7e2bf8a6cb8a220ae",
+    "bytes": 6850
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/1/2.jpg",
+    "sha256": "af8eb0a43423d28c7cb3a92553967205d9e3ced5738bd75f773d653fa5849c90",
+    "bytes": 11581
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/1/3.jpg",
+    "sha256": "48450e09b99e3283945bda85be1513a5ed28a4b1e58cd0b299c295d16c25935c",
+    "bytes": 15862
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/2/0.jpg",
+    "sha256": "4615813c56a8ee304d78d3768c489a4e00a5c4542f2d937b6be7db7c12b42b28",
+    "bytes": 10657
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/2/1.jpg",
+    "sha256": "66df8171de54015866691a00fd03ad8c5c11dc75466a70d11a43b2020eb63dba",
+    "bytes": 12456
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/2/2.jpg",
+    "sha256": "669649edf6e1e0e66ee03224a792d5fb09e8aef7a7a187697a3c10f9a7904c5c",
+    "bytes": 12262
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/2/3.jpg",
+    "sha256": "21585c5a2551120948ec5d0f04a533805b2ba63b7a5b961ad722fca25cf6299f",
+    "bytes": 14940
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/3/0.jpg",
+    "sha256": "640f7fd8fd3e5923ef1b021476f13c1e6919f339b17e539b9e20fe6bc16240f7",
+    "bytes": 9531
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/3/1.jpg",
+    "sha256": "e418706ca6c844a67aa71e448ef97e703d5c3a9e3791db255366dad49b4adeb9",
+    "bytes": 10234
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/3/2.jpg",
+    "sha256": "79d04283b385d193bbf5bd84d40744c8f5bc8d6f52dfab8d965b647fdb61d72f",
+    "bytes": 11678
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/3/3.jpg",
+    "sha256": "4e693d36407dab81266071edbca5915872284532498dfa29472cc71b2810482d",
+    "bytes": 10754
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/4/0.jpg",
+    "sha256": "46e6a0608fc8261bbeaad8fffa995ee3c85fddebb3b463f3e391634ea8a2a9ec",
+    "bytes": 8474
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/4/1.jpg",
+    "sha256": "0f341c2ace1b0b1803aa22c09c2ab8fde4c3a1a7cb013a963e750997deb6b1c2",
+    "bytes": 12265
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/4/2.jpg",
+    "sha256": "13a22c18a223ba4d8c2689793a5dff83e4e50b3790ddcb2a32ac5a97b8e1e0c8",
+    "bytes": 16477
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/4/3.jpg",
+    "sha256": "93c5f45d481111b4cd2d38792cfb049e5176be566b622028e0704151c0c23aaf",
+    "bytes": 11888
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/5/0.jpg",
+    "sha256": "7fbb096ff03dd162ae965a6c7e1c47e29599e7f3f1031ce59fb07ff669ca3995",
+    "bytes": 7540
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/5/1.jpg",
+    "sha256": "70b04e7e362cb4c80d8c7cce1a9401ef9c7606bb2c4b9de011dea58d79b8b4e6",
+    "bytes": 10274
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/5/2.jpg",
+    "sha256": "8d03e07689c97fff91497250f1cbeb19fbe5331f38bd91b38a44bb69745bb29b",
+    "bytes": 16112
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/5/3.jpg",
+    "sha256": "17b46ab558da6e9fa715a8ab365109bd808d897c53a9f5401da55dd6b9566a7a",
+    "bytes": 11877
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/6/0.jpg",
+    "sha256": "e25e95c8a6dcb21f6668541c925ee670c42fdc0c0d409c520bf29542a2b3fc52",
+    "bytes": 6636
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/6/1.jpg",
+    "sha256": "0a57813b25a70cf86a09bb251018e488b87e795cd2dbcaee7f8a9e80e7c449bf",
+    "bytes": 11564
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/6/2.jpg",
+    "sha256": "f0e9d28b216838c7c30375bb50a7c285203d4bad20eb581c2ee0b2468da20f8a",
+    "bytes": 16411
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/6/3.jpg",
+    "sha256": "c2a663dcf812d9a7034d48707a33a2f341d22a99aa277f69b0e06f064de26fab",
+    "bytes": 12756
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/7/0.jpg",
+    "sha256": "65c1f1b10a04387f2f64b3c4bc111803ddbf32dd2708f02eabca048e88e8edf3",
+    "bytes": 9032
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/7/1.jpg",
+    "sha256": "11ac8ae6af861b966d25ed660549d2a9ce164cb9e327a247655e949f967fbc2b",
+    "bytes": 12957
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/7/2.jpg",
+    "sha256": "59ca5b5264df0421c42cc9d3e6369d91ff9f5f387fc8fd578c25b113cae52b78",
+    "bytes": 11362
+  },
+  {
+    "path": "public/lib/Cesium/Assets/Textures/NaturalEarthII/2/7/3.jpg",
+    "sha256": "7064a9817de3f19fbfc66c36d575fdd10a8d976a93f655b7b1bee591b07314b7",
+    "bytes": 11859
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/Workers/basis_transcoder.js",
+    "sha256": "ef21aca03bd2bbe725793297e5b0ea3348b9b68ba3ef40877e96961632b3c94f",
+    "bytes": 33844
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/Workers/deflate.js",
+    "sha256": "d1459c1f9a5333ae5f3902496a250ec283334fb2f829c0aa679f834be14d0331",
+    "bytes": 16738
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/Workers/draco_decoder.js",
+    "sha256": "11798da0910b6fa2de7b85c48ff8512debf5e766b6bf29b6f66adcec94d04d1b",
+    "bytes": 754421
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/Workers/draco_wasm_wrapper.js",
+    "sha256": "70fce04c222b42a48ac3b4ae3b53c652853ff6d3aa563d3437c647f3b1b642c1",
+    "bytes": 65808
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/Workers/draco_wasm_wrapper_new.js",
+    "sha256": "c859a474dc634e54742c201913ffa760a40170a18d580685b97857cd8be0d5e7",
+    "bytes": 80990
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/Workers/ie-webworker-promise-polyfill.js",
+    "sha256": "d99a73fb4e28a28b2baa6620035e55afb7afe4627d9ba102d29c0725a71450d6",
+    "bytes": 6405
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/Workers/inflate.js",
+    "sha256": "4e343cc197ccec5392d648c6c0207e677dd9963c1e14a0818748171c8c32bf1a",
+    "bytes": 22043
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/Workers/ktx-parse.modern.js",
+    "sha256": "3ec5943502f86630ec5f703cff3b42f316df4a108b0267d0ef6ab783b476b4af",
+    "bytes": 9066
+  },
+  {
+    "path": "public/lib/Cesium/ThirdParty/Workers/PlotAlgo/PlotAlgoInclude.js",
+    "sha256": "6172d06f0962b9d3afa279a2e2adcf4fa2365003445ee4cb2e46684dee57a15a",
+    "bytes": 2514193
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Animation/Animation.css",
+    "sha256": "f5ec3a487a1dd4b7d7493dc334540d70eeef3a6323ba693a57d4265cdca764f8",
+    "bytes": 2319
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Animation/lighter.css",
+    "sha256": "80678bef6a81e89ed359676111181f411f4aae4dcbae1d4b9c27d8b184aa2876",
+    "bytes": 1679
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/BaseLayerPicker/BaseLayerPicker.css",
+    "sha256": "2c2a59c95558267dd97c0e087b79667ab7583427f857023aea1a00cca36d3eeb",
+    "bytes": 2072
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/BaseLayerPicker/lighter.css",
+    "sha256": "42ac666b04fe85d0a0a4c3b2630f5a441c878b594cdbe5dcc470ac3acb1da2da",
+    "bytes": 598
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Cesium3DTilesInspector/Cesium3DTilesInspector.css",
+    "sha256": "71835daa658e64fdb572fd2aac45f50640b19925f584121057a4366ded21055d",
+    "bytes": 1908
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/CesiumInspector/CesiumInspector.css",
+    "sha256": "a91c5af5cda3b2a5c8c063a84d2821c2f9d2f07164b54609c6ccd785219b38eb",
+    "bytes": 2190
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/CesiumWidget/CesiumWidget.css",
+    "sha256": "f45729f81a8270af3e0cdf0061a135c8ffc7aa07aaf2caabaaadf471f4c0bc11",
+    "bytes": 986
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/CesiumWidget/lighter.css",
+    "sha256": "54be52168f327a22c5275e9f42ae2fe7e3bf3186e70333539ce302c50a90077b",
+    "bytes": 263
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/FullscreenButton/FullscreenButton.css",
+    "sha256": "447c3dd46bc82454e9dec779b9cf71d37cd187b1799844f2716e7ca8aa2a0f5c",
+    "bytes": 101
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Geocoder/Geocoder.css",
+    "sha256": "1dcb462d91909f772f426c04fe8c94b1b04e610cae96f49cd01548b05292bfef",
+    "bytes": 1517
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Geocoder/lighter.css",
+    "sha256": "b083e2aec7f406bc0aacec1a7e80d99fe4ba9197663c49e820653a713856a75d",
+    "bytes": 391
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/compass.s3m",
+    "sha256": "444afb81c1352b2d26711d20ab3ef72db55b97ce697c0eaf226bcb3a5770f0bc",
+    "bytes": 15204
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/info-loading.gif",
+    "sha256": "28239b6aa67c3491f7893dfac9d84a2e2768ac450dc7d51c23548de33a7e3c05",
+    "bytes": 723
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/TimelineIcons.png",
+    "sha256": "526c03c04d87bd2250f67b6cbcec9c045437168dca76506e50297388046d5059",
+    "bytes": 781
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/InfoBox/InfoBox.css",
+    "sha256": "45d7bea23d26634f02e0a05c26d23f3e51bf60316ec7e3031ed96e281d908035",
+    "bytes": 1530
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/InfoBox/InfoBoxDescription.css",
+    "sha256": "8f2d126f2aff4b65345f51ff343671fc8d29021672ef0eef63e6d6adb0355018",
+    "bytes": 3038
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Navigation/navigation.css",
+    "sha256": "702180402311e901e5823cbc9a2e959a9015098b916b9874c41f4a015607ea08",
+    "bytes": 3659
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/NavigationHelpButton/lighter.css",
+    "sha256": "c41a89c58c9aa0ec43e1d62a70cc3fca0a8d9adf8e6963e587aa0cdb0843902e",
+    "bytes": 863
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/NavigationHelpButton/NavigationHelpButton.css",
+    "sha256": "1d2598750c20cb1eef8d0a790aa7350bc4ecf06c3d36029bf24c811d82728909",
+    "bytes": 1680
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/PerformanceWatchdog/PerformanceWatchdog.css",
+    "sha256": "2b3058601216c78a8751263b4950dfb498505328708a1c48be1404457f1b54ed",
+    "bytes": 250
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/ProjectionPicker/ProjectionPicker.css",
+    "sha256": "54477a78dc16213edb360f3012d9c3d9b8131c464fa3d162845dc7418a4fc524",
+    "bytes": 1034
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/SceneModePicker/SceneModePicker.css",
+    "sha256": "f6ec6daafde7cd017a200e29d12be590acfb7f7c1295f1daf6ac270eaf17736f",
+    "bytes": 1565
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/SelectionIndicator/SelectionIndicator.css",
+    "sha256": "3d0b6f61cab81ced70d9ad3c44fc22b677cb9a22a098b0f413b4dec05e7a614d",
+    "bytes": 332
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Timeline/lighter.css",
+    "sha256": "8c106730b5823edc2c9a85dc81bd025e2563ff6597ac4df5fe9b577143836ba0",
+    "bytes": 325
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Timeline/Timeline.css",
+    "sha256": "66ed63c9a335d8f6b9c6921ddbe8419ee60ea63b7ba6014670178e5806c6c67c",
+    "bytes": 1333
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Viewer/Viewer.css",
+    "sha256": "c03b239fce0f18d850ab51fa39a5adffcd3e757826ed7c2a42ad6f4c86fc40b5",
+    "bytes": 1366
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/VRButton/VRButton.css",
+    "sha256": "6f5ac009ee16ab92a189bad7b3da2c8d29e3f9098ce52d6ee9328a923e39d01c",
+    "bytes": 93
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/ZoomIndicator/ZoomIndicator.css",
+    "sha256": "4a67f81646fb27bba17cd748628c61d4f0a7ff7e8e0fd3625f45a6bce1d0b71c",
+    "bytes": 439
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/cur/Hold.cur",
+    "sha256": "c34d9bd27223a55ef9c81966bc5a28b3176055f074ffbed6b97c25010101924a",
+    "bytes": 2238
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/cur/Pan.cur",
+    "sha256": "bb6cf4afc0c3de167e0d293e4173e3106510c944665211e94fbe85061b6716c2",
+    "bytes": 2238
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/bingAerial.png",
+    "sha256": "705be480540ee78bc2c719864537d4867bd278a46283c5b293777d63139a75f3",
+    "bytes": 9943
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/bingAerialLabels.png",
+    "sha256": "6c6bd8344cbc5eb5c2d10ae281e1ae948ce584366a36214ed2754c40d787f808",
+    "bytes": 10374
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/bingRoads.png",
+    "sha256": "8bca72a4659d797752494f2d772f7cb1f78db376b23907c9161a7e3660e6a4de",
+    "bytes": 8076
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/blueMarble.png",
+    "sha256": "3da5f427b2355c1b80befb0ce02856fa250bdb8e30721397a7953095fbd30c97",
+    "bytes": 7403
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/earthAtNight.png",
+    "sha256": "9bd366dabede661b775d2be55e4bb70625362bc8fd9a296ca6988f075744c2f5",
+    "bytes": 5836
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/esriNationalGeographic.png",
+    "sha256": "ff75b5caaf98d8c3a0eaa79a88b05a3a1bf81337c67dfebc4b44d94acbd4ecb8",
+    "bytes": 11555
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/esriWorldImagery.png",
+    "sha256": "97950a6487a4521ecb448036868f83edeb76e863a4f38677762f4573cb092ea9",
+    "bytes": 11575
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/esriWorldStreetMap.png",
+    "sha256": "645ceda3349be3fb471739e048ef4416567c3cbf5970549e86002804e4ce1d3d",
+    "bytes": 8501
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/mapboxSatellite.png",
+    "sha256": "4eed6627af0abf1e3f466e92c3cf32f9fe81e0d2eda16fd252f64c06aa496291",
+    "bytes": 9242
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/mapboxStreets.png",
+    "sha256": "a74b31a51560751e3ccccb68ef3dfd01eafe9c6db42fb732a42d0972397fe9ad",
+    "bytes": 7270
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/mapboxTerrain.png",
+    "sha256": "19b7b62ae23dc3c8f3548e1c594670d052d10d2048954b50f30a1f81a3c5b7a0",
+    "bytes": 8300
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/mapQuestOpenStreetMap.png",
+    "sha256": "b751906c7ff4122f52c0688aec4ea496de65e1788053a0d6b958e0393fc8ace3",
+    "bytes": 11342
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/naturalEarthII.png",
+    "sha256": "f31016adfcb20341ccf6a7cecd8c2351ec820bcb769ad62520e676ff883bf347",
+    "bytes": 7491
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/openStreetMap.png",
+    "sha256": "403ec35912440a3f5d01b2caca318dc7cc6efbf1c73bbfe040e0fc45422c349a",
+    "bytes": 2663
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/sentinel-2.png",
+    "sha256": "e8270fcacc9ac6829c8f3a8978bab7697b0679c951290a1d7ffb854747c4658c",
+    "bytes": 10086
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/stamenToner.png",
+    "sha256": "8de09648729219d7bbc611474efc7f6d6173b868e104f2d2cddbfea1298a5a94",
+    "bytes": 4119
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ImageryProviders/stamenWatercolor.png",
+    "sha256": "6663e5ccbe5af16f1933069ca3f3b298f469b5cd8b6a9ea914240c1a7e8f7232",
+    "bytes": 10806
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/arrows_e_active.png",
+    "sha256": "c58c06beb8ae472866055e1cd8e06b6cb4e40911736d8cb2573c005e0a444894",
+    "bytes": 3491
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/arrows_n_active.png",
+    "sha256": "32e0f17bb487b130e79f8a1ec3161868ff0a2067c101dbaa23fbcaae45e6b802",
+    "bytes": 3482
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/arrows_s_active.png",
+    "sha256": "4fddf23f23afd38a3fe8c633dda4b39b1463102602804039d479c42c79ce0429",
+    "bytes": 3493
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/arrows_w_active.png",
+    "sha256": "024aafa0a3ae033a9453a4bc05d447694230e15991db7f8527c9455b93516f26",
+    "bytes": 3516
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/compass_active.png",
+    "sha256": "7ebcbee85712f677fc7f9a18fcf6cc68b6e1e2c7e2e9e3b5a57323bab714f070",
+    "bytes": 5901
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/ring.png",
+    "sha256": "73a8bf09edd09bbf710b1d8ea77d860b1ce89ec6faeab0759a4b19594d66df91",
+    "bytes": 8558
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/ring_active.png",
+    "sha256": "429f2ac8063a43955d1a41ccbd0825967541737af7bb87cfcb61083dfd784afc",
+    "bytes": 8680
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/tilt.png",
+    "sha256": "eb113e9c66495390ec34a70fb4f9ed316fce7f0fcc51c9857d7b9a580285da84",
+    "bytes": 4786
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/tiltbar.png",
+    "sha256": "c7d2a3ba92e9443ac7e9a7ce5c31a6db827140358af9f4908c0579613760e5d1",
+    "bytes": 3121
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/zoom.png",
+    "sha256": "de49606a181888136f139d9f176d5ab6f8790406424e62d125f6115cd9cb1eef",
+    "bytes": 3943
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/zoombar.png",
+    "sha256": "9cedad84cda82a8541d633a035799618e1b6a93dff22e42c4485ebf2a4f80270",
+    "bytes": 3405
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/zoom_active_in.png",
+    "sha256": "e09f2695311108ef1eb3eb4d0663aec1a13a75900d59f0f5422c07a8c6078678",
+    "bytes": 3529
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/Navigation/zoom_active_out.png",
+    "sha256": "5d95fa34057ca6b8c3d81a8d3cb45eb02a172a10ce94bcc08ac98fc3edb371ee",
+    "bytes": 3407
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/NavigationHelp/Mouse.svg",
+    "sha256": "8633a7dadb468dcea41869b624f7b809ceb314a5f0b7e55a30a8eeb7cdf23fb9",
+    "bytes": 5623
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/NavigationHelp/MouseLeft.svg",
+    "sha256": "4051709cc4059cd740617a34ebc56b2e9ce378675203cbf6281eae4f04f5ec58",
+    "bytes": 5581
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/NavigationHelp/MouseMiddle.svg",
+    "sha256": "bd7f72a62457527af6cd94eb3460dd58dd2d8105080db5619bd9a440fe1f069a",
+    "bytes": 5579
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/NavigationHelp/MouseRight.svg",
+    "sha256": "8780853b6eea524c36fa2ae759c00d811bb0fb6274b8c7953705a8b0ea318ba4",
+    "bytes": 5572
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/NavigationHelp/Touch.svg",
+    "sha256": "c574d42a0250d9f48e7b4c71185b4a1a1a4b4301ea03ddbf22f940638995f1f6",
+    "bytes": 3446
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/NavigationHelp/TouchDrag.svg",
+    "sha256": "8964f930f74b060a490b033005a1da10983cf6c8ee93c93caf84525126374992",
+    "bytes": 6288
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/NavigationHelp/TouchRotate.svg",
+    "sha256": "5722d19812c315a334034364c1eef2e2df75a975bdbe8de96d47e258e807029d",
+    "bytes": 5626
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/NavigationHelp/TouchTilt.svg",
+    "sha256": "c2fb3e9f406a08e64360d8f1b2d289c61f6200167d14e2b3b461434f1aec4069",
+    "bytes": 5862
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/NavigationHelp/TouchZoom.svg",
+    "sha256": "7a05cc6f1fffb80f88ee8d47f16d51fba00f432583943ff2baa8564196e4a616",
+    "bytes": 5482
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/PlotImages/pointRed_Go.png",
+    "sha256": "28ce4aff6b3df251cfd3c2978f27d09820e5cb6dc51e7288193ac05930b49b2d",
+    "bytes": 971
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/PlotImages/pointWhite_Go.png",
+    "sha256": "b9a8c9ddcbcfd138e61d1e16e322ba0a92577037cb023da90d49a8543fc1a88a",
+    "bytes": 979
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/PlotImages/pointYellow_Go.png",
+    "sha256": "5c962d93e031f795696ee1edff103d513f766d36ed3a7a703b8edcb5c36f7ad6",
+    "bytes": 980
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/TerrainProviders/CesiumWorldTerrain.png",
+    "sha256": "714355373dcbede4d4ad850be207fe2ed6830c4d171a7c5158794d19351a2a72",
+    "bytes": 10080
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/TerrainProviders/Ellipsoid.png",
+    "sha256": "1bf31e09a782be7fdfe1b611e4dcb5d1e59fcf3eef59509a11627dd8e7567b54",
+    "bytes": 6173
+  },
+  {
+    "path": "public/lib/Cesium/Widgets/Images/ZoomIndicator/zoom_Identifiers.png",
+    "sha256": "22eaba8b09021c5db677c341d01a5753cbb0d09960d2cc3828d25a118c4065bc",
+    "bytes": 15248
+  },
+  {
+    "path": "public/lib/Cesium/Workers/ThirdParty/OSGBToS3M.wasm",
+    "sha256": "f4adadfb4a337ccf61a1581178ab983b9944e9e9d11fc23771d21e13cdfde1bb",
+    "bytes": 15021057
+  },
+  {
+    "path": "public/lib/mars3d/plugins/compatible/cesium-version.js",
+    "sha256": "513f4f794ec01a13be37b9331851772445c93448408b6dfe14115551dffe933b",
+    "bytes": 4369
+  },
+  {
+    "path": "public/lib/mars3d/plugins/supermap/SuperMap3D.js",
+    "sha256": "2449c714abe58cbf091ebe63d11ec02ebdf1781701e2e1bbb58ecbaef53f60cd",
+    "bytes": 1564514
+  },
+  {
+    "path": "public/lib/mars3d/plugins/supermap/ThirdParty/basis_transcoder.wasm",
+    "sha256": "96849a2719b431008533806199ad4e513ef5a5f632b87e452fb1eea961d5730e",
+    "bytes": 500839
+  },
+  {
+    "path": "public/lib/mars3d/plugins/supermap/ThirdParty/crunch.wasm",
+    "sha256": "b2181ba9ca738931ee1fd9d38f4afe62e5bde9e93cd20c87e655b932cb1e9c02",
+    "bytes": 40377
+  },
+  {
+    "path": "public/lib/mars3d/plugins/supermap/ThirdParty/draco_decoder_new.wasm",
+    "sha256": "92322d1cabaa55c8e216c983e58670043b063af59d86a7b6ae8201452ff7987f",
+    "bytes": 281481
+  },
+  {
+    "path": "public/lib/mars3d/plugins/supermap/Assets/Textures/excavationregion_bottom.jpg",
+    "sha256": "df41643b60d0e33aac153fa6aade120aef39d83b5c4b8a4f02d7c28e575268a7",
+    "bytes": 264163
+  },
+  {
+    "path": "public/lib/mars3d/plugins/supermap/Assets/Textures/excavationregion_side.jpg",
+    "sha256": "120da7f04d8f36e570449a287f485e26ac7f4415d1db5f1e6b009fb49defa00a",
+    "bytes": 423392
+  },
+  {
+    "path": "public/lib/mars3d/plugins/supermap/Assets/Textures/grepin.png",
+    "sha256": "5030ae056e5a4f75391c61fcf12bbbc7d43a9d9f2e5a836730a09f3948895d2f",
+    "bytes": 6205
+  },
+  {
+    "path": "public/lib/mars3d/plugins/supermap/Assets/Textures/middle-edit.png",
+    "sha256": "847eba098c177a002fab220190573df92963906437e335a5ec0443755742d74c",
+    "bytes": 388
+  },
+  {
+    "path": "public/lib/mars3d/plugins/supermap/Assets/Textures/vertex-edit.png",
+    "sha256": "0b7947978b46a06457a313361e753cb6a60660e3a8a20120c8cc5740f02e6046",
+    "bytes": 410
+  }
+]

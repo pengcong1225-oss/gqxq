@@ -1,0 +1,4469 @@
+{
+  "mode": "simulation",
+  "window": {
+    "from": "2026-11-01",
+    "to": "2026-11-10",
+    "timezone": "Asia/Shanghai",
+    "timeBasis": "来源受理时间优先，缺失回退接收时间"
+  },
+  "summary": {
+    "total": 42,
+    "unlocated": 0,
+    "householdRate": {
+      "value": null,
+      "reason": "缺少已确认的跨期有效户数及分母口径"
+    },
+    "satisfaction": {
+      "value": 77.27272727272727,
+      "reason": null
+    },
+    "duration": {
+      "value": [
+        {
+          "key": "le24",
+          "count": 6,
+          "evaluation": {
+            "evaluatedCount": 4,
+            "satisfiedCount": 4,
+            "unsatisfiedCount": 0,
+            "unevaluatedCount": 2,
+            "percent": 100
+          }
+        },
+        {
+          "key": "24to48",
+          "count": 8,
+          "evaluation": {
+            "evaluatedCount": 7,
+            "satisfiedCount": 4,
+            "unsatisfiedCount": 3,
+            "unevaluatedCount": 1,
+            "percent": 57.14285714285714
+          }
+        },
+        {
+          "key": "48to72",
+          "count": 9,
+          "evaluation": {
+            "evaluatedCount": 8,
+            "satisfiedCount": 6,
+            "unsatisfiedCount": 2,
+            "unevaluatedCount": 1,
+            "percent": 75
+          }
+        },
+        {
+          "key": "gt72",
+          "count": 3,
+          "evaluation": {
+            "evaluatedCount": 3,
+            "satisfiedCount": 3,
+            "unsatisfiedCount": 0,
+            "unevaluatedCount": 0,
+            "percent": 100
+          }
+        }
+      ],
+      "reason": null
+    }
+  },
+  "quality": {
+    "duplicates": 0,
+    "missingSourceKey": 0,
+    "missingDate": 0,
+    "sourceTimeFallback": 0
+  },
+  "charts": {
+    "business": [
+      {
+        "code": "water",
+        "count": 23
+      },
+      {
+        "code": "gas",
+        "count": 19
+      }
+    ],
+    "district": [
+      {
+        "code": "420502",
+        "count": 10
+      },
+      {
+        "code": "420503",
+        "count": 8
+      },
+      {
+        "code": "420504",
+        "count": 7
+      },
+      {
+        "code": "420506",
+        "count": 7
+      },
+      {
+        "code": "420571",
+        "count": 6
+      },
+      {
+        "code": "420505",
+        "count": 4
+      }
+    ],
+    "community": [
+      {
+        "code": "SIM-G-2-0-C1",
+        "count": 3
+      },
+      {
+        "code": "SIM-G-0-0-C0",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-0-0-C1",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-0-1-C0",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-0-2-C0",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-1-0-C0",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-1-2-C0",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-2-0-C0",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-4-0-C0",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-4-0-C1",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-4-1-C1",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-5-2-C0",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-0-1-C1",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-0-2-C1",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-1-0-C1",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-1-1-C0",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-1-1-C1",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-1-2-C1",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-2-1-C0",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-2-2-C0",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-3-0-C0",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-3-1-C0",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-3-2-C0",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-3-2-C1",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-4-1-C0",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-5-0-C0",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-5-1-C0",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-5-1-C1",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-5-2-C1",
+        "count": 1
+      }
+    ],
+    "enterprise": [
+      {
+        "code": "SIM-water-1",
+        "count": 13
+      },
+      {
+        "code": "SIM-gas-0",
+        "count": 12
+      },
+      {
+        "code": "SIM-water-0",
+        "count": 10
+      },
+      {
+        "code": "SIM-gas-1",
+        "count": 7
+      }
+    ],
+    "category": [
+      {
+        "code": "费用咨询",
+        "count": 12
+      },
+      {
+        "code": "水压问题",
+        "count": 10
+      },
+      {
+        "code": "计划性停供",
+        "count": 8
+      },
+      {
+        "code": "气压问题",
+        "count": 7
+      },
+      {
+        "code": "燃气三件套安装",
+        "count": 5
+      }
+    ],
+    "adminGrid": [
+      {
+        "code": "SIM-G-2-0",
+        "count": 5
+      },
+      {
+        "code": "SIM-G-0-0",
+        "count": 4
+      },
+      {
+        "code": "SIM-G-4-0",
+        "count": 4
+      },
+      {
+        "code": "SIM-G-0-1",
+        "count": 3
+      },
+      {
+        "code": "SIM-G-0-2",
+        "count": 3
+      },
+      {
+        "code": "SIM-G-1-0",
+        "count": 3
+      },
+      {
+        "code": "SIM-G-1-2",
+        "count": 3
+      },
+      {
+        "code": "SIM-G-4-1",
+        "count": 3
+      },
+      {
+        "code": "SIM-G-5-2",
+        "count": 3
+      },
+      {
+        "code": "SIM-G-1-1",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-3-2",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-5-1",
+        "count": 2
+      },
+      {
+        "code": "SIM-G-2-1",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-2-2",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-3-0",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-3-1",
+        "count": 1
+      },
+      {
+        "code": "SIM-G-5-0",
+        "count": 1
+      }
+    ],
+    "trend": [
+      {
+        "date": "2026-11-01",
+        "count": 4
+      },
+      {
+        "date": "2026-11-02",
+        "count": 4
+      },
+      {
+        "date": "2026-11-03",
+        "count": 4
+      },
+      {
+        "date": "2026-11-04",
+        "count": 4
+      },
+      {
+        "date": "2026-11-05",
+        "count": 4
+      },
+      {
+        "date": "2026-11-06",
+        "count": 4
+      },
+      {
+        "date": "2026-11-07",
+        "count": 5
+      },
+      {
+        "date": "2026-11-08",
+        "count": 4
+      },
+      {
+        "date": "2026-11-09",
+        "count": 4
+      },
+      {
+        "date": "2026-11-10",
+        "count": 5
+      }
+    ],
+    "monthly": [
+      {
+        "date": "2026-11",
+        "count": 42
+      }
+    ],
+    "weekly": [
+      {
+        "date": "2026-10-26",
+        "count": 4
+      },
+      {
+        "date": "2026-11-02",
+        "count": 29
+      },
+      {
+        "date": "2026-11-09",
+        "count": 9
+      }
+    ],
+    "hourly": [
+      {
+        "hour": 0,
+        "count": 0
+      },
+      {
+        "hour": 1,
+        "count": 0
+      },
+      {
+        "hour": 2,
+        "count": 0
+      },
+      {
+        "hour": 3,
+        "count": 0
+      },
+      {
+        "hour": 4,
+        "count": 0
+      },
+      {
+        "hour": 5,
+        "count": 0
+      },
+      {
+        "hour": 6,
+        "count": 0
+      },
+      {
+        "hour": 7,
+        "count": 0
+      },
+      {
+        "hour": 8,
+        "count": 10
+      },
+      {
+        "hour": 9,
+        "count": 7
+      },
+      {
+        "hour": 10,
+        "count": 4
+      },
+      {
+        "hour": 11,
+        "count": 1
+      },
+      {
+        "hour": 12,
+        "count": 3
+      },
+      {
+        "hour": 13,
+        "count": 4
+      },
+      {
+        "hour": 14,
+        "count": 5
+      },
+      {
+        "hour": 15,
+        "count": 4
+      },
+      {
+        "hour": 16,
+        "count": 3
+      },
+      {
+        "hour": 17,
+        "count": 1
+      },
+      {
+        "hour": 18,
+        "count": 0
+      },
+      {
+        "hour": 19,
+        "count": 0
+      },
+      {
+        "hour": 20,
+        "count": 0
+      },
+      {
+        "hour": 21,
+        "count": 0
+      },
+      {
+        "hour": 22,
+        "count": 0
+      },
+      {
+        "hour": 23,
+        "count": 0
+      }
+    ],
+    "topTypes": [
+      {
+        "code": "费用咨询",
+        "count": 12
+      },
+      {
+        "code": "水压问题",
+        "count": 10
+      },
+      {
+        "code": "计划性停供",
+        "count": 8
+      }
+    ]
+  },
+  "events": [
+    {
+      "id": "SIM-E-0-11",
+      "kind": "shutdown",
+      "eventType": "planned-water",
+      "gridIds": [
+        "SIM-G-0-0",
+        "SIM-G-0-1"
+      ],
+      "title": "【模拟】西陵区停水停气事件",
+      "businessType": "water",
+      "enterpriseId": "SIM-water-0",
+      "districtCode": "420502",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "西陵区模拟网格1、西陵区模拟网格2",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 500,
+      "workers": 10,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-1-11",
+      "kind": "shutdown",
+      "eventType": "planned-gas",
+      "gridIds": [
+        "SIM-G-0-1",
+        "SIM-G-0-2"
+      ],
+      "title": "【模拟】西陵区停水停气事件",
+      "businessType": "gas",
+      "enterpriseId": "SIM-gas-1",
+      "districtCode": "420502",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "西陵区模拟网格2、西陵区模拟网格3",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 550,
+      "workers": 11,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-2-11",
+      "kind": "shutdown",
+      "eventType": "emergency-water",
+      "gridIds": [
+        "SIM-G-0-2",
+        "SIM-G-1-0"
+      ],
+      "title": "【模拟】西陵区停水停气事件",
+      "businessType": "water",
+      "enterpriseId": "SIM-water-0",
+      "districtCode": "420502",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "西陵区模拟网格3、伍家岗区模拟网格1",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 600,
+      "workers": 12,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-3-11",
+      "kind": "shutdown",
+      "eventType": "emergency-gas",
+      "gridIds": [
+        "SIM-G-1-0",
+        "SIM-G-1-1"
+      ],
+      "title": "【模拟】伍家岗区停水停气事件",
+      "businessType": "gas",
+      "enterpriseId": "SIM-gas-1",
+      "districtCode": "420503",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "伍家岗区模拟网格1、伍家岗区模拟网格2",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 650,
+      "workers": 13,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-4-11",
+      "kind": "pipeline",
+      "eventType": "water-project",
+      "gridIds": [
+        "SIM-G-1-1",
+        "SIM-G-1-2"
+      ],
+      "title": "【模拟】伍家岗区管道改造事件",
+      "businessType": "water",
+      "enterpriseId": "SIM-water-0",
+      "districtCode": "420503",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "伍家岗区模拟网格2、伍家岗区模拟网格3",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 700,
+      "workers": 14,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-5-11",
+      "kind": "pipeline",
+      "eventType": "gas-project",
+      "gridIds": [
+        "SIM-G-1-2",
+        "SIM-G-2-0"
+      ],
+      "title": "【模拟】伍家岗区管道改造事件",
+      "businessType": "gas",
+      "enterpriseId": "SIM-gas-1",
+      "districtCode": "420503",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "伍家岗区模拟网格3、点军区模拟网格1",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 750,
+      "workers": 15,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-6-11",
+      "kind": "shutdown",
+      "eventType": "planned-water",
+      "gridIds": [
+        "SIM-G-2-0",
+        "SIM-G-2-1"
+      ],
+      "title": "【模拟】点军区停水停气事件",
+      "businessType": "water",
+      "enterpriseId": "SIM-water-0",
+      "districtCode": "420504",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "点军区模拟网格1、点军区模拟网格2",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 800,
+      "workers": 16,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-7-11",
+      "kind": "shutdown",
+      "eventType": "planned-gas",
+      "gridIds": [
+        "SIM-G-2-1",
+        "SIM-G-2-2"
+      ],
+      "title": "【模拟】点军区停水停气事件",
+      "businessType": "gas",
+      "enterpriseId": "SIM-gas-1",
+      "districtCode": "420504",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "点军区模拟网格2、点军区模拟网格3",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 850,
+      "workers": 17,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-8-11",
+      "kind": "shutdown",
+      "eventType": "emergency-water",
+      "gridIds": [
+        "SIM-G-2-2",
+        "SIM-G-3-0"
+      ],
+      "title": "【模拟】点军区停水停气事件",
+      "businessType": "water",
+      "enterpriseId": "SIM-water-0",
+      "districtCode": "420504",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "点军区模拟网格3、猇亭区模拟网格1",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 900,
+      "workers": 18,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-9-11",
+      "kind": "shutdown",
+      "eventType": "emergency-gas",
+      "gridIds": [
+        "SIM-G-3-0",
+        "SIM-G-3-1"
+      ],
+      "title": "【模拟】猇亭区停水停气事件",
+      "businessType": "gas",
+      "enterpriseId": "SIM-gas-1",
+      "districtCode": "420505",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "猇亭区模拟网格1、猇亭区模拟网格2",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 950,
+      "workers": 19,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-10-11",
+      "kind": "pipeline",
+      "eventType": "water-project",
+      "gridIds": [
+        "SIM-G-3-1",
+        "SIM-G-3-2"
+      ],
+      "title": "【模拟】猇亭区管道改造事件",
+      "businessType": "water",
+      "enterpriseId": "SIM-water-0",
+      "districtCode": "420505",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "猇亭区模拟网格2、猇亭区模拟网格3",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 1000,
+      "workers": 20,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-11-11",
+      "kind": "pipeline",
+      "eventType": "gas-project",
+      "gridIds": [
+        "SIM-G-3-2",
+        "SIM-G-4-0"
+      ],
+      "title": "【模拟】猇亭区管道改造事件",
+      "businessType": "gas",
+      "enterpriseId": "SIM-gas-1",
+      "districtCode": "420505",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "猇亭区模拟网格3、夷陵区模拟网格1",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 1050,
+      "workers": 21,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-12-11",
+      "kind": "shutdown",
+      "eventType": "planned-water",
+      "gridIds": [
+        "SIM-G-4-0",
+        "SIM-G-4-1"
+      ],
+      "title": "【模拟】夷陵区停水停气事件",
+      "businessType": "water",
+      "enterpriseId": "SIM-water-0",
+      "districtCode": "420506",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "夷陵区模拟网格1、夷陵区模拟网格2",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 1100,
+      "workers": 22,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-13-11",
+      "kind": "shutdown",
+      "eventType": "planned-gas",
+      "gridIds": [
+        "SIM-G-4-1",
+        "SIM-G-4-2"
+      ],
+      "title": "【模拟】夷陵区停水停气事件",
+      "businessType": "gas",
+      "enterpriseId": "SIM-gas-1",
+      "districtCode": "420506",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "夷陵区模拟网格2、夷陵区模拟网格3",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 1150,
+      "workers": 23,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-14-11",
+      "kind": "shutdown",
+      "eventType": "emergency-water",
+      "gridIds": [
+        "SIM-G-4-2",
+        "SIM-G-5-0"
+      ],
+      "title": "【模拟】夷陵区停水停气事件",
+      "businessType": "water",
+      "enterpriseId": "SIM-water-0",
+      "districtCode": "420506",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "夷陵区模拟网格3、高新区模拟网格1",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 1200,
+      "workers": 24,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-15-11",
+      "kind": "shutdown",
+      "eventType": "emergency-gas",
+      "gridIds": [
+        "SIM-G-5-0",
+        "SIM-G-5-1"
+      ],
+      "title": "【模拟】高新区停水停气事件",
+      "businessType": "gas",
+      "enterpriseId": "SIM-gas-1",
+      "districtCode": "420571",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "高新区模拟网格1、高新区模拟网格2",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 1250,
+      "workers": 25,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-16-11",
+      "kind": "pipeline",
+      "eventType": "water-project",
+      "gridIds": [
+        "SIM-G-5-1",
+        "SIM-G-5-2"
+      ],
+      "title": "【模拟】高新区管道改造事件",
+      "businessType": "water",
+      "enterpriseId": "SIM-water-0",
+      "districtCode": "420571",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "高新区模拟网格2、高新区模拟网格3",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 1300,
+      "workers": 26,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    },
+    {
+      "id": "SIM-E-17-11",
+      "kind": "pipeline",
+      "eventType": "gas-project",
+      "gridIds": [
+        "SIM-G-5-2",
+        "SIM-G-0-0"
+      ],
+      "title": "【模拟】高新区管道改造事件",
+      "businessType": "gas",
+      "enterpriseId": "SIM-gas-1",
+      "districtCode": "420571",
+      "startsAt": "2026-11-01T00:00:00+08:00",
+      "endsAt": "2026-11-28T23:59:59+08:00",
+      "approvalStatus": "approved",
+      "reason": "模拟检修及设施升级",
+      "area": "高新区模拟网格3、西陵区模拟网格1",
+      "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+      "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+      "households": 1350,
+      "workers": 27,
+      "revision": 1,
+      "updatedAt": "2026-11-11T00:00:00+08:00",
+      "sourceRevision": null,
+      "hasGrid": true,
+      "hasCategories": true,
+      "spatialState": "待核验正式空间映射"
+    }
+  ],
+  "layers": {
+    "cim": {
+      "state": "unconfigured",
+      "reason": "未核验正式 CIM 授权和服务配置"
+    },
+    "heat": {
+      "state": "unavailable",
+      "reason": "正式空间资源及已发布规则尚未核验"
+    }
+  },
+  "unavailable": {
+    "households": "缺少已确认的跨期有效户数及分母口径",
+    "evaluation": "正式有效评价和来源优先规则尚未确认",
+    "duration": "来源实际完成时间尚未建立可核验的统计映射",
+    "history": "专题历史缺少来源系统和稳定主键映射，不纳入正式主账",
+    "spatial": "行政网格映射及空间资源版本待核验",
+    "warnings": "已发布预警规则及来源分类待核验",
+    "research": "历史覆盖与业务季节口径待确认",
+    "compare": "历史覆盖及比较口径待确认"
+  },
+  "periods": {
+    "yesterday": {
+      "from": "2026-11-09",
+      "to": "2026-11-09",
+      "count": 4
+    },
+    "month": {
+      "from": "2026-11-01",
+      "to": "2026-11-10",
+      "count": 42
+    },
+    "quarter": {
+      "from": "2026-10-01",
+      "to": "2026-11-10",
+      "count": 165
+    },
+    "year": {
+      "from": "2026-01-01",
+      "to": "2026-11-10",
+      "count": 1302
+    },
+    "coverage": "仅已接入并可识别的来源，历史完整性未经确认"
+  },
+  "compare": [
+    {
+      "code": "SIM-G-2-0",
+      "count": 5
+    },
+    {
+      "code": "SIM-G-0-0",
+      "count": 4
+    },
+    {
+      "code": "SIM-G-4-0",
+      "count": 4
+    },
+    {
+      "code": "SIM-G-0-1",
+      "count": 3
+    },
+    {
+      "code": "SIM-G-0-2",
+      "count": 3
+    },
+    {
+      "code": "SIM-G-1-0",
+      "count": 3
+    },
+    {
+      "code": "SIM-G-1-2",
+      "count": 3
+    },
+    {
+      "code": "SIM-G-4-1",
+      "count": 3
+    },
+    {
+      "code": "SIM-G-5-2",
+      "count": 3
+    },
+    {
+      "code": "SIM-G-1-1",
+      "count": 2
+    },
+    {
+      "code": "SIM-G-3-2",
+      "count": 2
+    },
+    {
+      "code": "SIM-G-5-1",
+      "count": 2
+    },
+    {
+      "code": "SIM-G-2-1",
+      "count": 1
+    },
+    {
+      "code": "SIM-G-2-2",
+      "count": 1
+    },
+    {
+      "code": "SIM-G-3-0",
+      "count": 1
+    },
+    {
+      "code": "SIM-G-3-1",
+      "count": 1
+    },
+    {
+      "code": "SIM-G-5-0",
+      "count": 1
+    }
+  ],
+  "research": {
+    "state": "available",
+    "reason": null,
+    "data": {
+      "seasons": [
+        {
+          "kind": "winter",
+          "years": [
+            {
+              "year": 2023,
+              "from": "2022-11-01",
+              "to": "2023-03-31",
+              "count": 125,
+              "evidenceKey": "1ea64b47-a9ba-4511-b14d-316e5f86e077"
+            },
+            {
+              "year": 2024,
+              "from": "2023-11-01",
+              "to": "2024-03-31",
+              "count": 125,
+              "evidenceKey": "60852632-2f6a-4605-85a0-84c38a8d0421"
+            },
+            {
+              "year": 2025,
+              "from": "2024-11-01",
+              "to": "2025-03-31",
+              "count": 125,
+              "evidenceKey": "6ed61164-ce76-4d5b-8a8f-43302f757f5b"
+            },
+            {
+              "year": 2026,
+              "from": "2025-11-01",
+              "to": "2026-03-31",
+              "count": 121,
+              "evidenceKey": "8d2f702b-d551-4730-ae8b-ac016dbba91c"
+            },
+            {
+              "year": 2027,
+              "from": "2026-11-01",
+              "to": "2026-11-10",
+              "count": 7,
+              "evidenceKey": "ec0f3f3a-1986-4bb2-8a4c-fce83e30da13"
+            }
+          ],
+          "months": [
+            {
+              "month": 11,
+              "currentRange": {
+                "from": "2026-11-01",
+                "to": "2026-11-30"
+              },
+              "previousRange": {
+                "from": "2025-11-01",
+                "to": "2025-11-30"
+              },
+              "currentCount": 7,
+              "previousCount": 24,
+              "currentEvidenceKey": "dd5b9254-b064-47f5-85c0-779dcdf19f45",
+              "previousEvidenceKey": "c969b958-c692-4166-86de-c642f12e6122"
+            },
+            {
+              "month": 12,
+              "currentRange": {
+                "from": "2026-12-01",
+                "to": "2026-12-31"
+              },
+              "previousRange": {
+                "from": "2025-12-01",
+                "to": "2025-12-31"
+              },
+              "currentCount": 0,
+              "previousCount": 23,
+              "currentEvidenceKey": "7e0b0e6a-113d-4d56-a1d0-51e88027c5c8",
+              "previousEvidenceKey": "bc306ad9-f9cf-449f-baac-de936bf97fa1"
+            },
+            {
+              "month": 1,
+              "currentRange": {
+                "from": "2027-01-01",
+                "to": "2027-01-31"
+              },
+              "previousRange": {
+                "from": "2026-01-01",
+                "to": "2026-01-31"
+              },
+              "currentCount": 0,
+              "previousCount": 25,
+              "currentEvidenceKey": "f693f58a-2e2e-4173-bf86-d41009fb5266",
+              "previousEvidenceKey": "dfc55809-999a-4c9d-b8c3-31f4366f04f7"
+            },
+            {
+              "month": 2,
+              "currentRange": {
+                "from": "2027-02-01",
+                "to": "2027-02-28"
+              },
+              "previousRange": {
+                "from": "2026-02-01",
+                "to": "2026-02-28"
+              },
+              "currentCount": 0,
+              "previousCount": 25,
+              "currentEvidenceKey": "9cd6b357-9a83-4f70-8fd1-fd2d6624c411",
+              "previousEvidenceKey": "9bd1a72f-b214-4ec2-bfb3-34bf7875166f"
+            },
+            {
+              "month": 3,
+              "currentRange": {
+                "from": "2027-03-01",
+                "to": "2027-03-31"
+              },
+              "previousRange": {
+                "from": "2026-03-01",
+                "to": "2026-03-31"
+              },
+              "currentCount": 0,
+              "previousCount": 24,
+              "currentEvidenceKey": "05d3b78f-3d19-40c1-95d4-43bd74667051",
+              "previousEvidenceKey": "6fac8b53-404f-4976-b1df-b86bbc3721ad"
+            }
+          ],
+          "topGrids": [
+            {
+              "id": "SIM-G-0-0",
+              "name": "西陵区模拟网格1",
+              "count": 1,
+              "previousCount": 9,
+              "currentEvidenceKey": "5db80a76-131e-4a8b-ab19-5d6a6e33072f",
+              "previousEvidenceKey": "a6d105c5-1d1e-4563-9f05-b693ac96fd0a"
+            },
+            {
+              "id": "SIM-G-0-2",
+              "name": "西陵区模拟网格3",
+              "count": 1,
+              "previousCount": 6,
+              "currentEvidenceKey": "a3e09e29-3123-4c10-87f4-7f4766a48123",
+              "previousEvidenceKey": "63106d2a-0662-44a6-889a-d8fc9cd94040"
+            },
+            {
+              "id": "SIM-G-1-1",
+              "name": "伍家岗区模拟网格2",
+              "count": 1,
+              "previousCount": 8,
+              "currentEvidenceKey": "756bac0c-d632-4bcc-a431-3753c5e35ff7",
+              "previousEvidenceKey": "a222fbae-0932-4e1b-b55c-e8563cb7db2b"
+            },
+            {
+              "id": "SIM-G-2-0",
+              "name": "点军区模拟网格1",
+              "count": 1,
+              "previousCount": 10,
+              "currentEvidenceKey": "2406974b-be49-453b-8acd-860b7bbd821a",
+              "previousEvidenceKey": "3ada5b3d-1ac5-4409-a36a-fdb8c54283a8"
+            },
+            {
+              "id": "SIM-G-2-2",
+              "name": "点军区模拟网格3",
+              "count": 1,
+              "previousCount": 7,
+              "currentEvidenceKey": "56fbc872-d2b4-43be-a831-19d3840e4a37",
+              "previousEvidenceKey": "39f35616-4bca-4377-9c9f-bf5b48404651"
+            },
+            {
+              "id": "SIM-G-3-1",
+              "name": "猇亭区模拟网格2",
+              "count": 1,
+              "previousCount": 6,
+              "currentEvidenceKey": "aa872909-406f-42ca-9884-ebbe112598c3",
+              "previousEvidenceKey": "47b6eb44-3510-4d95-8794-452d466cc99d"
+            }
+          ]
+        },
+        {
+          "kind": "summer",
+          "years": [
+            {
+              "year": 2022,
+              "from": "2022-06-01",
+              "to": "2022-09-30",
+              "count": 96,
+              "evidenceKey": "0573d410-b031-40de-a0fb-8e754646dd4b"
+            },
+            {
+              "year": 2023,
+              "from": "2023-06-01",
+              "to": "2023-09-30",
+              "count": 97,
+              "evidenceKey": "8994f27e-0403-4765-a8f1-9150045bb54f"
+            },
+            {
+              "year": 2024,
+              "from": "2024-06-01",
+              "to": "2024-09-30",
+              "count": 98,
+              "evidenceKey": "15c3caa2-fede-4da7-9873-02f17c1f2d8b"
+            },
+            {
+              "year": 2025,
+              "from": "2025-06-01",
+              "to": "2025-09-30",
+              "count": 99,
+              "evidenceKey": "146dba8d-be26-4af0-ad9a-edd496e8f775"
+            },
+            {
+              "year": 2026,
+              "from": "2026-06-01",
+              "to": "2026-09-30",
+              "count": 99,
+              "evidenceKey": "ddf7c303-1711-4841-bb45-1486f27b1dbb"
+            }
+          ],
+          "months": [
+            {
+              "month": 6,
+              "currentRange": {
+                "from": "2026-06-01",
+                "to": "2026-06-30"
+              },
+              "previousRange": {
+                "from": "2025-06-01",
+                "to": "2025-06-30"
+              },
+              "currentCount": 25,
+              "previousCount": 24,
+              "currentEvidenceKey": "d63d400f-ea97-4b1e-b046-7a60acff25fb",
+              "previousEvidenceKey": "46db40f7-af40-43c9-b0da-70e8fb5895cf"
+            },
+            {
+              "month": 7,
+              "currentRange": {
+                "from": "2026-07-01",
+                "to": "2026-07-31"
+              },
+              "previousRange": {
+                "from": "2025-07-01",
+                "to": "2025-07-31"
+              },
+              "currentCount": 25,
+              "previousCount": 25,
+              "currentEvidenceKey": "d51117e7-bbe1-44b0-87f9-eb93a1e82040",
+              "previousEvidenceKey": "a278b5a5-92c9-4581-9890-a6fee311ed2d"
+            },
+            {
+              "month": 8,
+              "currentRange": {
+                "from": "2026-08-01",
+                "to": "2026-08-31"
+              },
+              "previousRange": {
+                "from": "2025-08-01",
+                "to": "2025-08-31"
+              },
+              "currentCount": 25,
+              "previousCount": 25,
+              "currentEvidenceKey": "86218c4b-d269-4389-968c-10ede08d8aff",
+              "previousEvidenceKey": "e856fe21-5d75-43ff-8e45-eadf885cd4ed"
+            },
+            {
+              "month": 9,
+              "currentRange": {
+                "from": "2026-09-01",
+                "to": "2026-09-30"
+              },
+              "previousRange": {
+                "from": "2025-09-01",
+                "to": "2025-09-30"
+              },
+              "currentCount": 24,
+              "previousCount": 25,
+              "currentEvidenceKey": "51eed0f9-fc27-463e-a92a-8b8d04f0bdc0",
+              "previousEvidenceKey": "ad4d6871-4880-437e-b604-03cfb64800ac"
+            }
+          ],
+          "topGrids": [
+            {
+              "id": "SIM-G-0-1",
+              "name": "西陵区模拟网格2",
+              "count": 8,
+              "previousCount": 7,
+              "currentEvidenceKey": "38ee85e1-5d69-435f-9df3-e2a12fd4d6c0",
+              "previousEvidenceKey": "9a79313f-60ec-4c3d-b0b2-e2ea868030d4"
+            },
+            {
+              "id": "SIM-G-5-0",
+              "name": "高新区模拟网格1",
+              "count": 8,
+              "previousCount": 7,
+              "currentEvidenceKey": "85ed4b68-d8db-4eb7-a7e4-36cae2512010",
+              "previousEvidenceKey": "f43dee78-7f5f-4e9d-a4ec-e32de4cf4eee"
+            },
+            {
+              "id": "SIM-G-2-1",
+              "name": "点军区模拟网格2",
+              "count": 7,
+              "previousCount": 6,
+              "currentEvidenceKey": "054e2425-8a81-4e23-b379-fcbc7fb7ddee",
+              "previousEvidenceKey": "2ab6b8ad-a093-4515-8048-aa86aee66c67"
+            },
+            {
+              "id": "SIM-G-3-0",
+              "name": "猇亭区模拟网格1",
+              "count": 7,
+              "previousCount": 8,
+              "currentEvidenceKey": "494cc2f6-0fa0-4f29-aa18-95e324f8fd97",
+              "previousEvidenceKey": "c98d2f61-4707-4f5a-9fa1-236322b1b33c"
+            },
+            {
+              "id": "SIM-G-1-0",
+              "name": "伍家岗区模拟网格1",
+              "count": 6,
+              "previousCount": 7,
+              "currentEvidenceKey": "1b62675a-5fb1-4330-85e8-cef4e8feff85",
+              "previousEvidenceKey": "ab263ee8-0941-4b0b-a6f3-80ffa576ceec"
+            },
+            {
+              "id": "SIM-G-4-1",
+              "name": "夷陵区模拟网格2",
+              "count": 6,
+              "previousCount": 5,
+              "currentEvidenceKey": "2f6aaef0-106c-48f1-b761-5790d4fa7255",
+              "previousEvidenceKey": "40ad6028-510e-4fed-8f9d-5b06014332c8"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "warnings": {
+    "state": "available",
+    "reason": null,
+    "data": {
+      "items": [
+        {
+          "scenario": "winter",
+          "from": "2026-10-12",
+          "to": "2026-11-10",
+          "count": 7,
+          "triggered": true,
+          "threshold": 5,
+          "days": 30,
+          "enabled": true,
+          "ruleVersion": "simulation-warning-v1",
+          "evidenceKey": "fcc6877c-7cd9-4c74-9597-d4ef8d755a93"
+        },
+        {
+          "scenario": "summer",
+          "from": "2026-10-12",
+          "to": "2026-11-10",
+          "count": 0,
+          "triggered": false,
+          "threshold": 5,
+          "days": 30,
+          "enabled": true,
+          "ruleVersion": "simulation-warning-v1",
+          "evidenceKey": "c6467349-ec56-4444-8d38-d139a06ddfed"
+        },
+        {
+          "scenario": "planned",
+          "from": "2026-10-12",
+          "to": "2026-11-10",
+          "count": 23,
+          "triggered": true,
+          "threshold": 3,
+          "days": 30,
+          "enabled": true,
+          "ruleVersion": "simulation-warning-v1",
+          "evidenceKey": "f76b5271-ec14-4513-a565-e867d1b6a6cd"
+        },
+        {
+          "scenario": "installation",
+          "from": "2026-10-12",
+          "to": "2026-11-10",
+          "count": 12,
+          "triggered": true,
+          "threshold": 3,
+          "days": 30,
+          "enabled": true,
+          "ruleVersion": "simulation-warning-v1",
+          "evidenceKey": "c92255aa-b1ce-45da-a581-3d19afbeb8ae"
+        }
+      ]
+    }
+  },
+  "priorTop3": {
+    "from": "2025-11-01",
+    "to": "2025-11-10",
+    "items": [
+      {
+        "code": "费用咨询",
+        "count": 11
+      },
+      {
+        "code": "计划性停供",
+        "count": 9
+      },
+      {
+        "code": "水压问题",
+        "count": 9
+      }
+    ]
+  },
+  "dynamicCharts": {
+    "hourly": [
+      {
+        "hour": 0,
+        "count": 0
+      },
+      {
+        "hour": 1,
+        "count": 0
+      },
+      {
+        "hour": 2,
+        "count": 0
+      },
+      {
+        "hour": 3,
+        "count": 0
+      },
+      {
+        "hour": 4,
+        "count": 0
+      },
+      {
+        "hour": 5,
+        "count": 0
+      },
+      {
+        "hour": 6,
+        "count": 0
+      },
+      {
+        "hour": 7,
+        "count": 0
+      },
+      {
+        "hour": 8,
+        "count": 10
+      },
+      {
+        "hour": 9,
+        "count": 7
+      },
+      {
+        "hour": 10,
+        "count": 4
+      },
+      {
+        "hour": 11,
+        "count": 1
+      },
+      {
+        "hour": 12,
+        "count": 3
+      },
+      {
+        "hour": 13,
+        "count": 4
+      },
+      {
+        "hour": 14,
+        "count": 5
+      },
+      {
+        "hour": 15,
+        "count": 4
+      },
+      {
+        "hour": 16,
+        "count": 3
+      },
+      {
+        "hour": 17,
+        "count": 1
+      },
+      {
+        "hour": 18,
+        "count": 0
+      },
+      {
+        "hour": 19,
+        "count": 0
+      },
+      {
+        "hour": 20,
+        "count": 0
+      },
+      {
+        "hour": 21,
+        "count": 0
+      },
+      {
+        "hour": 22,
+        "count": 0
+      },
+      {
+        "hour": 23,
+        "count": 0
+      }
+    ],
+    "weekly": [
+      {
+        "date": "2026-10-26",
+        "count": 4
+      },
+      {
+        "date": "2026-11-02",
+        "count": 29
+      },
+      {
+        "date": "2026-11-09",
+        "count": 9
+      }
+    ],
+    "monthly": [
+      {
+        "date": "2026-11",
+        "count": 42
+      }
+    ]
+  },
+  "supply": {
+    "state": "partial",
+    "reason": "模拟样本",
+    "data": {
+      "enterpriseRates": [
+        {
+          "id": "SIM-gas-0",
+          "name": "模拟燃气企业1",
+          "count": 12,
+          "households": 20000,
+          "per10k": 5.999999999999999,
+          "reason": null,
+          "version": null,
+          "at": "2026-11-10"
+        },
+        {
+          "id": "SIM-water-0",
+          "name": "模拟供水企业1",
+          "count": 10,
+          "households": 20000,
+          "per10k": 5,
+          "reason": null,
+          "version": null,
+          "at": "2026-11-10"
+        },
+        {
+          "id": "SIM-water-1",
+          "name": "模拟供水企业2",
+          "count": 13,
+          "households": 35000,
+          "per10k": 3.7142857142857144,
+          "reason": null,
+          "version": null,
+          "at": "2026-11-10"
+        },
+        {
+          "id": "SIM-gas-1",
+          "name": "模拟燃气企业2",
+          "count": 7,
+          "households": 35000,
+          "per10k": 2,
+          "reason": null,
+          "version": null,
+          "at": "2026-11-10"
+        }
+      ],
+      "communities": [
+        {
+          "id": "SIM-G-2-0-C1",
+          "name": "点军区模拟小区2",
+          "count": 3,
+          "rank": 1
+        },
+        {
+          "id": "SIM-G-0-0-C0",
+          "name": "西陵区模拟小区1",
+          "count": 2,
+          "rank": 2
+        },
+        {
+          "id": "SIM-G-0-0-C1",
+          "name": "西陵区模拟小区2",
+          "count": 2,
+          "rank": 3
+        },
+        {
+          "id": "SIM-G-0-1-C0",
+          "name": "西陵区模拟小区3",
+          "count": 2,
+          "rank": 4
+        },
+        {
+          "id": "SIM-G-0-2-C0",
+          "name": "西陵区模拟小区5",
+          "count": 2,
+          "rank": 5
+        },
+        {
+          "id": "SIM-G-1-0-C0",
+          "name": "伍家岗区模拟小区1",
+          "count": 2,
+          "rank": 6
+        },
+        {
+          "id": "SIM-G-1-2-C0",
+          "name": "伍家岗区模拟小区5",
+          "count": 2,
+          "rank": 7
+        },
+        {
+          "id": "SIM-G-2-0-C0",
+          "name": "点军区模拟小区1",
+          "count": 2,
+          "rank": 8
+        },
+        {
+          "id": "SIM-G-4-0-C0",
+          "name": "夷陵区模拟小区1",
+          "count": 2,
+          "rank": 9
+        },
+        {
+          "id": "SIM-G-4-0-C1",
+          "name": "夷陵区模拟小区2",
+          "count": 2,
+          "rank": 10
+        },
+        {
+          "id": "SIM-G-4-1-C1",
+          "name": "夷陵区模拟小区4",
+          "count": 2,
+          "rank": 11
+        },
+        {
+          "id": "SIM-G-5-2-C0",
+          "name": "高新区模拟小区5",
+          "count": 2,
+          "rank": 12
+        },
+        {
+          "id": "SIM-G-0-1-C1",
+          "name": "西陵区模拟小区4",
+          "count": 1,
+          "rank": 13
+        },
+        {
+          "id": "SIM-G-0-2-C1",
+          "name": "西陵区模拟小区6",
+          "count": 1,
+          "rank": 14
+        },
+        {
+          "id": "SIM-G-1-0-C1",
+          "name": "伍家岗区模拟小区2",
+          "count": 1,
+          "rank": 15
+        },
+        {
+          "id": "SIM-G-1-1-C0",
+          "name": "伍家岗区模拟小区3",
+          "count": 1,
+          "rank": 16
+        },
+        {
+          "id": "SIM-G-1-1-C1",
+          "name": "伍家岗区模拟小区4",
+          "count": 1,
+          "rank": 17
+        },
+        {
+          "id": "SIM-G-1-2-C1",
+          "name": "伍家岗区模拟小区6",
+          "count": 1,
+          "rank": 18
+        },
+        {
+          "id": "SIM-G-2-1-C0",
+          "name": "点军区模拟小区3",
+          "count": 1,
+          "rank": 19
+        },
+        {
+          "id": "SIM-G-2-2-C0",
+          "name": "点军区模拟小区5",
+          "count": 1,
+          "rank": 20
+        },
+        {
+          "id": "SIM-G-3-0-C0",
+          "name": "猇亭区模拟小区1",
+          "count": 1,
+          "rank": 21
+        },
+        {
+          "id": "SIM-G-3-1-C0",
+          "name": "猇亭区模拟小区3",
+          "count": 1,
+          "rank": 22
+        },
+        {
+          "id": "SIM-G-3-2-C0",
+          "name": "猇亭区模拟小区5",
+          "count": 1,
+          "rank": 23
+        },
+        {
+          "id": "SIM-G-3-2-C1",
+          "name": "猇亭区模拟小区6",
+          "count": 1,
+          "rank": 24
+        },
+        {
+          "id": "SIM-G-4-1-C0",
+          "name": "夷陵区模拟小区3",
+          "count": 1,
+          "rank": 25
+        },
+        {
+          "id": "SIM-G-5-0-C0",
+          "name": "高新区模拟小区1",
+          "count": 1,
+          "rank": 26
+        },
+        {
+          "id": "SIM-G-5-1-C0",
+          "name": "高新区模拟小区3",
+          "count": 1,
+          "rank": 27
+        },
+        {
+          "id": "SIM-G-5-1-C1",
+          "name": "高新区模拟小区4",
+          "count": 1,
+          "rank": 28
+        },
+        {
+          "id": "SIM-G-5-2-C1",
+          "name": "高新区模拟小区6",
+          "count": 1,
+          "rank": 29
+        }
+      ],
+      "monthly": [
+        {
+          "date": "2026-11",
+          "count": 42
+        }
+      ],
+      "regions": [
+        {
+          "code": "420502",
+          "count": 10
+        },
+        {
+          "code": "420503",
+          "count": 8
+        },
+        {
+          "code": "420504",
+          "count": 7
+        },
+        {
+          "code": "420506",
+          "count": 7
+        },
+        {
+          "code": "420571",
+          "count": 6
+        },
+        {
+          "code": "420505",
+          "count": 4
+        }
+      ]
+    }
+  },
+  "dynamic": {
+    "state": "available",
+    "reason": null,
+    "data": {
+      "evaluation": {
+        "evaluatedCount": 22,
+        "satisfiedCount": 17,
+        "unsatisfiedCount": 5,
+        "unevaluatedCount": 20,
+        "percent": 77.27272727272727
+      },
+      "unsatisfiedBusiness": [
+        {
+          "businessType": "water",
+          "count": 3,
+          "percent": 60
+        },
+        {
+          "businessType": "gas",
+          "count": 2,
+          "percent": 40
+        }
+      ],
+      "duration": [
+        {
+          "key": "le24",
+          "count": 6,
+          "evaluation": {
+            "evaluatedCount": 4,
+            "satisfiedCount": 4,
+            "unsatisfiedCount": 0,
+            "unevaluatedCount": 2,
+            "percent": 100
+          }
+        },
+        {
+          "key": "24to48",
+          "count": 8,
+          "evaluation": {
+            "evaluatedCount": 7,
+            "satisfiedCount": 4,
+            "unsatisfiedCount": 3,
+            "unevaluatedCount": 1,
+            "percent": 57.14285714285714
+          }
+        },
+        {
+          "key": "48to72",
+          "count": 9,
+          "evaluation": {
+            "evaluatedCount": 8,
+            "satisfiedCount": 6,
+            "unsatisfiedCount": 2,
+            "unevaluatedCount": 1,
+            "percent": 75
+          }
+        },
+        {
+          "key": "gt72",
+          "count": 3,
+          "evaluation": {
+            "evaluatedCount": 3,
+            "satisfiedCount": 3,
+            "unsatisfiedCount": 0,
+            "unevaluatedCount": 0,
+            "percent": 100
+          }
+        }
+      ],
+      "hourly": [
+        {
+          "hour": 0,
+          "count": 0
+        },
+        {
+          "hour": 1,
+          "count": 0
+        },
+        {
+          "hour": 2,
+          "count": 0
+        },
+        {
+          "hour": 3,
+          "count": 0
+        },
+        {
+          "hour": 4,
+          "count": 0
+        },
+        {
+          "hour": 5,
+          "count": 0
+        },
+        {
+          "hour": 6,
+          "count": 0
+        },
+        {
+          "hour": 7,
+          "count": 0
+        },
+        {
+          "hour": 8,
+          "count": 10
+        },
+        {
+          "hour": 9,
+          "count": 7
+        },
+        {
+          "hour": 10,
+          "count": 4
+        },
+        {
+          "hour": 11,
+          "count": 1
+        },
+        {
+          "hour": 12,
+          "count": 3
+        },
+        {
+          "hour": 13,
+          "count": 4
+        },
+        {
+          "hour": 14,
+          "count": 5
+        },
+        {
+          "hour": 15,
+          "count": 4
+        },
+        {
+          "hour": 16,
+          "count": 3
+        },
+        {
+          "hour": 17,
+          "count": 1
+        },
+        {
+          "hour": 18,
+          "count": 0
+        },
+        {
+          "hour": 19,
+          "count": 0
+        },
+        {
+          "hour": 20,
+          "count": 0
+        },
+        {
+          "hour": 21,
+          "count": 0
+        },
+        {
+          "hour": 22,
+          "count": 0
+        },
+        {
+          "hour": 23,
+          "count": 0
+        }
+      ],
+      "weekly": [
+        {
+          "date": "2026-10-26",
+          "count": 4
+        },
+        {
+          "date": "2026-11-02",
+          "count": 29
+        },
+        {
+          "date": "2026-11-09",
+          "count": 9
+        }
+      ],
+      "monthly": [
+        {
+          "date": "2026-11",
+          "count": 42
+        }
+      ]
+    }
+  },
+  "top3": {
+    "state": "partial",
+    "reason": "模拟样本",
+    "data": {
+      "items": [
+        {
+          "code": "费用咨询",
+          "count": 11,
+          "evidenceKey": "ab9d3a2f-3c51-46f4-9182-69a391714205"
+        },
+        {
+          "code": "计划性停供",
+          "count": 9,
+          "evidenceKey": "413414b6-c679-4384-bc50-ba425635a773"
+        },
+        {
+          "code": "水压问题",
+          "count": 9,
+          "evidenceKey": "e63474ef-8fb2-4188-a401-8c6224fc4a3f"
+        }
+      ],
+      "from": "2025-11-01",
+      "to": "2025-11-10",
+      "coverage": "独立模拟样本"
+    }
+  },
+  "spatial": {
+    "state": "available",
+    "reason": null,
+    "data": {
+      "grids": [
+        {
+          "id": "SIM-G-0-0",
+          "name": "西陵区模拟网格1",
+          "districtCode": "420502",
+          "districtName": "西陵区",
+          "longitude": 111.262,
+          "latitude": 30.71,
+          "ring": [
+            [
+              111.255,
+              30.704
+            ],
+            [
+              111.269,
+              30.704
+            ],
+            [
+              111.269,
+              30.716
+            ],
+            [
+              111.255,
+              30.716
+            ],
+            [
+              111.255,
+              30.704
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-0-1",
+          "name": "西陵区模拟网格2",
+          "districtCode": "420502",
+          "districtName": "西陵区",
+          "longitude": 111.28,
+          "latitude": 30.724,
+          "ring": [
+            [
+              111.273,
+              30.718
+            ],
+            [
+              111.287,
+              30.718
+            ],
+            [
+              111.287,
+              30.73
+            ],
+            [
+              111.273,
+              30.73
+            ],
+            [
+              111.273,
+              30.718
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-0-2",
+          "name": "西陵区模拟网格3",
+          "districtCode": "420502",
+          "districtName": "西陵区",
+          "longitude": 111.298,
+          "latitude": 30.71,
+          "ring": [
+            [
+              111.291,
+              30.704
+            ],
+            [
+              111.305,
+              30.704
+            ],
+            [
+              111.305,
+              30.716
+            ],
+            [
+              111.291,
+              30.716
+            ],
+            [
+              111.291,
+              30.704
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-1-0",
+          "name": "伍家岗区模拟网格1",
+          "districtCode": "420503",
+          "districtName": "伍家岗区",
+          "longitude": 111.332,
+          "latitude": 30.65,
+          "ring": [
+            [
+              111.32499999999999,
+              30.644
+            ],
+            [
+              111.339,
+              30.644
+            ],
+            [
+              111.339,
+              30.656
+            ],
+            [
+              111.32499999999999,
+              30.656
+            ],
+            [
+              111.32499999999999,
+              30.644
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-1-1",
+          "name": "伍家岗区模拟网格2",
+          "districtCode": "420503",
+          "districtName": "伍家岗区",
+          "longitude": 111.35,
+          "latitude": 30.664,
+          "ring": [
+            [
+              111.34299999999999,
+              30.658
+            ],
+            [
+              111.357,
+              30.658
+            ],
+            [
+              111.357,
+              30.67
+            ],
+            [
+              111.34299999999999,
+              30.67
+            ],
+            [
+              111.34299999999999,
+              30.658
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-1-2",
+          "name": "伍家岗区模拟网格3",
+          "districtCode": "420503",
+          "districtName": "伍家岗区",
+          "longitude": 111.368,
+          "latitude": 30.65,
+          "ring": [
+            [
+              111.36099999999999,
+              30.644
+            ],
+            [
+              111.375,
+              30.644
+            ],
+            [
+              111.375,
+              30.656
+            ],
+            [
+              111.36099999999999,
+              30.656
+            ],
+            [
+              111.36099999999999,
+              30.644
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-2-0",
+          "name": "点军区模拟网格1",
+          "districtCode": "420504",
+          "districtName": "点军区",
+          "longitude": 111.232,
+          "latitude": 30.66,
+          "ring": [
+            [
+              111.225,
+              30.654
+            ],
+            [
+              111.239,
+              30.654
+            ],
+            [
+              111.239,
+              30.666
+            ],
+            [
+              111.225,
+              30.666
+            ],
+            [
+              111.225,
+              30.654
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-2-1",
+          "name": "点军区模拟网格2",
+          "districtCode": "420504",
+          "districtName": "点军区",
+          "longitude": 111.25,
+          "latitude": 30.674,
+          "ring": [
+            [
+              111.243,
+              30.668
+            ],
+            [
+              111.257,
+              30.668
+            ],
+            [
+              111.257,
+              30.68
+            ],
+            [
+              111.243,
+              30.68
+            ],
+            [
+              111.243,
+              30.668
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-2-2",
+          "name": "点军区模拟网格3",
+          "districtCode": "420504",
+          "districtName": "点军区",
+          "longitude": 111.268,
+          "latitude": 30.66,
+          "ring": [
+            [
+              111.261,
+              30.654
+            ],
+            [
+              111.275,
+              30.654
+            ],
+            [
+              111.275,
+              30.666
+            ],
+            [
+              111.261,
+              30.666
+            ],
+            [
+              111.261,
+              30.654
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-3-0",
+          "name": "猇亭区模拟网格1",
+          "districtCode": "420505",
+          "districtName": "猇亭区",
+          "longitude": 111.422,
+          "latitude": 30.54,
+          "ring": [
+            [
+              111.41499999999999,
+              30.534
+            ],
+            [
+              111.429,
+              30.534
+            ],
+            [
+              111.429,
+              30.546
+            ],
+            [
+              111.41499999999999,
+              30.546
+            ],
+            [
+              111.41499999999999,
+              30.534
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-3-1",
+          "name": "猇亭区模拟网格2",
+          "districtCode": "420505",
+          "districtName": "猇亭区",
+          "longitude": 111.44,
+          "latitude": 30.554,
+          "ring": [
+            [
+              111.43299999999999,
+              30.548
+            ],
+            [
+              111.447,
+              30.548
+            ],
+            [
+              111.447,
+              30.56
+            ],
+            [
+              111.43299999999999,
+              30.56
+            ],
+            [
+              111.43299999999999,
+              30.548
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-3-2",
+          "name": "猇亭区模拟网格3",
+          "districtCode": "420505",
+          "districtName": "猇亭区",
+          "longitude": 111.458,
+          "latitude": 30.54,
+          "ring": [
+            [
+              111.451,
+              30.534
+            ],
+            [
+              111.465,
+              30.534
+            ],
+            [
+              111.465,
+              30.546
+            ],
+            [
+              111.451,
+              30.546
+            ],
+            [
+              111.451,
+              30.534
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-4-0",
+          "name": "夷陵区模拟网格1",
+          "districtCode": "420506",
+          "districtName": "夷陵区",
+          "longitude": 111.302,
+          "latitude": 30.77,
+          "ring": [
+            [
+              111.295,
+              30.764
+            ],
+            [
+              111.30900000000001,
+              30.764
+            ],
+            [
+              111.30900000000001,
+              30.776
+            ],
+            [
+              111.295,
+              30.776
+            ],
+            [
+              111.295,
+              30.764
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-4-1",
+          "name": "夷陵区模拟网格2",
+          "districtCode": "420506",
+          "districtName": "夷陵区",
+          "longitude": 111.32,
+          "latitude": 30.784,
+          "ring": [
+            [
+              111.31299999999999,
+              30.778
+            ],
+            [
+              111.327,
+              30.778
+            ],
+            [
+              111.327,
+              30.79
+            ],
+            [
+              111.31299999999999,
+              30.79
+            ],
+            [
+              111.31299999999999,
+              30.778
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-4-2",
+          "name": "夷陵区模拟网格3",
+          "districtCode": "420506",
+          "districtName": "夷陵区",
+          "longitude": 111.338,
+          "latitude": 30.77,
+          "ring": [
+            [
+              111.33099999999999,
+              30.764
+            ],
+            [
+              111.345,
+              30.764
+            ],
+            [
+              111.345,
+              30.776
+            ],
+            [
+              111.33099999999999,
+              30.776
+            ],
+            [
+              111.33099999999999,
+              30.764
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-5-0",
+          "name": "高新区模拟网格1",
+          "districtCode": "420571",
+          "districtName": "高新区",
+          "longitude": 111.322,
+          "latitude": 30.72,
+          "ring": [
+            [
+              111.315,
+              30.714
+            ],
+            [
+              111.32900000000001,
+              30.714
+            ],
+            [
+              111.32900000000001,
+              30.726
+            ],
+            [
+              111.315,
+              30.726
+            ],
+            [
+              111.315,
+              30.714
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-5-1",
+          "name": "高新区模拟网格2",
+          "districtCode": "420571",
+          "districtName": "高新区",
+          "longitude": 111.34,
+          "latitude": 30.734,
+          "ring": [
+            [
+              111.333,
+              30.728
+            ],
+            [
+              111.34700000000001,
+              30.728
+            ],
+            [
+              111.34700000000001,
+              30.740000000000002
+            ],
+            [
+              111.333,
+              30.740000000000002
+            ],
+            [
+              111.333,
+              30.728
+            ]
+          ]
+        },
+        {
+          "id": "SIM-G-5-2",
+          "name": "高新区模拟网格3",
+          "districtCode": "420571",
+          "districtName": "高新区",
+          "longitude": 111.358,
+          "latitude": 30.72,
+          "ring": [
+            [
+              111.351,
+              30.714
+            ],
+            [
+              111.36500000000001,
+              30.714
+            ],
+            [
+              111.36500000000001,
+              30.726
+            ],
+            [
+              111.351,
+              30.726
+            ],
+            [
+              111.351,
+              30.714
+            ]
+          ]
+        }
+      ],
+      "communities": [
+        {
+          "id": "SIM-G-0-0-C0",
+          "name": "西陵区模拟小区1",
+          "gridId": "SIM-G-0-0",
+          "longitude": 111.262,
+          "latitude": 30.71,
+          "households": 300
+        },
+        {
+          "id": "SIM-G-0-0-C1",
+          "name": "西陵区模拟小区2",
+          "gridId": "SIM-G-0-0",
+          "longitude": 111.266,
+          "latitude": 30.713,
+          "households": 450
+        },
+        {
+          "id": "SIM-G-0-1-C0",
+          "name": "西陵区模拟小区3",
+          "gridId": "SIM-G-0-1",
+          "longitude": 111.28,
+          "latitude": 30.724,
+          "households": 400
+        },
+        {
+          "id": "SIM-G-0-1-C1",
+          "name": "西陵区模拟小区4",
+          "gridId": "SIM-G-0-1",
+          "longitude": 111.284,
+          "latitude": 30.727,
+          "households": 550
+        },
+        {
+          "id": "SIM-G-0-2-C0",
+          "name": "西陵区模拟小区5",
+          "gridId": "SIM-G-0-2",
+          "longitude": 111.298,
+          "latitude": 30.71,
+          "households": 500
+        },
+        {
+          "id": "SIM-G-0-2-C1",
+          "name": "西陵区模拟小区6",
+          "gridId": "SIM-G-0-2",
+          "longitude": 111.302,
+          "latitude": 30.713,
+          "households": 650
+        },
+        {
+          "id": "SIM-G-1-0-C0",
+          "name": "伍家岗区模拟小区1",
+          "gridId": "SIM-G-1-0",
+          "longitude": 111.332,
+          "latitude": 30.65,
+          "households": 300
+        },
+        {
+          "id": "SIM-G-1-0-C1",
+          "name": "伍家岗区模拟小区2",
+          "gridId": "SIM-G-1-0",
+          "longitude": 111.336,
+          "latitude": 30.653,
+          "households": 450
+        },
+        {
+          "id": "SIM-G-1-1-C0",
+          "name": "伍家岗区模拟小区3",
+          "gridId": "SIM-G-1-1",
+          "longitude": 111.35,
+          "latitude": 30.664,
+          "households": 400
+        },
+        {
+          "id": "SIM-G-1-1-C1",
+          "name": "伍家岗区模拟小区4",
+          "gridId": "SIM-G-1-1",
+          "longitude": 111.354,
+          "latitude": 30.667,
+          "households": 550
+        },
+        {
+          "id": "SIM-G-1-2-C0",
+          "name": "伍家岗区模拟小区5",
+          "gridId": "SIM-G-1-2",
+          "longitude": 111.368,
+          "latitude": 30.65,
+          "households": 500
+        },
+        {
+          "id": "SIM-G-1-2-C1",
+          "name": "伍家岗区模拟小区6",
+          "gridId": "SIM-G-1-2",
+          "longitude": 111.372,
+          "latitude": 30.653,
+          "households": 650
+        },
+        {
+          "id": "SIM-G-2-0-C0",
+          "name": "点军区模拟小区1",
+          "gridId": "SIM-G-2-0",
+          "longitude": 111.232,
+          "latitude": 30.66,
+          "households": 300
+        },
+        {
+          "id": "SIM-G-2-0-C1",
+          "name": "点军区模拟小区2",
+          "gridId": "SIM-G-2-0",
+          "longitude": 111.236,
+          "latitude": 30.663,
+          "households": 450
+        },
+        {
+          "id": "SIM-G-2-1-C0",
+          "name": "点军区模拟小区3",
+          "gridId": "SIM-G-2-1",
+          "longitude": 111.25,
+          "latitude": 30.674,
+          "households": 400
+        },
+        {
+          "id": "SIM-G-2-1-C1",
+          "name": "点军区模拟小区4",
+          "gridId": "SIM-G-2-1",
+          "longitude": 111.254,
+          "latitude": 30.677,
+          "households": 550
+        },
+        {
+          "id": "SIM-G-2-2-C0",
+          "name": "点军区模拟小区5",
+          "gridId": "SIM-G-2-2",
+          "longitude": 111.268,
+          "latitude": 30.66,
+          "households": 500
+        },
+        {
+          "id": "SIM-G-2-2-C1",
+          "name": "点军区模拟小区6",
+          "gridId": "SIM-G-2-2",
+          "longitude": 111.272,
+          "latitude": 30.663,
+          "households": 650
+        },
+        {
+          "id": "SIM-G-3-0-C0",
+          "name": "猇亭区模拟小区1",
+          "gridId": "SIM-G-3-0",
+          "longitude": 111.422,
+          "latitude": 30.54,
+          "households": 300
+        },
+        {
+          "id": "SIM-G-3-0-C1",
+          "name": "猇亭区模拟小区2",
+          "gridId": "SIM-G-3-0",
+          "longitude": 111.426,
+          "latitude": 30.543,
+          "households": 450
+        },
+        {
+          "id": "SIM-G-3-1-C0",
+          "name": "猇亭区模拟小区3",
+          "gridId": "SIM-G-3-1",
+          "longitude": 111.44,
+          "latitude": 30.554,
+          "households": 400
+        },
+        {
+          "id": "SIM-G-3-1-C1",
+          "name": "猇亭区模拟小区4",
+          "gridId": "SIM-G-3-1",
+          "longitude": 111.444,
+          "latitude": 30.557,
+          "households": 550
+        },
+        {
+          "id": "SIM-G-3-2-C0",
+          "name": "猇亭区模拟小区5",
+          "gridId": "SIM-G-3-2",
+          "longitude": 111.458,
+          "latitude": 30.54,
+          "households": 500
+        },
+        {
+          "id": "SIM-G-3-2-C1",
+          "name": "猇亭区模拟小区6",
+          "gridId": "SIM-G-3-2",
+          "longitude": 111.462,
+          "latitude": 30.543,
+          "households": 650
+        },
+        {
+          "id": "SIM-G-4-0-C0",
+          "name": "夷陵区模拟小区1",
+          "gridId": "SIM-G-4-0",
+          "longitude": 111.302,
+          "latitude": 30.77,
+          "households": 300
+        },
+        {
+          "id": "SIM-G-4-0-C1",
+          "name": "夷陵区模拟小区2",
+          "gridId": "SIM-G-4-0",
+          "longitude": 111.30600000000001,
+          "latitude": 30.773,
+          "households": 450
+        },
+        {
+          "id": "SIM-G-4-1-C0",
+          "name": "夷陵区模拟小区3",
+          "gridId": "SIM-G-4-1",
+          "longitude": 111.32,
+          "latitude": 30.784,
+          "households": 400
+        },
+        {
+          "id": "SIM-G-4-1-C1",
+          "name": "夷陵区模拟小区4",
+          "gridId": "SIM-G-4-1",
+          "longitude": 111.324,
+          "latitude": 30.787,
+          "households": 550
+        },
+        {
+          "id": "SIM-G-4-2-C0",
+          "name": "夷陵区模拟小区5",
+          "gridId": "SIM-G-4-2",
+          "longitude": 111.338,
+          "latitude": 30.77,
+          "households": 500
+        },
+        {
+          "id": "SIM-G-4-2-C1",
+          "name": "夷陵区模拟小区6",
+          "gridId": "SIM-G-4-2",
+          "longitude": 111.342,
+          "latitude": 30.773,
+          "households": 650
+        },
+        {
+          "id": "SIM-G-5-0-C0",
+          "name": "高新区模拟小区1",
+          "gridId": "SIM-G-5-0",
+          "longitude": 111.322,
+          "latitude": 30.72,
+          "households": 300
+        },
+        {
+          "id": "SIM-G-5-0-C1",
+          "name": "高新区模拟小区2",
+          "gridId": "SIM-G-5-0",
+          "longitude": 111.32600000000001,
+          "latitude": 30.723,
+          "households": 450
+        },
+        {
+          "id": "SIM-G-5-1-C0",
+          "name": "高新区模拟小区3",
+          "gridId": "SIM-G-5-1",
+          "longitude": 111.34,
+          "latitude": 30.734,
+          "households": 400
+        },
+        {
+          "id": "SIM-G-5-1-C1",
+          "name": "高新区模拟小区4",
+          "gridId": "SIM-G-5-1",
+          "longitude": 111.34400000000001,
+          "latitude": 30.737000000000002,
+          "households": 550
+        },
+        {
+          "id": "SIM-G-5-2-C0",
+          "name": "高新区模拟小区5",
+          "gridId": "SIM-G-5-2",
+          "longitude": 111.358,
+          "latitude": 30.72,
+          "households": 500
+        },
+        {
+          "id": "SIM-G-5-2-C1",
+          "name": "高新区模拟小区6",
+          "gridId": "SIM-G-5-2",
+          "longitude": 111.36200000000001,
+          "latitude": 30.723,
+          "households": 650
+        }
+      ],
+      "events": [
+        {
+          "id": "SIM-E-0-11",
+          "kind": "shutdown",
+          "eventType": "planned-water",
+          "gridIds": [
+            "SIM-G-0-0",
+            "SIM-G-0-1"
+          ],
+          "title": "【模拟】西陵区停水停气事件",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "districtCode": "420502",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "西陵区模拟网格1、西陵区模拟网格2",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 500,
+          "workers": 10,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-1-11",
+          "kind": "shutdown",
+          "eventType": "planned-gas",
+          "gridIds": [
+            "SIM-G-0-1",
+            "SIM-G-0-2"
+          ],
+          "title": "【模拟】西陵区停水停气事件",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "districtCode": "420502",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "西陵区模拟网格2、西陵区模拟网格3",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 550,
+          "workers": 11,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-2-11",
+          "kind": "shutdown",
+          "eventType": "emergency-water",
+          "gridIds": [
+            "SIM-G-0-2",
+            "SIM-G-1-0"
+          ],
+          "title": "【模拟】西陵区停水停气事件",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "districtCode": "420502",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "西陵区模拟网格3、伍家岗区模拟网格1",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 600,
+          "workers": 12,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-3-11",
+          "kind": "shutdown",
+          "eventType": "emergency-gas",
+          "gridIds": [
+            "SIM-G-1-0",
+            "SIM-G-1-1"
+          ],
+          "title": "【模拟】伍家岗区停水停气事件",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "districtCode": "420503",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "伍家岗区模拟网格1、伍家岗区模拟网格2",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 650,
+          "workers": 13,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-4-11",
+          "kind": "pipeline",
+          "eventType": "water-project",
+          "gridIds": [
+            "SIM-G-1-1",
+            "SIM-G-1-2"
+          ],
+          "title": "【模拟】伍家岗区管道改造事件",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "districtCode": "420503",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "伍家岗区模拟网格2、伍家岗区模拟网格3",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 700,
+          "workers": 14,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-5-11",
+          "kind": "pipeline",
+          "eventType": "gas-project",
+          "gridIds": [
+            "SIM-G-1-2",
+            "SIM-G-2-0"
+          ],
+          "title": "【模拟】伍家岗区管道改造事件",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "districtCode": "420503",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "伍家岗区模拟网格3、点军区模拟网格1",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 750,
+          "workers": 15,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-6-11",
+          "kind": "shutdown",
+          "eventType": "planned-water",
+          "gridIds": [
+            "SIM-G-2-0",
+            "SIM-G-2-1"
+          ],
+          "title": "【模拟】点军区停水停气事件",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "districtCode": "420504",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "点军区模拟网格1、点军区模拟网格2",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 800,
+          "workers": 16,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-7-11",
+          "kind": "shutdown",
+          "eventType": "planned-gas",
+          "gridIds": [
+            "SIM-G-2-1",
+            "SIM-G-2-2"
+          ],
+          "title": "【模拟】点军区停水停气事件",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "districtCode": "420504",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "点军区模拟网格2、点军区模拟网格3",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 850,
+          "workers": 17,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-8-11",
+          "kind": "shutdown",
+          "eventType": "emergency-water",
+          "gridIds": [
+            "SIM-G-2-2",
+            "SIM-G-3-0"
+          ],
+          "title": "【模拟】点军区停水停气事件",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "districtCode": "420504",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "点军区模拟网格3、猇亭区模拟网格1",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 900,
+          "workers": 18,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-9-11",
+          "kind": "shutdown",
+          "eventType": "emergency-gas",
+          "gridIds": [
+            "SIM-G-3-0",
+            "SIM-G-3-1"
+          ],
+          "title": "【模拟】猇亭区停水停气事件",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "districtCode": "420505",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "猇亭区模拟网格1、猇亭区模拟网格2",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 950,
+          "workers": 19,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-10-11",
+          "kind": "pipeline",
+          "eventType": "water-project",
+          "gridIds": [
+            "SIM-G-3-1",
+            "SIM-G-3-2"
+          ],
+          "title": "【模拟】猇亭区管道改造事件",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "districtCode": "420505",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "猇亭区模拟网格2、猇亭区模拟网格3",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 1000,
+          "workers": 20,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-11-11",
+          "kind": "pipeline",
+          "eventType": "gas-project",
+          "gridIds": [
+            "SIM-G-3-2",
+            "SIM-G-4-0"
+          ],
+          "title": "【模拟】猇亭区管道改造事件",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "districtCode": "420505",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "猇亭区模拟网格3、夷陵区模拟网格1",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 1050,
+          "workers": 21,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-12-11",
+          "kind": "shutdown",
+          "eventType": "planned-water",
+          "gridIds": [
+            "SIM-G-4-0",
+            "SIM-G-4-1"
+          ],
+          "title": "【模拟】夷陵区停水停气事件",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "districtCode": "420506",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "夷陵区模拟网格1、夷陵区模拟网格2",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 1100,
+          "workers": 22,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-13-11",
+          "kind": "shutdown",
+          "eventType": "planned-gas",
+          "gridIds": [
+            "SIM-G-4-1",
+            "SIM-G-4-2"
+          ],
+          "title": "【模拟】夷陵区停水停气事件",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "districtCode": "420506",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "夷陵区模拟网格2、夷陵区模拟网格3",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 1150,
+          "workers": 23,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-14-11",
+          "kind": "shutdown",
+          "eventType": "emergency-water",
+          "gridIds": [
+            "SIM-G-4-2",
+            "SIM-G-5-0"
+          ],
+          "title": "【模拟】夷陵区停水停气事件",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "districtCode": "420506",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "夷陵区模拟网格3、高新区模拟网格1",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 1200,
+          "workers": 24,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-15-11",
+          "kind": "shutdown",
+          "eventType": "emergency-gas",
+          "gridIds": [
+            "SIM-G-5-0",
+            "SIM-G-5-1"
+          ],
+          "title": "【模拟】高新区停水停气事件",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "districtCode": "420571",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "高新区模拟网格1、高新区模拟网格2",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 1250,
+          "workers": 25,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-16-11",
+          "kind": "pipeline",
+          "eventType": "water-project",
+          "gridIds": [
+            "SIM-G-5-1",
+            "SIM-G-5-2"
+          ],
+          "title": "【模拟】高新区管道改造事件",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "districtCode": "420571",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "高新区模拟网格2、高新区模拟网格3",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 1300,
+          "workers": 26,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        },
+        {
+          "id": "SIM-E-17-11",
+          "kind": "pipeline",
+          "eventType": "gas-project",
+          "gridIds": [
+            "SIM-G-5-2",
+            "SIM-G-0-0"
+          ],
+          "title": "【模拟】高新区管道改造事件",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "districtCode": "420571",
+          "startsAt": "2026-11-01T00:00:00+08:00",
+          "endsAt": "2026-11-28T23:59:59+08:00",
+          "approvalStatus": "approved",
+          "reason": "模拟检修及设施升级",
+          "area": "高新区模拟网格3、西陵区模拟网格1",
+          "plan": "【模拟】提前通知、设置警戒、备用供给、完成后复检恢复。",
+          "housing": "【模拟】涉及住宅楼8栋，以真实上报房屋清单替换。",
+          "households": 1350,
+          "workers": 27,
+          "revision": 1,
+          "updatedAt": "2026-11-11T00:00:00+08:00",
+          "sourceRevision": null,
+          "hasGrid": true,
+          "hasCategories": true,
+          "spatialState": "待核验正式空间映射"
+        }
+      ],
+      "pipelines": [
+        {
+          "id": "SIM-P-water-0",
+          "name": "西陵区模拟网格1模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "gridIds": [
+            "SIM-G-0-0"
+          ],
+          "path": [
+            [
+              111.254,
+              30.706
+            ],
+            [
+              111.262,
+              30.71
+            ],
+            [
+              111.27,
+              30.714000000000002
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-0",
+          "name": "西陵区模拟网格1模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-0",
+          "gridIds": [
+            "SIM-G-0-0"
+          ],
+          "path": [
+            [
+              111.254,
+              30.706
+            ],
+            [
+              111.262,
+              30.71
+            ],
+            [
+              111.27,
+              30.714000000000002
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-1",
+          "name": "西陵区模拟网格2模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-1",
+          "gridIds": [
+            "SIM-G-0-1"
+          ],
+          "path": [
+            [
+              111.272,
+              30.72
+            ],
+            [
+              111.28,
+              30.724
+            ],
+            [
+              111.288,
+              30.728
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-1",
+          "name": "西陵区模拟网格2模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "gridIds": [
+            "SIM-G-0-1"
+          ],
+          "path": [
+            [
+              111.272,
+              30.72
+            ],
+            [
+              111.28,
+              30.724
+            ],
+            [
+              111.288,
+              30.728
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-2",
+          "name": "西陵区模拟网格3模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "gridIds": [
+            "SIM-G-0-2"
+          ],
+          "path": [
+            [
+              111.29,
+              30.706
+            ],
+            [
+              111.298,
+              30.71
+            ],
+            [
+              111.306,
+              30.714000000000002
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-2",
+          "name": "西陵区模拟网格3模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-0",
+          "gridIds": [
+            "SIM-G-0-2"
+          ],
+          "path": [
+            [
+              111.29,
+              30.706
+            ],
+            [
+              111.298,
+              30.71
+            ],
+            [
+              111.306,
+              30.714000000000002
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-3",
+          "name": "伍家岗区模拟网格1模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-1",
+          "gridIds": [
+            "SIM-G-1-0"
+          ],
+          "path": [
+            [
+              111.324,
+              30.645999999999997
+            ],
+            [
+              111.332,
+              30.65
+            ],
+            [
+              111.33999999999999,
+              30.654
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-3",
+          "name": "伍家岗区模拟网格1模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "gridIds": [
+            "SIM-G-1-0"
+          ],
+          "path": [
+            [
+              111.324,
+              30.645999999999997
+            ],
+            [
+              111.332,
+              30.65
+            ],
+            [
+              111.33999999999999,
+              30.654
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-4",
+          "name": "伍家岗区模拟网格2模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "gridIds": [
+            "SIM-G-1-1"
+          ],
+          "path": [
+            [
+              111.342,
+              30.66
+            ],
+            [
+              111.35,
+              30.664
+            ],
+            [
+              111.35799999999999,
+              30.668000000000003
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-4",
+          "name": "伍家岗区模拟网格2模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-0",
+          "gridIds": [
+            "SIM-G-1-1"
+          ],
+          "path": [
+            [
+              111.342,
+              30.66
+            ],
+            [
+              111.35,
+              30.664
+            ],
+            [
+              111.35799999999999,
+              30.668000000000003
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-5",
+          "name": "伍家岗区模拟网格3模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-1",
+          "gridIds": [
+            "SIM-G-1-2"
+          ],
+          "path": [
+            [
+              111.36,
+              30.645999999999997
+            ],
+            [
+              111.368,
+              30.65
+            ],
+            [
+              111.37599999999999,
+              30.654
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-5",
+          "name": "伍家岗区模拟网格3模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "gridIds": [
+            "SIM-G-1-2"
+          ],
+          "path": [
+            [
+              111.36,
+              30.645999999999997
+            ],
+            [
+              111.368,
+              30.65
+            ],
+            [
+              111.37599999999999,
+              30.654
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-6",
+          "name": "点军区模拟网格1模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "gridIds": [
+            "SIM-G-2-0"
+          ],
+          "path": [
+            [
+              111.224,
+              30.656
+            ],
+            [
+              111.232,
+              30.66
+            ],
+            [
+              111.24,
+              30.664
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-6",
+          "name": "点军区模拟网格1模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-0",
+          "gridIds": [
+            "SIM-G-2-0"
+          ],
+          "path": [
+            [
+              111.224,
+              30.656
+            ],
+            [
+              111.232,
+              30.66
+            ],
+            [
+              111.24,
+              30.664
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-7",
+          "name": "点军区模拟网格2模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-1",
+          "gridIds": [
+            "SIM-G-2-1"
+          ],
+          "path": [
+            [
+              111.242,
+              30.669999999999998
+            ],
+            [
+              111.25,
+              30.674
+            ],
+            [
+              111.258,
+              30.678
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-7",
+          "name": "点军区模拟网格2模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "gridIds": [
+            "SIM-G-2-1"
+          ],
+          "path": [
+            [
+              111.242,
+              30.669999999999998
+            ],
+            [
+              111.25,
+              30.674
+            ],
+            [
+              111.258,
+              30.678
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-8",
+          "name": "点军区模拟网格3模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "gridIds": [
+            "SIM-G-2-2"
+          ],
+          "path": [
+            [
+              111.26,
+              30.656
+            ],
+            [
+              111.268,
+              30.66
+            ],
+            [
+              111.276,
+              30.664
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-8",
+          "name": "点军区模拟网格3模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-0",
+          "gridIds": [
+            "SIM-G-2-2"
+          ],
+          "path": [
+            [
+              111.26,
+              30.656
+            ],
+            [
+              111.268,
+              30.66
+            ],
+            [
+              111.276,
+              30.664
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-9",
+          "name": "猇亭区模拟网格1模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-1",
+          "gridIds": [
+            "SIM-G-3-0"
+          ],
+          "path": [
+            [
+              111.414,
+              30.535999999999998
+            ],
+            [
+              111.422,
+              30.54
+            ],
+            [
+              111.42999999999999,
+              30.544
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-9",
+          "name": "猇亭区模拟网格1模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "gridIds": [
+            "SIM-G-3-0"
+          ],
+          "path": [
+            [
+              111.414,
+              30.535999999999998
+            ],
+            [
+              111.422,
+              30.54
+            ],
+            [
+              111.42999999999999,
+              30.544
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-10",
+          "name": "猇亭区模拟网格2模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "gridIds": [
+            "SIM-G-3-1"
+          ],
+          "path": [
+            [
+              111.432,
+              30.549999999999997
+            ],
+            [
+              111.44,
+              30.554
+            ],
+            [
+              111.448,
+              30.558
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-10",
+          "name": "猇亭区模拟网格2模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-0",
+          "gridIds": [
+            "SIM-G-3-1"
+          ],
+          "path": [
+            [
+              111.432,
+              30.549999999999997
+            ],
+            [
+              111.44,
+              30.554
+            ],
+            [
+              111.448,
+              30.558
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-11",
+          "name": "猇亭区模拟网格3模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-1",
+          "gridIds": [
+            "SIM-G-3-2"
+          ],
+          "path": [
+            [
+              111.45,
+              30.535999999999998
+            ],
+            [
+              111.458,
+              30.54
+            ],
+            [
+              111.466,
+              30.544
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-11",
+          "name": "猇亭区模拟网格3模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "gridIds": [
+            "SIM-G-3-2"
+          ],
+          "path": [
+            [
+              111.45,
+              30.535999999999998
+            ],
+            [
+              111.458,
+              30.54
+            ],
+            [
+              111.466,
+              30.544
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-12",
+          "name": "夷陵区模拟网格1模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "gridIds": [
+            "SIM-G-4-0"
+          ],
+          "path": [
+            [
+              111.29400000000001,
+              30.766
+            ],
+            [
+              111.302,
+              30.77
+            ],
+            [
+              111.31,
+              30.774
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-12",
+          "name": "夷陵区模拟网格1模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-0",
+          "gridIds": [
+            "SIM-G-4-0"
+          ],
+          "path": [
+            [
+              111.29400000000001,
+              30.766
+            ],
+            [
+              111.302,
+              30.77
+            ],
+            [
+              111.31,
+              30.774
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-13",
+          "name": "夷陵区模拟网格2模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-1",
+          "gridIds": [
+            "SIM-G-4-1"
+          ],
+          "path": [
+            [
+              111.312,
+              30.779999999999998
+            ],
+            [
+              111.32,
+              30.784
+            ],
+            [
+              111.32799999999999,
+              30.788
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-13",
+          "name": "夷陵区模拟网格2模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "gridIds": [
+            "SIM-G-4-1"
+          ],
+          "path": [
+            [
+              111.312,
+              30.779999999999998
+            ],
+            [
+              111.32,
+              30.784
+            ],
+            [
+              111.32799999999999,
+              30.788
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-14",
+          "name": "夷陵区模拟网格3模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "gridIds": [
+            "SIM-G-4-2"
+          ],
+          "path": [
+            [
+              111.33,
+              30.766
+            ],
+            [
+              111.338,
+              30.77
+            ],
+            [
+              111.34599999999999,
+              30.774
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-14",
+          "name": "夷陵区模拟网格3模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-0",
+          "gridIds": [
+            "SIM-G-4-2"
+          ],
+          "path": [
+            [
+              111.33,
+              30.766
+            ],
+            [
+              111.338,
+              30.77
+            ],
+            [
+              111.34599999999999,
+              30.774
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-15",
+          "name": "高新区模拟网格1模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-1",
+          "gridIds": [
+            "SIM-G-5-0"
+          ],
+          "path": [
+            [
+              111.31400000000001,
+              30.715999999999998
+            ],
+            [
+              111.322,
+              30.72
+            ],
+            [
+              111.33,
+              30.724
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-15",
+          "name": "高新区模拟网格1模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "gridIds": [
+            "SIM-G-5-0"
+          ],
+          "path": [
+            [
+              111.31400000000001,
+              30.715999999999998
+            ],
+            [
+              111.322,
+              30.72
+            ],
+            [
+              111.33,
+              30.724
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-16",
+          "name": "高新区模拟网格2模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-0",
+          "gridIds": [
+            "SIM-G-5-1"
+          ],
+          "path": [
+            [
+              111.33200000000001,
+              30.73
+            ],
+            [
+              111.34,
+              30.734
+            ],
+            [
+              111.348,
+              30.738000000000003
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-16",
+          "name": "高新区模拟网格2模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-0",
+          "gridIds": [
+            "SIM-G-5-1"
+          ],
+          "path": [
+            [
+              111.33200000000001,
+              30.73
+            ],
+            [
+              111.34,
+              30.734
+            ],
+            [
+              111.348,
+              30.738000000000003
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-water-17",
+          "name": "高新区模拟网格3模拟供水管线",
+          "businessType": "water",
+          "enterpriseId": "SIM-water-1",
+          "gridIds": [
+            "SIM-G-5-2"
+          ],
+          "path": [
+            [
+              111.35000000000001,
+              30.715999999999998
+            ],
+            [
+              111.358,
+              30.72
+            ],
+            [
+              111.366,
+              30.724
+            ]
+          ]
+        },
+        {
+          "id": "SIM-P-gas-17",
+          "name": "高新区模拟网格3模拟燃气管线",
+          "businessType": "gas",
+          "enterpriseId": "SIM-gas-1",
+          "gridIds": [
+            "SIM-G-5-2"
+          ],
+          "path": [
+            [
+              111.35000000000001,
+              30.715999999999998
+            ],
+            [
+              111.358,
+              30.72
+            ],
+            [
+              111.366,
+              30.724
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "heat": {
+    "state": "available",
+    "reason": "仅模拟样本，非正式热力",
+    "data": {
+      "days": 10,
+      "thresholds": [
+        0.3,
+        1,
+        3,
+        10,
+        30
+      ],
+      "coefficients": [
+        "0.03",
+        "0.10",
+        "0.30",
+        "1.00",
+        "3.00"
+      ],
+      "policyId": "TENDER_1_1_9_V1",
+      "ruleVersion": "simulation-only",
+      "grids": [
+        {
+          "code": "SIM-G-0-0",
+          "count": 4,
+          "level": "orange",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-0-1",
+          "count": 3,
+          "level": "yellow",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-0-2",
+          "count": 3,
+          "level": "yellow",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-1-0",
+          "count": 3,
+          "level": "yellow",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-1-1",
+          "count": 2,
+          "level": "yellow",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-1-2",
+          "count": 3,
+          "level": "yellow",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-2-0",
+          "count": 5,
+          "level": "orange",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-2-1",
+          "count": 1,
+          "level": "blue",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-2-2",
+          "count": 1,
+          "level": "blue",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-3-0",
+          "count": 1,
+          "level": "blue",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-3-1",
+          "count": 1,
+          "level": "blue",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-3-2",
+          "count": 2,
+          "level": "yellow",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-4-0",
+          "count": 4,
+          "level": "orange",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-4-1",
+          "count": 3,
+          "level": "yellow",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-4-2",
+          "count": 0,
+          "level": "green",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-5-0",
+          "count": 1,
+          "level": "blue",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-5-1",
+          "count": 2,
+          "level": "yellow",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        },
+        {
+          "code": "SIM-G-5-2",
+          "count": 3,
+          "level": "yellow",
+          "reason": null,
+          "ruleVersion": "simulation-only"
+        }
+      ]
+    }
+  },
+  "contextId": "offline-fixture-not-a-session",
+  "generatedAt": "2026-11-11T02:05:24.696Z",
+  "expiresAt": "2026-11-11T02:07:24.696Z",
+  "source": {
+    "complaints": "独立模拟样本",
+    "events": "独立专题模拟样本",
+    "topicHistory": "未映射，不参与合计",
+    "cutoffAt": null,
+    "utilityRevision": null,
+    "feedRevision": null,
+    "feedSyncedAt": null
+  },
+  "permissionScope": {
+    "scopeVersion": 1
+  },
+  "periodAnchor": "截至所选日期 2026-11-10",
+  "consistency": "诉求聚合与明细来自同一次捕获；事件另读并标明版本"
+}

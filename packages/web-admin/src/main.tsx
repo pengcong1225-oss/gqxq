@@ -17,7 +17,17 @@ function render(props: any = {}) {
   root = ReactDOM.createRoot(container!);
   root.render(
     <React.StrictMode>
-      <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#1677ff' } }}>
+      <ConfigProvider locale={zhCN} theme={{
+        token: {
+          colorPrimary: '#1677ff', borderRadius: 8,
+          fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif",
+        },
+        components: {
+          Table: { headerBg: '#fafbfc' },
+          Menu: { itemHeight: 44 },
+          Layout: { bodyBg: '#f5f7fa' },
+        },
+      }}>
         {/*
          * basename 优先级：qiankun 注入的 basePath > 与 vite base 同源的 BASE_PATH。
          * dev（base '/'）下 BASE_PATH 为空串 → 回退 '/'，与改动前逐字符一致；

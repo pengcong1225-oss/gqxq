@@ -1,4 +1,6 @@
+import { assertLockedComplaintAccess } from '../auth/accessScope';
 import { createHash } from 'node:crypto';
+import {dispatchCallbackSubjectMatches} from '../domain/puDispatchEnterprise';
 // G4 入站：接收 public-utility 的结果事件回传。
 //
 // 职责：独立验签（算法与入站不同）-> 按 event_id 幂等 -> 推进交办/诉求状态 -> 写审批轨迹与审计
@@ -13,9 +15,9 @@ import { createHash } from 'node:crypto';
 // v2 增加签收与中间节点进度；事务内入库后 ACK，缺关联/缺前序保留 pending 并补偿。
 import { env } from '../config/env';
 import { withTransaction } from '../db/tx';
-import { generateCorrectionsInTx } from './correctionService';
+import { refreshFinalResultCorrectionsInTx } from './correctionService';
 import { pool } from '../db/pool';
-import type { FieldError } from '../http/errors';
+import { AppError, type FieldError } from '../http/errors';
 import type { ApprovalConclusion, BusinessEventType, CallbackAcceptedResult } from '../types/api';
 import { insertAudit } from '../repositories/auditLogRepo';
 import {
@@ -432,23 +434,33 @@ function isDuplicateKey(err: unknown): boolean {
   return e?.code === 'ER_DUP_ENTRY' || e?.errno === 1062;
 }
 
-/** 先按 task_id（G3 推送成功后回填的 reporting_task_id）找，再退回按 source_business_id 找 */
-async function findDispatchRef(tx: { query: (sql:string, params?:unknown[]) => Promise<unknown> }, event: ParsedEvent): Promise<DispatchRef | null> {
+/** v1 按已登记 taskId，v2 按 assignmentId 精确解析；不回退到案件最新交办。 */
+async function findDispatchRef(tx: { query: (sql:string, params?:unknown[]) => Promise<unknown> }, event: ParsedEvent, lock=false): Promise<DispatchRef | null> {
   const predicate = event.contractVersion === 2 ? 'assignment_id = ?' : 'reporting_task_id = ?';
-  const [rows] = await tx.query('select d.assignment_id as assignmentId, d.complaint_id as complaintId,d.status,d.request_id as requestId,d.target_enterprise_code as subjectCode,d.reporting_task_id as taskId,d.last_event_sequence as lastEventSequence,d.reporting_item_id as reportingItemId,ps.body as pushPayload from dispatch_order d left join dispatch_push_snapshot ps on ps.assignment_id=d.assignment_id where d.'+predicate+' for update',[event.contractVersion === 2 ? event.assignmentId : event.taskId]) as [DispatchRef[],unknown];
+  const [rows] = await tx.query('select d.assignment_id as assignmentId, d.complaint_id as complaintId,d.status,d.request_id as requestId,d.target_enterprise_code as subjectCode,d.reporting_task_id as taskId,d.last_event_sequence as lastEventSequence,d.reporting_item_id as reportingItemId,ps.body as pushPayload from dispatch_order d left join dispatch_push_snapshot ps on ps.assignment_id=d.assignment_id where d.'+predicate+(lock?' for update':''),[event.contractVersion === 2 ? event.assignmentId : event.taskId]) as [DispatchRef[],unknown];
   return rows.length === 1 ? rows[0] : null;
 }
 
 export function relationError(event: ParsedEvent, ref: DispatchRef): string | null {
-  if (event.sourceAppCode !== env.pu.appCode || event.sourceBusinessId !== ref.complaintId || event.subjectCode !== ref.subjectCode || ref.taskId !== null && event.taskId !== ref.taskId) return 'invalid task/business/enterprise relation';
-  if(ref.pushPayload){const snapshot=storedPayload(ref.pushPayload) as Record<string,unknown>;if(event.sceneCode!==snapshot.sceneCode||event.templateVersion!==snapshot.templateVersion||event.sourceAppCode!==snapshot.sourceAppCode)return 'invalid scene/template application snapshot relation';}
+  const snapshot=ref.pushPayload?storedPayload(ref.pushPayload) as Record<string,unknown>:null;
+  if (event.sourceAppCode !== env.pu.appCode || event.sourceBusinessId !== ref.complaintId || !dispatchCallbackSubjectMatches(snapshot,ref.subjectCode,event.subjectCode) || ref.taskId !== null && event.taskId !== ref.taskId) return 'invalid task/business/enterprise relation';
+  if(snapshot){if(event.sceneCode!==snapshot.sceneCode||event.templateVersion!==snapshot.templateVersion||event.sourceAppCode!==snapshot.sourceAppCode)return 'invalid scene/template application snapshot relation';}
   if (event.contractVersion === 2 && (event.requestId !== ref.requestId || event.assignmentId !== ref.assignmentId || ref.reportingItemId !== null && event.reportingItemId !== ref.reportingItemId)) return 'invalid assignment/request/item relation';
   return null;
 }
 
 async function applyStoredEvent(tx: import('../db/tx').Tx,event:ParsedEvent,parsedBody:unknown,eventId:string,now:Date,remoteIp:string|null) {
       // 9b) 匹配交办
-      const ref = await findDispatchRef(tx, event);
+      const probe = await findDispatchRef(tx, event);
+      let ref = probe;
+      if (probe !== null) {
+        // Shared order: resolve without a lock, complaint, dispatch, then revalidate binding.
+        await assertLockedComplaintAccess(tx, probe.complaintId);
+        ref = await findDispatchRef(tx, event, true);
+        if (ref !== null && (ref.complaintId !== probe.complaintId || ref.assignmentId !== probe.assignmentId)) {
+          throw AppError.conflict('交办归属已变化，请重试');
+        }
+      }
       if (ref === null) {
         const message = '等待精确交办/任务关联；不会按最新诉求交办猜测关联';
         await updateEventProcessing(tx, eventId, 'pending', message);
@@ -496,24 +508,6 @@ async function applyStoredEvent(tx: import('../db/tx').Tx,event:ParsedEvent,pars
         );
         processedResult = 'applied';
 
-        // ---------- G5：审批通过后顺手补挂/刷新一次纠偏待办 ----------
-        // 注意（2026-09-20 裁定）：这**不再是纠偏的唯一入口**——纠偏是覆盖全部诉求的数据质量轴，
-        // 与是否交办、是否审批通过无关，另有单条手工与批量补挂两个入口。
-        // 这里保留调用的意义：把这次交办记进清单（assignmentId 由 ref 显式传入），
-        // 让"走过督办链路的诉求"其纠偏项能回查到触发它的那个任务。
-        // 放在**同一事务内**的理由：要么"审批通过 + 纠偏清单已生成"一起成立，
-        // 要么一起回滚、由对方按同一 eventId 重投。若放到事务外，
-        // 就会留下"已批准却没有纠偏待办"的中间态。
-        // generateCorrectionsInTx 内部幂等：重复触发只返回既有清单，不会重复插入。
-        if (plan.toDispatchStatus === 'completed') {
-          await generateCorrectionsInTx(tx, {
-            complaintId: ref.complaintId,
-            assignmentId: ref.assignmentId,
-            operatorId: null,
-            operatorName: null,
-            now,
-          });
-        }
       }
       await updateEventProcessing(tx, eventId, processedResult, plan.reason ?? plan.summary);
       if (processedResult === 'pending') return {processedResult,message:plan.reason ?? plan.summary,eventType:event.eventType as BusinessEventType};
@@ -540,6 +534,15 @@ async function applyStoredEvent(tx: import('../db/tx').Tx,event:ParsedEvent,pars
         },
         createdAt: now,
       });
+
+      // Resolve final evidence through the applied event's trace in this same transaction.
+      // Reopen result review only; other decisions survive and duplicate events never reach here.
+      if (processedResult === 'applied' && plan.toDispatchStatus === 'completed') {
+        await refreshFinalResultCorrectionsInTx(tx, {
+          complaintId: ref.complaintId, assignmentId: ref.assignmentId,
+          operatorId: null, operatorName: null, now,
+        });
+      }
 
       // 9e) 审计
       const auditBase = {

@@ -1,99 +1,85 @@
-import React, { useState } from 'react';
-import { Table, Tag, Space, Input, Button, Card, Row, Col, Statistic, Progress, Modal, Form, Select, message, Tooltip } from 'antd';
-import { SearchOutlined, AppstoreOutlined, EnvironmentOutlined, CheckCircleOutlined, WarningOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import DemoDataNotice from '../components/DemoDataNotice';
+import {chineseLabel} from '../utils/chineseDisplay';
+import MasterDataImportDialog from '../components/MasterDataImportDialog';
+import React,{useEffect,useRef,useState} from 'react';
+import {Alert,Button,Card,Collapse,Descriptions,Form,Input,Modal,Select,Space,Table,Tag,Upload} from 'antd';
+import {useAppStore} from '../stores/appStore';
+import {listGrids,getGrid,gridHistory,gridOptions,saveGrid,getAdminGrid,saveAdminGrid,saveCommunity,type GridCoverage,type GridInput,type GridOptions} from '../api/grids';
+import GridBoundaryPreview from '../components/GridBoundaryPreview';
+const empty:GridInput={name:'',managerName:null,managerPhone:null,code:'',enterpriseCode:'',businessType:'',adminGridCodes:[],communityCodes:[],validFrom:'',validTo:null,expectedVersion:0};
+const emptyOptions:GridOptions={enterprises:[],adminGrids:[],communities:[],businessTypes:[],districts:[],businessTypeVersion:null,districtVersion:null};
+const errorText=(e:unknown)=>e&&typeof e==='object'&&'message' in e?String(e.message):'请求失败';
+export default function GridManager(){
+ const userInfo=useAppStore(s=>s.userInfo),token=useAppStore(s=>s.token);
+ const actorKey=JSON.stringify([token,userInfo?.userId,userInfo?.authorizationVersion,userInfo?.permissions,userInfo?.roles]);
+ const actorRef=useRef(actorKey);actorRef.current=actorKey;
+ const [stateActor,setStateActor]=useState(actorKey);
+ const canRead=useAppStore(s=>s.userInfo?.permissions?.includes('grid.read')??false);
+ const manage=useAppStore(s=>s.userInfo?.permissions?.includes('grid.manage')??false);
+ const [rows,setRows]=useState<GridCoverage[]>([]),[total,setTotal]=useState(0),[page,setPage]=useState(1),[error,setError]=useState(''),[loading,setLoading]=useState(false),[options,setOptions]=useState(emptyOptions),[optionError,setOptionError]=useState('');
+ const [mode,setMode]=useState<'edit'|'view'|'admin'|'community'|null>(null),[draft,setDraft]=useState<GridInput>(empty),[detail,setDetail]=useState<GridCoverage|null>(null),[history,setHistory]=useState<GridCoverage[]>([]),[busy,setBusy]=useState(false),[localError,setLocalError]=useState('');
+ const [master,setMaster]=useState({code:'',name:'',parent:'',version:0,geometry:'',source:''});
+ const owner=useRef(0),listOwner=useRef(0),ready=useRef(false),saving=useRef(false),fileOwner=useRef(0);
+ useEffect(()=>{owner.current++;listOwner.current++;fileOwner.current++;ready.current=false;saving.current=false;setRows([]);setTotal(0);setPage(1);setOptions(emptyOptions);setMode(null);setDetail(null);setHistory([]);setDraft({...empty});setMaster({code:'',name:'',parent:'',version:0,geometry:'',source:''});setBusy(false);setError('');setLocalError('');setOptionError('');setStateActor(actorKey);},[actorKey]);
+ useEffect(()=>{let active=true;if(canRead)void gridOptions().then(value=>{if(active&&actorRef.current===actorKey){setOptions(value);setOptionError('');}}).catch(()=>{if(active&&actorRef.current===actorKey)setOptionError('名称选项读取失败，暂显示原始编码。可刷新页面重试。');});else setOptions(emptyOptions);return()=>{active=false;};},[canRead,actorKey]);
+ const refresh=async(nextPage=page)=>{const generation=++listOwner.current;setLoading(true);try{const data=await listGrids(nextPage);if((generation!==listOwner.current||actorRef.current!==actorKey))return;setRows(data.content);setTotal(data.total);setError('');}catch(e){if((generation===listOwner.current&&actorRef.current===actorKey))setError(errorText(e));}finally{if((generation===listOwner.current&&actorRef.current===actorKey))setLoading(false);}};
+ useEffect(()=>{if(canRead)void refresh(page);else setLoading(false);},[page,actorKey,canRead]);useEffect(()=>()=>{owner.current++;listOwner.current++;},[]);
+ const close=()=>{owner.current++;fileOwner.current++;saving.current=false;ready.current=false;setMode(null);setBusy(false);setLocalError('');};
+ const open=async(next:'edit'|'view'|'admin'|'community',code?:string)=>{
+  const generation=++owner.current;fileOwner.current++;saving.current=false;ready.current=false;setMode(next);setLocalError('');setBusy(true);setDraft({...empty});setDetail(null);setHistory([]);setMaster({code:'',name:'',parent:'',version:0,geometry:'',source:''});
+  try{const opts=next==='view'?options:await gridOptions();if((generation!==owner.current||actorRef.current!==actorKey))return;setOptions(opts);
+   if(code){if(next==='admin'){const data=await getAdminGrid(code);if((generation!==owner.current||actorRef.current!==actorKey))return;setMaster({code:data.code,name:data.name,parent:data.districtCode,version:data.version,geometry:data.geometry?JSON.stringify(data.geometry):'',source:data.geometrySource??''});}
+   else if(next==='community'){const c=opts.communities.find(c=>c.code===code);if(!c)throw Error('小区已变化，请刷新');setMaster({code:c.code,name:c.name,parent:c.adminGridCode,version:c.version,geometry:'',source:''});}
+   else {const value=await getGrid(code);if((generation!==owner.current||actorRef.current!==actorKey))return;setDetail(value);setDraft({name:value.name??value.code,managerName:value.managerName??null,managerPhone:value.managerPhone??null,code:value.code,enterpriseCode:value.enterpriseCode,businessType:value.businessType,adminGridCodes:value.adminGridCodes,communityCodes:value.communityCodes,validFrom:next==='edit'?'':value.validFrom??'',validTo:next==='edit'?null:value.validTo,expectedVersion:Number(value.version)});if(next==='view'){const h=await gridHistory(code);if((generation!==owner.current||actorRef.current!==actorKey))return;setHistory(h);}}}
+   ready.current=true;
+  }catch(e){if((generation===owner.current&&actorRef.current===actorKey))setLocalError(errorText(e));}finally{if((generation===owner.current&&actorRef.current===actorKey))setBusy(false);}
+ };
+ const save=async()=>{if(!ready.current||busy||saving.current||!manage)return;const generation=owner.current;saving.current=true;setBusy(true);setLocalError('');try{
+  if(mode==='edit'){if(!draft.name?.trim()||!draft.code||!draft.enterpriseCode||!draft.businessType||!draft.validFrom||!draft.adminGridCodes.length)throw Error('请填写网格名称、编码、企业、类型、生效日和行政网格');if(detail?.validFrom&&draft.validFrom<=detail.validFrom)throw Error('新生效日必须晚于当前版本生效日（'+detail.validFrom+'），历史覆盖不能被覆盖。');if(draft.validTo&&draft.validTo<=draft.validFrom)throw Error('失效日必须晚于生效日，且失效当天不再有效。');await saveGrid({...draft,expectedBusinessTypeVersion:options.businessTypeVersion??undefined,expectedAdminVersions:Object.fromEntries(draft.adminGridCodes.map(c=>[c,options.adminGrids.find(a=>a.code===c)?.version??0])),expectedCommunityVersions:Object.fromEntries(draft.communityCodes.map(c=>[c,options.communities.find(a=>a.code===c)?.version??0]))});}
+  else if(mode==='admin'){validateMaster();const geometry=parseBoundary(master.geometry);if(geometry&&!master.source.trim())throw Error('请填写边界的授权来源，例如核验文件名称或提供单位。');await saveAdminGrid({code:master.code,name:master.name,districtCode:master.parent,expectedVersion:master.version,expectedDistrictVersion:options.districtVersion??undefined,geometry,coordinateSystem:master.geometry.trim()?'WGS84':null,geometrySource:master.geometry.trim()?master.source.trim():null});}
+  else if(mode==='community'){validateMaster();await saveCommunity({code:master.code,name:master.name,adminGridCode:master.parent,expectedVersion:master.version,expectedAdminVersion:options.adminGrids.find(a=>a.code===master.parent)?.version});}
+  if((generation!==owner.current||actorRef.current!==actorKey))return;close();void refresh();
+ }catch(e){if((generation===owner.current&&actorRef.current===actorKey))setLocalError(errorText(e));}finally{if((generation===owner.current&&actorRef.current===actorKey)){saving.current=false;setBusy(false);}}};
+ const validateMaster=()=>{if(!master.code.trim()||!master.name.trim()||!master.parent)throw Error('请填写主数据编码、核验名称并选择归属。');if(!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(master.code))throw Error('编码须以字母或数字开头，仅含字母、数字、下划线、点或短横线，最多64位。');};
+ const name=(code:string,items:{code:string;name:string}[])=>{const found=items.find(item=>item.code===code);return found?`${found.name} (${code})`:`${code}（名称暂不可用）`;};
+ const enterpriseName=(code:string)=>name(code,options.enterprises.map(e=>({code:e.enterpriseCode,name:e.enterpriseName})));
+ const adminNames=(codes:string[])=>codes.map(code=>name(code,options.adminGrids)).join('、')||'未关联';
+ const communityNames=(codes:string[])=>codes.map(code=>name(code,options.communities)).join('、')||'未关联';
+ const choices=(items:{code:string;name:string}[])=>items.map(item=>({value:item.code,label:`${item.name} (${item.code})`}));
+ const readBoundary=async(file:File)=>{const generation=owner.current;const selection=++fileOwner.current;if(file.size>5*1024*1024){setLocalError('边界文件不能超过5MB，请先精简或拆分权威边界。');return false;}setBusy(true);try{const content=await file.text();const geometry=parseBoundary(content);if(!geometry)throw Error('文件为空，请选择包含多边形的 GeoJSON 文件。');if((generation!==owner.current||actorRef.current!==actorKey)||selection!==fileOwner.current)return false;setMaster(current=>({...current,geometry:JSON.stringify(geometry,null,2)}));setLocalError('');}catch(e){if((generation===owner.current&&actorRef.current===actorKey)&&selection===fileOwner.current)setLocalError(errorText(e));}finally{if((generation===owner.current&&actorRef.current===actorKey)&&selection===fileOwner.current)setBusy(false);}return false;};
+ const title=mode==='view'?'网格详情与覆盖历史':mode==='edit'?(detail?'新增覆盖版本':'新增服务网格'):mode==='admin'?'行政网格管理':'小区管理';
+ if(stateActor!==actorKey)return <div role="status">正在刷新授权范围…</div>;
+ return <div><h2>网格管理</h2><p>维护企业服务范围、行政网格和小区归属；覆盖调整会保留历史版本。</p>{error&&<Alert type="error" showIcon message={error}/>}{optionError&&<Alert type="warning" showIcon message={optionError}/>}<Card><Space className="filter-bar" wrap><MasterDataImportDialog kinds={['admin_grid','community','service_grid','grid_coverage','grid_boundary']} onImported={()=>void refresh()}/><Button onClick={()=>void refresh()} loading={loading}>刷新</Button>{manage&&<><Button type="primary" onClick={()=>void open('edit')}>新增服务网格</Button><Button onClick={()=>void open('admin')}>行政网格主数据</Button><Button onClick={()=>void open('community')}>小区主数据</Button></>}</Space><Table rowKey="code" loading={loading} dataSource={rows} scroll={{x:1100}} pagination={{current:page,total,pageSize:20,onChange:setPage}} columns={[{title:'服务网格编码',dataIndex:'code'},{title:'企业网格名称',dataIndex:'name',render:(v,r)=>v??r.code},{title:'网格员',dataIndex:'managerName',render:v=>v??'未登记'},{title:'网格员电话',dataIndex:'managerPhone',render:v=>v??'未登记'},{title:'责任企业',dataIndex:'enterpriseCode',render:enterpriseName},{title:'业务类型',dataIndex:'businessType',render:value=>chineseLabel(value,'business_type')},{title:'行政网格',render:(_,r)=>adminNames(r.adminGridCodes)},{title:'小区',render:(_,r)=>communityNames(r.communityCodes)},{title:'覆盖状态',render:(_,r)=><Tag color={r.coverageState==='maintained'?'green':'orange'}>{r.coverageState==='draft'?'草稿，待首次发布':r.coverageState==='maintained'?'已发布':'历史覆盖待维护'}</Tag>},{title:'覆盖版本',dataIndex:'version'},{title:'操作',fixed:'right',render:(_,r)=><Space><Button onClick={()=>void open('view',r.code)}>详情与历史</Button>{manage&&<Button onClick={()=>void open('edit',r.code)}>编辑覆盖</Button>}</Space>}]} /><p style={{color:'#666'}}>名称来自当前授权范围内的登记数据；名称暂不可用时保留原始编码供核对。</p></Card>
+ <Modal title={title} open={mode!==null} onCancel={close} footer={mode==='view'?<Button onClick={close}>关闭</Button>:<Space><Button onClick={close}>取消</Button><Button type="primary" loading={busy} disabled={!ready.current||busy||!manage} onClick={()=>void save()}>{mode==='edit'?'保存覆盖':mode==='admin'?'保存行政网格':'保存小区'}</Button></Space>} width={850} style={{top:32}} styles={{body:{maxHeight:'calc(100vh - 210px)',overflowY:'auto',paddingRight:8}}}>
+ {localError&&<Alert type="error" showIcon message={localError} style={{marginBottom:16}}/>} {busy&&<p role="status">正在读取或保存…</p>}
+ {mode==='edit'&&<Form layout="vertical" disabled={busy}>
+ {detail&&<Alert type="info" showIcon style={{marginBottom:16}} message="新增覆盖版本" description={`当前版本 ${detail.version}，有效期：${detail.validFrom??'尚未发布'} 至 ${detail.validTo??'长期'}。请选择新的生效日；历史版本将保留。`}/>}
+ <Form.Item label="服务网格编码" required extra="使用已核验的稳定编码。保存后不能修改编码或责任企业。"><Input aria-label="服务网格编码" maxLength={64} disabled={!!draft.expectedVersion||busy} value={draft.code} onChange={e=>setDraft({...draft,code:e.target.value})}/></Form.Item>
+ <Form.Item label="企业网格名称" required><Input aria-label="企业网格名称" maxLength={128} value={draft.name??''} onChange={e=>setDraft({...draft,name:e.target.value})}/></Form.Item>
+ <Form.Item label="网格员姓名"><Input aria-label="网格员姓名" maxLength={64} value={draft.managerName??''} onChange={e=>setDraft({...draft,managerName:e.target.value||null})}/></Form.Item>
+ <Form.Item label="网格员联系电话"><Input aria-label="网格员联系电话" maxLength={64} value={draft.managerPhone??''} onChange={e=>setDraft({...draft,managerPhone:e.target.value||null})}/></Form.Item>
+ <Form.Item label="责任企业" required><Select aria-label="责任企业" showSearch optionFilterProp="label" placeholder="搜索企业名称或编码" disabled={!!draft.expectedVersion||busy} value={draft.enterpriseCode||undefined} options={options.enterprises.map(e=>({value:e.enterpriseCode,label:`${e.enterpriseName} (${e.enterpriseCode})`}))} onChange={value=>setDraft({...draft,enterpriseCode:value,businessType:options.enterprises.find(x=>x.enterpriseCode===value)?.businessType??''})}/></Form.Item>
+ <Form.Item label="业务类型" required extra="与责任企业登记业务保持一致。"><Select aria-label="业务类型" disabled showSearch optionFilterProp="label" value={draft.businessType||undefined} placeholder="选择企业后自动填写" options={options.businessTypes}/></Form.Item>
+ <Form.Item label="行政网格" required extra="可搜索并选择多个行政网格；移除网格会同时移除其下已选小区。"><Select aria-label="行政网格编码" mode="multiple" showSearch optionFilterProp="label" placeholder="搜索行政网格名称或编码" value={draft.adminGridCodes} options={choices(options.adminGrids)} onChange={adminGridCodes=>setDraft({...draft,adminGridCodes,communityCodes:draft.communityCodes.filter(c=>options.communities.some(x=>x.code===c&&adminGridCodes.includes(x.adminGridCode)))})}/></Form.Item>
+ <Form.Item label="小区" extra="先选择行政网格，再选择其下小区；可留空。"><Select aria-label="小区编码" mode="multiple" showSearch optionFilterProp="label" placeholder="搜索已选行政网格下的小区" disabled={busy||!draft.adminGridCodes.length} value={draft.communityCodes} options={choices(options.communities.filter(c=>draft.adminGridCodes.includes(c.adminGridCode)))} onChange={communityCodes=>setDraft({...draft,communityCodes})}/></Form.Item>
+ <Space align="start" wrap><Form.Item label={detail?'新生效日':'生效日'} required extra={detail?.validFrom?`须晚于 ${detail.validFrom}`:'从此日期起覆盖有效'}><Input aria-label="生效日" type="date" value={draft.validFrom} onChange={e=>setDraft({...draft,validFrom:e.target.value})}/></Form.Item><Form.Item label="失效日（不含当日）" extra="可留空表示长期；须晚于生效日。"><Input aria-label="失效日（不含当日）" type="date" value={draft.validTo??''} onChange={e=>setDraft({...draft,validTo:e.target.value||null})}/></Form.Item></Space></Form>}
+ {mode==='view'&&detail&&<div><Descriptions column={1} size="small" bordered items={[{key:'code',label:'服务网格编码',children:detail.code},{key:'name',label:'企业网格名称',children:detail.name??detail.code},{key:'manager',label:'网格员姓名',children:detail.managerName??'未登记'},{key:'phone',label:'网格员联系电话',children:detail.managerPhone??'未登记'},{key:'enterprise',label:'责任企业',children:enterpriseName(detail.enterpriseCode)},{key:'admin',label:'行政网格',children:adminNames(detail.adminGridCodes)},{key:'community',label:'小区',children:communityNames(detail.communityCodes)},{key:'version',label:'覆盖版本',children:detail.version},{key:'dates',label:'有效期',children:`${detail.validFrom??'尚未发布'} 至 ${detail.validTo??'长期'}（结束日不含当日）`}]}/><GridBoundaryPreview coverage={detail}/><h3>授权覆盖历史</h3>{history.length===0&&<p>暂无覆盖历史</p>}{history.map(h=><Card size="small" key={h.version} title={`版本 ${h.version}`} style={{marginBottom:12}}><p>{h.validFrom??'尚未发布'} 至 {h.validTo??'长期'}（结束日不含当日）</p><p>企业网格：{h.name??h.code}；网格员：{h.managerName??'未登记'}；电话：{h.managerPhone??'未登记'}</p><p>行政网格：{adminNames(h.adminGridCodes)}；小区：{communityNames(h.communityCodes)}</p><GridBoundaryPreview coverage={h}/></Card>)}</div>}
+ {(mode==='admin'||mode==='community')&&<div><p>选择已有记录进行编辑，或点击新建录入经核验的编码和名称。</p><Button disabled={busy} onClick={()=>void open(mode)} style={{marginBottom:12}}>{mode==='admin'?'新建行政网格':'新建小区'}</Button><Table rowKey="code" size="small" pagination={{pageSize:5,showSizeChanger:false}} dataSource={(mode==='admin'?options.adminGrids:options.communities).map(({code,name,version})=>({code,name,version}))} columns={[{title:'编码',dataIndex:'code'},{title:'名称',dataIndex:'name'},{title:'版本',dataIndex:'version'},{title:'操作',render:(_,r)=><Button disabled={busy} onClick={()=>void open(mode,r.code)}>编辑</Button>}]} />
+ <h3>{master.version>0?`编辑 ${master.name}（版本 ${master.version}）`:'新建记录'}</h3><Form layout="vertical" disabled={busy}>
+ <Form.Item label="主数据编码" required extra="使用已核验编码，最多64位；保存后不能修改。"><Input aria-label="主数据编码" maxLength={64} value={master.code} disabled={master.version>0||busy} onChange={e=>setMaster({...master,code:e.target.value})}/></Form.Item>
+ <Form.Item label="核验名称" required><Input aria-label="核验名称" maxLength={128} value={master.name} onChange={e=>setMaster({...master,name:e.target.value})}/></Form.Item>
+ <Form.Item label={mode==='admin'?'所属区县':'所属行政网格'} required><Select aria-label={mode==='admin'?'区县编码':'所属行政网格'} showSearch optionFilterProp="label" placeholder="搜索名称或编码" value={master.parent||undefined} options={mode==='admin'?options.districts.map(d=>({value:d.value,label:`${d.label} (${d.value})` })):choices(options.adminGrids)} onChange={parent=>setMaster({...master,parent})}/></Form.Item>
+ {mode==='admin'&&<><Form.Item label="授权边界（可选）" extra="选择 GeoJSON/JSON 文件，读取成功后仍需点击保存行政网格。支持多边形、多重多边形，或只含一个要素的文件。"><Upload accept=".geojson,.json" showUploadList={false} beforeUpload={readBoundary} disabled={busy}><Button disabled={busy}>选择边界文件</Button></Upload><span style={{marginLeft:12}}>{master.geometry.trim()?'已有边界内容':'未设置边界'}</span>{master.geometry.trim()&&<Button type="link" disabled={busy} onClick={()=>{fileOwner.current++;setMaster({...master,geometry:'',source:''});}}>移除边界</Button>}</Form.Item><Collapse items={[{key:'advanced',label:'高级：查看或粘贴 GeoJSON',children:<Input.TextArea aria-label="授权网格边界文件内容（可空）" rows={6} value={master.geometry} onChange={e=>{fileOwner.current++;setMaster({...master,geometry:e.target.value});}}/>}]} style={{marginBottom:16}}/><Form.Item label="几何授权来源" required={!!master.geometry.trim()} extra="例如权威文件名称、提供单位及核验日期。"><Input aria-label="几何授权来源" maxLength={500} value={master.source} onChange={e=>setMaster({...master,source:e.target.value})}/></Form.Item><Alert type="info" showIcon message="边界需使用已核验的全球大地坐标系（WGS84）" description="平台不自动转换坐标。没有授权边界时可留空；空间几何有效性由服务端再次校验。"/></>}
+ </Form></div>}
+ </Modal></div>;
+}
 
-const initialGrids = [
-  { key: 1, gridCode: 'GRID001', gridName: '西陵区中心网格', districtName: '西陵区', businessType: 'both', companyName: '宜昌市供水总公司', managerName: '赵伟', managerPhone: '13800001001', totalComplaints: 356, resolvedComplaints: 298, overtime: 12, status: 1 },
-  { key: 2, gridCode: 'GRID002', gridName: '西陵区城东网格', districtName: '西陵区', businessType: 'gas', companyName: '宜昌中燃', managerName: '钱明', managerPhone: '13800001002', totalComplaints: 245, resolvedComplaints: 200, overtime: 8, status: 1 },
-  { key: 3, gridCode: 'GRID003', gridName: '伍家岗区中心网格', districtName: '伍家岗区', businessType: 'both', companyName: '华润燃气', managerName: '孙磊', managerPhone: '13800001003', totalComplaints: 298, resolvedComplaints: 250, overtime: 15, status: 1 },
-  { key: 4, gridCode: 'GRID004', gridName: '点军区主网格', districtName: '点军区', businessType: 'water', companyName: '点军区供水有限公司', managerName: '李刚', managerPhone: '13800001004', totalComplaints: 215, resolvedComplaints: 185, overtime: 5, status: 1 },
-  { key: 5, gridCode: 'GRID005', gridName: '猇亭区工业网格', districtName: '猇亭区', businessType: 'gas', companyName: '宜昌蓝天气体', managerName: '周强', managerPhone: '13800001005', totalComplaints: 178, resolvedComplaints: 160, overtime: 3, status: 1 },
-  { key: 6, gridCode: 'GRID006', gridName: '夷陵区城区网格', districtName: '夷陵区', businessType: 'both', companyName: '夷陵区水务公司', managerName: '吴志远', managerPhone: '13800001006', totalComplaints: 200, resolvedComplaints: 172, overtime: 10, status: 1 },
-  { key: 7, gridCode: 'GRID007', gridName: '夷陵区乡镇网格', districtName: '夷陵区', businessType: 'water', companyName: '夷陵区水务公司', managerName: '郑大伟', managerPhone: '13800001007', totalComplaints: 135, resolvedComplaints: 118, overtime: 6, status: 1 },
-  { key: 8, gridCode: 'GRID008', gridName: '宜昌高新区网格', districtName: '西陵区', businessType: 'both', companyName: '宜昌市供水总公司', managerName: '冯志强', managerPhone: '13800001008', totalComplaints: 168, resolvedComplaints: 145, overtime: 7, status: 1 },
-];
-
-const GridManager: React.FC = () => {
-  const [grids, setGrids] = useState(initialGrids);
-  const [search, setSearch] = useState('');
-  const [formVisible, setFormVisible] = useState(false);
-  const [editingGrid, setEditingGrid] = useState<any>(null);
-  const [form] = Form.useForm();
-
-  const filtered = grids.filter(g => !search || g.gridName.includes(search) || g.districtName.includes(search) || g.companyName.includes(search));
-
-  const total = grids.reduce((s, g) => s + g.totalComplaints, 0);
-  const resolved = grids.reduce((s, g) => s + g.resolvedComplaints, 0);
-  const rate = total > 0 ? (resolved / total * 100).toFixed(1) : '0';
-
-  const handleSave = () => {
-    form.validateFields().then(vals => {
-      if (editingGrid) {
-        setGrids(grids.map(g => g.key === editingGrid.key ? { ...g, ...vals } : g));
-      } else {
-        const newKey = Math.max(...grids.map(g => g.key), 0) + 1;
-        setGrids([...grids, { key: newKey, gridCode: 'GRID' + String(newKey).padStart(3,'0'), ...vals, totalComplaints: 0, resolvedComplaints: 0, overtime: 0, status: 1 }]);
-      }
-      setFormVisible(false); setEditingGrid(null); form.resetFields();
-    });
-  };
-
-  const columns = [
-    { title: '网格编码', dataIndex: 'gridCode', width: 100 },
-    { title: '网格名称', dataIndex: 'gridName', width: 160 },
-    { title: '所属区域', dataIndex: 'districtName', width: 100 },
-    { title: '业务类型', dataIndex: 'businessType', width: 80, render: (t: string) => <Tag color={t === 'both' ? 'green' : t === 'water' ? 'blue' : 'orange'}>{t === 'both' ? '供水+燃气' : t === 'water' ? '供水' : '燃气'}</Tag> },
-    { title: '责任企业', dataIndex: 'companyName', width: 180, ellipsis: true },
-    { title: '负责人', dataIndex: 'managerName', width: 80 },
-    { title: '联系电话', dataIndex: 'managerPhone', width: 120 },
-    { title: '总诉求', dataIndex: 'totalComplaints', width: 80, sorter: (a: any, b: any) => a.totalComplaints - b.totalComplaints },
-    { title: '已办结', dataIndex: 'resolvedComplaints', width: 80 },
-    { title: '办结率', width: 120, render: (_: any, r: any) => <Progress percent={Math.round(r.resolvedComplaints / r.totalComplaints * 100)} size="small" /> },
-    { title: '超时', dataIndex: 'overtime', width: 60, render: (v: number) => v > 0 ? <Tag color="red">{v}</Tag> : <Tag color="green">0</Tag> },
-    { title: '操作', width: 120, fixed: 'right' as const,
-      render: (_: any, r: any) => <Space>
-        <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingGrid(r); form.setFieldsValue(r); setFormVisible(true); }} disabled>编辑</Button></span></Tooltip>
-        <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="link" size="small" danger icon={<DeleteOutlined />} disabled>删除</Button></span></Tooltip>
-      </Space> },
-  ];
-
-  return (
-    <div>
-      <DemoDataNotice batch="G2 之后" />
-      <h2 style={{ marginBottom: 16 }}>网格管理</h2>
-      <Row gutter={12} style={{ marginBottom: 16 }}>
-        <Col span={4}><Card size="small"><Statistic title="网格总数" value={grids.length} prefix={<AppstoreOutlined />} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="覆盖区域" value={5} prefix={<EnvironmentOutlined />} suffix="个区" /></Card></Col>
-        <Col span={6}><Card size="small"><Statistic title="总体办结率" value={rate} suffix="%" valueStyle={{color:'#52c41a'}} prefix={<CheckCircleOutlined />} /></Card></Col>
-        <Col span={5}><Card size="small"><Statistic title="诉求总量" value={total} /></Card></Col>
-        <Col span={5}><Card size="small"><Statistic title="超时未办结" value={grids.reduce((s, g) => s + g.overtime, 0)} prefix={<WarningOutlined />} valueStyle={{color:'#ff4d4f'}} /></Card></Col>
-      </Row>
-      <Card>
-        <Space style={{ marginBottom: 16 }} wrap>
-          <Input placeholder="搜索网格/区域/企业" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} style={{ width: 260 }} allowClear />
-          <Tooltip title="功能未实现（批次 G2 之后）"><span><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingGrid(null); form.resetFields(); setFormVisible(true); }} disabled>新增网格</Button></span></Tooltip>
-          <Tooltip title="功能未实现（批次 G2 之后）"><span><Button icon={<EnvironmentOutlined />} onClick={() => message.info('GIS边界绘制功能 - 需要集成天地图API，当前为Demo演示')} disabled>GIS边界绘制</Button></span></Tooltip>
-        </Space>
-        <Table columns={columns} dataSource={filtered} size="middle" scroll={{ x: 1400 }} pagination={false} />
-      </Card>
-
-      <Modal title={editingGrid ? '编辑网格' : '新增网格'} open={formVisible} onOk={handleSave} onCancel={() => { setFormVisible(false); setEditingGrid(null); form.resetFields(); }} width={550}>
-        <Form form={form} layout="vertical">
-          <Row gutter={16}>
-            <Col span={12}><Form.Item name="gridName" label="网格名称" rules={[{required:true}]}><Input placeholder="如：西陵区中心网格" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="districtName" label="所属区域" rules={[{required:true}]}><Select options={['西陵区','伍家岗区','点军区','猇亭区','夷陵区','宜都市','枝江市'].map(d=>({value:d,label:d}))} /></Form.Item></Col>
-          </Row>
-          <Form.Item name="businessType" label="业务类型" rules={[{required:true}]}><Select options={[{value:'water',label:'供水'},{value:'gas',label:'燃气'},{value:'both',label:'供水+燃气'}]} /></Form.Item>
-          <Form.Item name="companyName" label="责任企业" rules={[{required:true}]}><Select options={['宜昌市供水总公司','点军区供水有限公司','夷陵区水务公司','宜昌中燃','华润燃气','夷陵区燃气有限公司','宜昌蓝天气体'].map(c=>({value:c,label:c}))} /></Form.Item>
-          <Row gutter={16}>
-            <Col span={12}><Form.Item name="managerName" label="负责人姓名"><Input placeholder="负责人" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="managerPhone" label="负责人电话"><Input placeholder="手机号码" /></Form.Item></Col>
-          </Row>
-        </Form>
-      </Modal>
-    </div>
-  );
-};
-
-export default GridManager;
+function parseBoundary(content:string):unknown|null {
+ if(!content.trim())return null;
+ let value:any;try{value=JSON.parse(content);}catch{throw Error('边界内容不是有效的 JSON。请检查文件格式，或在高级输入中检查括号、逗号和引号。');}
+ const checkCrs=(node:unknown)=>{if(node&&typeof node==='object'&&Object.prototype.hasOwnProperty.call(node,'crs'))throw Error('边界或包装层声明了坐标系。平台不自动转换，请先核验为 WGS84；其他坐标系需经批准转换后再移除旧声明。');};
+ checkCrs(value);
+ if(value?.type==='FeatureCollection'){if(!Array.isArray(value.features)||value.features.length!==1)throw Error('请选择仅含一个边界要素的文件；多个行政网格请通过批量导入维护。');value=value.features[0];checkCrs(value);}
+ if(value?.type==='Feature'){value=value.geometry;checkCrs(value);}
+ if(!value||!['Polygon','MultiPolygon'].includes(value.type)||!Array.isArray(value.coordinates))throw Error('边界需为多边形（Polygon）或多重多边形（MultiPolygon），不能是点或线。');
+ return {type:value.type,coordinates:value.coordinates};
+}

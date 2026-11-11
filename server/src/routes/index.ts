@@ -1,12 +1,19 @@
+import {followupsRouter} from './followups';
+import {sourceProcessesRouter} from './sourceProcesses';
+import {utilityRouter} from './utility';
 import { Router } from 'express';
 import { healthRouter } from './health';
 import { complaintsRouter } from './complaints';
 import { dashboardRouter } from './dashboard';
+import {statisticsRouter} from './statistics';
+import {tenderStatisticsRouter} from './tenderStatistics';
+import {administrativeHeatRouter} from './administrativeHeat';
 import { dictsRouter } from './dicts';
 import { authRouter } from './auth';
 import { externalRouter } from './externalYijiejieban';
 import { publicUtilityCallbackRouter } from './publicUtilityCallback';
 import { legacyRouter } from './legacy';
+import {heatRulesRouter} from './heatRules';
 import { dispatchRouter } from './dispatch';
 import { dispatchPushRouter } from './dispatchPush';
 import { approvalTraceRouter } from './approvalTrace';
@@ -16,9 +23,17 @@ import { dispatchArchiveRouter } from './dispatchArchive';
 import { sourceRouter } from './source';
 import { complaintActionsRouter } from './complaintActions';
 import { enterprisesRouter } from './enterprises';
+import { gridsRouter } from './grids';
+import { masterDataImportsRouter } from './masterDataImports';
+import { complaintImportsRouter } from './complaintImports';
+import { rolesRouter } from './roles';
+import { auditLogsRouter } from './auditLogs';
 import { usersRouter } from './users';
 import { addressCandidatesRouter } from './addressCandidates';
 import { requireAuth } from '../middleware/requireAuth';
+import {reportsRouter} from './reports';
+import {tenderSupportRouter} from './tenderSupport';
+import {screenRouter} from './screen';
 import { enforceRolePolicy } from '../middleware/requireRole';
 
 /**
@@ -27,7 +42,7 @@ import { enforceRolePolicy } from '../middleware/requireRole';
  * 认证与授权（Task #35 起是两段，语义分开）：
  *   * **401 未认证** = requireAuth：缺 Bearer / 令牌无效或过期；
  *   * **403 无权限** = enforceRolePolicy：按 server/src/auth/rolePolicy.ts 的
- *     「角色 × 路由 × 方法」策略表判定，表里没有的端点**默认拒绝**（视同 admin-only）。
+ *     「角色 × 路由 × 方法」策略表判定，表里没有的端点**默认拒绝**（有效授权包括管理员均须登记）。
  *     新增路由必须同步加策略行 + 更新 docs/2026-09-21-角色权限映射.md（交付纪律，逐条可审计）。
  *
  * 不鉴权（也不鉴角色）的四条：/health、/auth/login、/external/yijiejieban/appeal、
@@ -49,9 +64,18 @@ export function buildRouter(): Router {
   root.use(enforceRolePolicy());
   root.use(addressCandidatesRouter);
   root.use(complaintsRouter);
+  root.use(followupsRouter);
+  root.use(sourceProcessesRouter);
   root.use(complaintActionsRouter);
   root.use(enterprisesRouter);
+  root.use(gridsRouter);
+  root.use(masterDataImportsRouter);
+  root.use(complaintImportsRouter);
   root.use(dashboardRouter);
+  root.use(screenRouter);
+  root.use(statisticsRouter);
+  root.use(tenderStatisticsRouter);
+  root.use(administrativeHeatRouter);
   root.use(dictsRouter);
   root.use(dispatchRouter);
   root.use(dispatchPushRouter);
@@ -61,6 +85,12 @@ export function buildRouter(): Router {
   root.use(dispatchArchiveRouter);
   root.use(sourceRouter);
   root.use(usersRouter);
+  root.use(rolesRouter);
+  root.use(auditLogsRouter);
+  root.use(reportsRouter);
+  root.use(tenderSupportRouter);
+  root.use(heatRulesRouter);
+  root.use(utilityRouter);
   root.use(legacyRouter);
 
   return root;

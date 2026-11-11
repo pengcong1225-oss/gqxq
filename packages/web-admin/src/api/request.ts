@@ -1,3 +1,4 @@
+import {systemMessage} from '../utils/chineseDisplay';
 import axios from 'axios';
 import { message } from 'antd';
 import type { ApiError, ApiErrorCode, FieldError } from '../types/api';
@@ -39,6 +40,8 @@ const request = axios.create({
 
 request.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
+  // Preserve a caller's originating session across asynchronous file reads.
+  if(config.headers.Authorization&&config.headers.Authorization!==`Bearer ${token??''}`)throw new Error('登录身份已改变，请重新操作');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -52,9 +55,9 @@ request.interceptors.response.use(
     const { data } = response;
     if (data?.code !== 200) {
       console.error('API Error:', data?.message);
-      const err = new Error(data?.message || 'API Error') as ApiError;
+      const err = new Error(systemMessage(data?.message)) as ApiError;
       err.code = data?.code;
-      err.fieldErrors = data?.data?.fieldErrors;
+      err.fieldErrors = data?.data?.fieldErrors?.map((f:FieldError)=>({...f,message:systemMessage(f.message,'请检查填写内容')}));
       err.status = response.status;
       return Promise.reject(err);
     }
@@ -74,11 +77,9 @@ request.interceptors.response.use(
 
     const apiError = error as ApiError;
     apiError.code = body?.code ?? status;
-    apiError.fieldErrors = body?.data?.fieldErrors;
+    apiError.fieldErrors = body?.data?.fieldErrors?.map(f=>({...f,message:systemMessage(f.message,'请检查填写内容')}));
     apiError.status = status;
-    if (body?.message) {
-      apiError.message = body.message;
-    }
+    apiError.message = systemMessage(body?.message ?? error?.message);
 
     // 登录接口自身的 401 不跳转，交给登录页提示；其余 401 仍清 token 并跳 /login
     // 前缀必须跟 BASE_PATH：子路径部署（/gqxq/）下硬跳 '/login' 会跳出挂载点

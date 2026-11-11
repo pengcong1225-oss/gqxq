@@ -6,6 +6,7 @@ export const ERROR_STATUS = {
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   DUPLICATE_CONFLICT: 409,
+  REPORT_BUSY: 409,
   INVALID_STATE_TRANSITION: 409,
   PAYLOAD_TOO_LARGE: 413,
   /** G6：来源适配器调用失败。用 502 而不是 500，便于与「我方缺陷」区分 */
@@ -21,13 +22,18 @@ export interface FieldError {
   message: string;
 }
 
-// 只承载 JWT 里真实存在的信息（sub / username / roles）。
-// realName、permissions 等明细由 GET /auth/user-info 查库返回，不放进令牌。
+// Current authenticated identity plus effective authorization loaded for this request.
+// Permission fields are not trusted JWT claims; requireAuth always loads them from DB.
 export interface AuthUser {
+  accountType?: import('../types/api').AccountType;
   /** app_user.user_id */
   id: string;
   username: string;
   roles: string[];
+  permissionCodes?: string[];
+  authorizationVersion?: number;
+  mustChangePassword?: boolean;
+  sessionVersion?: number;
 }
 
 export class AppError extends Error {

@@ -1,3 +1,12 @@
+import {namedLabel,fieldLabel,chineseLabel,sourceLabel} from '../utils/chineseDisplay';
+import ChineseDetail from '../components/ChineseDetail';
+import ComplaintCategoryEditor from '../components/ComplaintCategoryEditor';
+import ComplaintReportingResults from '../components/ComplaintReportingResults';
+import ComplaintFollowups from '../components/ComplaintFollowups';
+import SourceProcessTable from '../components/SourceProcessTable';
+import ComplaintSourceSummary,{SourceCitizenFields} from '../components/ComplaintSourceSummary';
+import {useWriteAccess,usePermissionAccess} from '../stores/roleAccess';
+import {useAppStore} from '../stores/appStore';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -33,15 +42,15 @@ import {
 import ReactECharts from 'echarts-for-react';
 import LocationClues from '../components/LocationClues';
 import type { Dayjs } from 'dayjs';
-import { getComplaint, getComplaintTimeline } from '../api/complaints';
+import { getComplaint, getComplaintTimeline, getComplaintSourceDocument } from '../api/complaints';
 import { createDispatch, getDispatchOrder } from '../api/dispatch';
-import { listEnterprises } from '../api/enterprises';
+import { listEnterpriseOptions } from '../api/enterprises';
 import { getSourceAdapterState, syncSource } from '../api/source';
 import type {
   ApiError,
   ComplaintDetail as ComplaintDetailModel,
   DispatchOrderDetail,
-  EnterpriseListItem,
+  EnterpriseOption,
   SourceAdapterState,
   TimelineCategory,
   TimelineItem,
@@ -113,8 +122,49 @@ export function sensitiveRuleScoreLabel(confidence: number | null, version: stri
 }
 
 const ComplaintDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const correctionAccess=useWriteAccess('complaint.correct');
+  const sourceAccess=useWriteAccess('complaint.source_sync');
+  const documentAccess=usePermissionAccess('source_document.read');
+  const user = useAppStore(s => s.userInfo), actorToken = useAppStore(s => s.token);
+  const [documentState, setDocumentState] = useState<{
+      key: string;
+      value: import('../types/api').ComplaintSourceDocument;
+  } | null>(null);
+  const [documentLoading, setDocumentLoading] = useState(false);
+  const createAccess = useWriteAccess('dispatch.create');
+  const { id } = useParams<{
+      id: string;
+  }>();
   const navigate = useNavigate();
+  const documentKey = JSON.stringify([id, actorToken, user?.userId, user?.authorizationVersion, user?.roles, user?.permissions, user?.mustChangePassword, documentAccess.can]);
+  const documentKeyRef = useRef(documentKey), documentSequence = useRef(0);
+  if (documentKeyRef.current !== documentKey) {
+      documentKeyRef.current = documentKey;
+      documentSequence.current++;
+  }
+  const sourceDocument = documentAccess.can && documentState?.key === documentKey ? documentState.value : null;
+  useEffect(() => { setDocumentState(null); setDocumentLoading(false); return () => { documentSequence.current++; }; }, [documentKey]);
+  const closeDocument = () => { documentSequence.current++; setDocumentState(null); setDocumentLoading(false); };
+  const readDocument = async () => {
+      if (!documentAccess.can || !id)
+          return;
+      const key = documentKey, sequence = ++documentSequence.current;
+      const owns = () => key === documentKeyRef.current && sequence === documentSequence.current;
+      setDocumentLoading(true);
+      try {
+          const value = await getComplaintSourceDocument(id);
+          if (owns())
+              setDocumentState({ key, value });
+      }
+      catch (error) {
+          if (owns())
+              message.error(error instanceof Error ? error.message : String(error));
+      }
+      finally {
+          if (owns())
+              setDocumentLoading(false);
+      }
+  };
 
   const [detail, setDetail] = useState<ComplaintDetailModel | null>(null);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
@@ -139,7 +189,7 @@ const ComplaintDetail: React.FC = () => {
 
   /* ---------- 企业主数据：追加交办时的企业选择 ---------- */
   // 清单来自服务端 GET /enterprises，不做本地兜底：手抄编码与登记值不一致会导致交办匹配不到同一主体。
-  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseOption[]>([]);
   const [enterpriseLoading, setEnterpriseLoading] = useState(false);
   const [enterpriseError, setEnterpriseError] = useState<string | null>(null);
   const enterpriseSearchTimer = useRef<number | null>(null);
@@ -149,7 +199,7 @@ const ComplaintDetail: React.FC = () => {
     const seq = ++enterpriseFetchSeq.current;
     setEnterpriseLoading(true);
     try {
-      const res = await listEnterprises({
+      const res = await listEnterpriseOptions({
         keyword: keyword && keyword.trim() !== '' ? keyword.trim() : undefined,
         size: 50,
       });
@@ -186,31 +236,25 @@ const ComplaintDetail: React.FC = () => {
   const clearEnterpriseError = useCallback(() => setEnterpriseError(null), []);
 
   const toEnterpriseOptions = useCallback(
-    (list: EnterpriseListItem[]) =>
+    (list: EnterpriseOption[]) =>
       list.map((e) => ({
         value: e.enterpriseCode,
         label:
           e.enterpriseName +
           '（' + e.enterpriseCode + '）' +
-          (e.businessTypeName ? ' · ' + e.businessTypeName : ''),
+          (e.businessType ? ' · ' + e.businessType : ''),
       })),
     []
   );
 
   /** 服务端结果里若没有该诉求已登记的企业，补在首位以便回显（值来自该诉求自身，不是前端常量） */
   const withCurrentEnterprise = useCallback(
-    (list: EnterpriseListItem[], code?: string | null, name?: string | null): EnterpriseListItem[] => {
+    (list: EnterpriseOption[], code?: string | null, name?: string | null): EnterpriseOption[] => {
       if (!code || list.some((e) => e.enterpriseCode === code)) return list;
-      const current: EnterpriseListItem = {
-        id: -1,
+      const current: EnterpriseOption = {
         enterpriseCode: code,
         enterpriseName: name ?? code,
         businessType: '',
-        businessTypeName: '',
-        uscc: null,
-        contactPerson: null,
-        contactPhone: null,
-        serviceArea: null,
         status: 'enabled',
       };
       return [current, ...list];
@@ -338,7 +382,7 @@ const ComplaintDetail: React.FC = () => {
       if (code === 501 || code === 'NOT_IMPLEMENTED') {
         setSourceSyncNotice({
           type: 'info',
-          text: '来源适配器未启用（批次 G6），真实接口待对接：' + (e?.message ?? ''),
+          text: '来源数据暂不可同步',
         });
       } else {
         setSourceSyncNotice({
@@ -431,11 +475,16 @@ const ComplaintDetail: React.FC = () => {
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/complaints')}>
         返回列表
       </Button>
-      <Tooltip title="从宜接就办同步该诉求的来源处置状态（只读）。适配器未启用时会如实返回未实现，不会展示模拟进度。">
-        <Button loading={sourceSyncing} onClick={() => void handleSyncSource()}>
+      <Tooltip title="查询宜接就办最新处置状态。来源对接未开通时暂不可用。">
+        <Button disabled={!sourceAccess.can} loading={sourceSyncing} onClick={() => void handleSyncSource()}>
           同步来源状态
         </Button>
       </Tooltip>
+      {documentAccess.can&&detail&&<Button loading={documentLoading} onClick={()=>void readDocument()}>查看来源原件</Button>}
+      {correctionAccess.can&&detail&&<Button onClick={()=>navigate('/address-correction?complaintId='+encodeURIComponent(detail.complaintId))}>精确地址与位置纠偏</Button>}
+      <Modal key={documentKey} title="来源原件" open={Boolean(sourceDocument)} footer={null} width={800} onCancel={closeDocument}>
+        {sourceDocument&&<><SourceCitizenFields document={sourceDocument}/><ChineseDetail value={sourceDocument}/></>}
+      </Modal>
     </Space>
   );
 
@@ -456,7 +505,7 @@ const ComplaintDetail: React.FC = () => {
           style={{ marginBottom: 12 }}
           message="来源对接状态获取失败"
           description={
-            '无法确认宜接就办来源适配器当前是否已接入：' + sourceStateError + '。（不会用默认值假装未接入）'
+            sourceStateError
           }
           action={
             <Button size="small" onClick={() => void loadSourceState()}>
@@ -466,25 +515,7 @@ const ComplaintDetail: React.FC = () => {
         />
       )}
 
-      {sourceState !== null && !sourceState.enabled && (
-        <Alert
-          type={sourceState.misconfigured ? 'warning' : 'info'}
-          showIcon
-          style={{ marginBottom: 12 }}
-          message={
-            sourceState.misconfigured
-              ? '来源对接：适配器配置无效（批次 ' + (sourceState.batch ?? 'G6') + '）'
-              : '来源对接：未接入（批次 ' + (sourceState.batch ?? 'G6') + '）'
-          }
-          description={
-            <>
-              {sourceState.message}
-              <br />
-              本页的来源状态显示「未接入」，这是真实状态，不代表异常；本平台不展示任何模拟的来源进度。
-            </>
-          }
-        />
-      )}
+      {sourceState?.misconfigured && <Alert type="warning" showIcon message="来源数据暂不可同步，请联系管理员。" style={{marginBottom:12}}/>}
 
       {sourceSyncNotice !== null && (
         <Alert
@@ -569,12 +600,13 @@ const ComplaintDetail: React.FC = () => {
 
       <Row gutter={[16, 16]}>
         <Col span={16}>
+          <ComplaintSourceSummary detail={detail} canReadDocument={documentAccess.can} documentLoading={documentLoading} onReadDocument={()=>void readDocument()}/>
           <Card title="基本信息">
             <Descriptions bordered size="small" column={2}>
               <Descriptions.Item label="诉求编号">{detail.complaintNo}</Descriptions.Item>
               <Descriptions.Item label="督办状态">
                 <Tag color={SUPERVISION_COLOR[detail.supervisionStatusCode] ?? 'default'}>
-                  {detail.supervisionStatusName}
+                  {namedLabel(detail.supervisionStatusCode,detail.supervisionStatusName,'supervision_status')}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="标题" span={2}>
@@ -582,20 +614,21 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="业务类型">
                 <Tag color={detail.businessTypeCode === 'water' ? 'blue' : 'orange'}>
-                  {detail.businessTypeName}
+                  {namedLabel(detail.businessTypeCode,detail.businessTypeName,'business_type')}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="诉求类型">
-                <Tag>{detail.complaintTypeName}</Tag>
+              <Descriptions.Item label="诉求性质">
+                <Tag>{namedLabel(detail.complaintTypeCode,detail.complaintTypeName,'complaint_type')}</Tag>
               </Descriptions.Item>
+              <Descriptions.Item label="正式大小类" span={2}><ComplaintCategoryEditor detail={detail} onSaved={()=>void load()}/></Descriptions.Item>
               <Descriptions.Item label="紧急程度">
                 <Tag color={detail.urgencyLevelCode === 'critical' ? 'red' : detail.urgencyLevelCode === 'urgent' ? 'orange' : 'blue'}>
                   {detail.urgencyLevelName}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="来源系统">{detail.sourceSystem ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="来源渠道">{detail.sourceChannel ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="来源ID">{detail.sourceId ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="来源系统">{sourceLabel(detail.sourceSystem,'system')}</Descriptions.Item>
+              <Descriptions.Item label="来源渠道">{sourceLabel(detail.sourceChannel,'channel')}</Descriptions.Item>
+              <Descriptions.Item label="来源案件编号">{detail.sourceId ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="所属区域">{detail.districtName ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="责任企业">
                 {detail.enterpriseName ? (
@@ -625,7 +658,7 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="纠偏状态">
                 <Tag color={CORRECTION_COLOR[detail.correctionStatusCode] ?? 'default'}>
-                  {detail.correctionStatusName}
+                  {namedLabel(detail.correctionStatusCode,detail.correctionStatusName,'correction_status')}
                 </Tag>
                 {detail.correctionConfidence != null && (
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -635,11 +668,11 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="来源状态">
                 {detail.sourceEventStatusCode === 'unknown' ? (
-                  <Tooltip title="宜接就办接口尚未对接（批次 G6），来源处置状态暂不可知">
-                    <Tag color="default">{detail.sourceEventStatusName}</Tag>
+                  <Tooltip title="暂未获取来源处置状态">
+                    <Tag color="default">{namedLabel(detail.sourceEventStatusCode,detail.sourceEventStatusName,'source_event_status')}</Tag>
                   </Tooltip>
                 ) : (
-                  <Tag color="cyan">{detail.sourceEventStatusName}</Tag>
+                  <Tag color="cyan">{namedLabel(detail.sourceEventStatusCode,detail.sourceEventStatusName,'source_event_status')}</Tag>
                 )}
               </Descriptions.Item>
               <Descriptions.Item label="超期时效">
@@ -654,7 +687,7 @@ const ComplaintDetail: React.FC = () => {
                 )}
               </Descriptions.Item>
               <Descriptions.Item label="填报状态">
-                <Tag>{detail.reportingStatusName}</Tag>
+                <Tag>{namedLabel(detail.reportingStatusCode,detail.reportingStatusName,'reporting_status')}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label="敏感词规则分值">
                 {sensitiveRuleScoreLabel(detail.ruleConfidence, detail.ruleVersion)}
@@ -662,22 +695,39 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               {detail.addressCandidate && <Descriptions.Item label="地址候选">
                 <Tag color="warning">待核实</Tag> {detail.addressCandidate.value}
-                <Typography.Text type="secondary">（{detail.addressCandidate.sourceField === 'title' ? '标题' : '正文'} · {detail.addressCandidate.extractorVersion}；证据：{detail.addressCandidate.evidence}）</Typography.Text>
+                <Typography.Text type="secondary">（{detail.addressCandidate.sourceField === 'title' ? '标题' : '正文'}；证据：{detail.addressCandidate.evidence}）</Typography.Text>
               </Descriptions.Item>}
-              <Descriptions.Item label="原始地址">{detail.address ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="本次收到的来源地址">
+                {detail.sourceAddress ?? detail.sourceFieldReasons?.sourceAddress ?? '未留存可核实的结构化来源原值'}
+                <Typography.Text type="secondary">（来源顺序未知）</Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="当前有效地址">{detail.effectiveAddress ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="有效值核验状态">
+                {detail.effectiveFieldState ? Object.entries(detail.effectiveFieldState)
+                  .filter(([, value]) => (value as { resolution?: string })?.resolution === 'needs_verification')
+                  .map(([field]) => fieldLabel(field)).join('、') || '已有字段保护记录' : '历史保护状态待核验'}
+              </Descriptions.Item>
               <Descriptions.Item label="纠偏后地址">{detail.correctedAddress ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="诉求时间">{fmtDateTime(detail.createdAt)}</Descriptions.Item>
               <Descriptions.Item label="系统接收时间">{fmtDateTime(detail.receivedAt)}</Descriptions.Item>
               <Descriptions.Item label="来源上报时间">{fmtDateTime(detail.sourceReportedAt)}</Descriptions.Item>
+              <Descriptions.Item label="业务时间依据">{detail.businessTimeSource==='source_reported_at'?'来源上报业务时间':detail.businessTimeSource==='platform_received_at'?'来源时间缺失，业务时间回落系统接收时间':'业务时间不可确认'}</Descriptions.Item>
+              <Descriptions.Item label="来源快照接收时间">{detail.sourceSnapshotAt?fmtDateTime(detail.sourceSnapshotAt):detail.sourceFieldReasons?.sourceSnapshotAt??'—'}</Descriptions.Item>
+              <Descriptions.Item label="来源办理期限">{detail.sourceDeadlineAt?fmtDateTime(detail.sourceDeadlineAt):detail.sourceFieldReasons?.sourceDeadlineAt??'—'}</Descriptions.Item>
+              <Descriptions.Item label="来源办结时间">{detail.sourceCompletedAt?fmtDateTime(detail.sourceCompletedAt):detail.sourceFieldReasons?.sourceCompletedAt??'—'}</Descriptions.Item>
+              <Descriptions.Item label="本系统办结时间">{fmtDateTime(detail.closedAt)}</Descriptions.Item>
               <Descriptions.Item label="最后更新">{fmtDateTime(detail.updatedAt)}</Descriptions.Item>
               <Descriptions.Item label="诉求内容" span={2}>
-                {detail.content ?? '—'}
+                <span style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{detail.content ?? '—'}</span>
               </Descriptions.Item>
             </Descriptions>
             <LocationClues clues={detail.locationClues} conflict={detail.locationConflict} />
           </Card>
 
-          <Card title="处理记录" style={{ marginTop: 16 }}>
+          <ComplaintReportingResults complaintId={detail.complaintId}/>
+          <SourceProcessTable key={detail.complaintId+documentKey} complaintId={detail.complaintId}/>
+          <ComplaintFollowups key={detail.complaintId+documentKey} complaintId={detail.complaintId}/>
+          <Card title="本平台处理记录" style={{ marginTop: 16 }}>
             {timelineError && (
               <Alert
                 type="warning"
@@ -698,8 +748,8 @@ const ComplaintDetail: React.FC = () => {
                     children: (
                       <div>
                         <Space size={6} wrap>
-                          <Tag color={meta?.color ?? 'default'}>{meta?.text ?? t.category}</Tag>
-                          <span style={{ fontWeight: 500 }}>{t.action}</span>
+                          <Tag color={meta?.color ?? 'default'}>{meta?.text ?? '业务记录'}</Tag>
+                          <span style={{ fontWeight: 500 }}>{chineseLabel(t.action,undefined,'业务操作')}</span>
                         </Space>
                         <div style={{ color: '#999', fontSize: 12 }}>
                           {fmtDateTime(t.at)} · {t.operatorName ?? '系统'}
@@ -726,10 +776,10 @@ const ComplaintDetail: React.FC = () => {
             <Descriptions size="small" column={1} bordered>
               <Descriptions.Item label="督办状态">
                 <Tag color={SUPERVISION_COLOR[detail.supervisionStatusCode] ?? 'default'}>
-                  {detail.supervisionStatusName}
+                  {namedLabel(detail.supervisionStatusCode,detail.supervisionStatusName,'supervision_status')}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="填报状态">{detail.reportingStatusName}</Descriptions.Item>
+              <Descriptions.Item label="填报状态">{namedLabel(detail.reportingStatusCode,detail.reportingStatusName,'reporting_status')}</Descriptions.Item>
               <Descriptions.Item label="责任企业">
                 {detail.enterpriseName ?? '未匹配'}
               </Descriptions.Item>
@@ -777,7 +827,7 @@ const ComplaintDetail: React.FC = () => {
                 <Descriptions.Item label="交办单号">{dispatch.orderNo}</Descriptions.Item>
                 <Descriptions.Item label="交办状态">
                   <Tag color={SUPERVISION_COLOR[dispatch.status] ?? 'default'}>
-                    {dispatch.statusName}
+                    {namedLabel(dispatch.status,dispatch.statusName,'supervision_status')}
                   </Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="目标企业">
@@ -788,7 +838,7 @@ const ComplaintDetail: React.FC = () => {
                 <Descriptions.Item label="请求号">{dispatch.requestId ?? '—'}</Descriptions.Item>
                 <Descriptions.Item label="填报任务号">
                   {dispatch.reportingTaskId ?? (
-                    <Tooltip title="填报任务号由批次 G3 推送成功后回填">
+                    <Tooltip title="推送成功后显示填报任务号">
                       <span>—</span>
                     </Tooltip>
                   )}
@@ -798,13 +848,6 @@ const ComplaintDetail: React.FC = () => {
 
             <Divider />
             <Space wrap>
-              <Tooltip title="本系统办结属批次 G5，未实现">
-                <span>
-                  <Button type="primary" size="small" icon={<CheckCircleOutlined />} disabled>
-                    标记办结
-                  </Button>
-                </span>
-              </Tooltip>
               {activeDispatchId !== null ? (
                 <Tooltip title="已有进行中交办；同一诉求同一轮只能有一条有效交办">
                   <span>
@@ -816,6 +859,7 @@ const ComplaintDetail: React.FC = () => {
               ) : (
                 <Button
                   size="small"
+                  disabled={!createAccess.can}
                   onClick={() => {
                     dispatchForm.resetFields();
                     dispatchForm.setFieldsValue({
@@ -865,6 +909,8 @@ const ComplaintDetail: React.FC = () => {
                 description="无定位信息（该诉求未提供坐标，可在整体纠偏中补全）"
               />
             )}
+            <Typography.Paragraph type="secondary" style={{marginTop:8}}>坐标系：{detail.locationCoordinateSystem==='WGS84'?'全球大地坐标系（详见来源）':detail.locationCoordinateSystem==='CGCS2000'?'国家大地坐标系（天地图自动定位）':'未核实'}；来源：{detail.locationCoordinateSource??'未留存可核实来源'}。网格：{detail.adminGridCode??'—'}；小区：{detail.communityCode??'—'}。</Typography.Paragraph>
+            {correctionAccess.can&&<Button onClick={()=>navigate('/address-correction?complaintId='+encodeURIComponent(detail.complaintId))}>前往位置组纠偏</Button>}
           </Card>
 
           <Card
@@ -881,24 +927,22 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="已处理时长">{fmtDuration(timing.elapsed)}</Descriptions.Item>
               <Descriptions.Item label="交办耗时">
-                <Tooltip title="依赖交办记录，批次 G2">
+                <Tooltip title="暂无交办记录">
                   <span>—</span>
                 </Tooltip>
               </Descriptions.Item>
               <Descriptions.Item label="签收耗时">
-                <Tooltip title="依赖填报系统签收回执，批次 G4">
+                <Tooltip title="暂无企业签收信息">
                   <span>—</span>
                 </Tooltip>
               </Descriptions.Item>
               <Descriptions.Item label="剩余时限">
-                <Tooltip title="依赖交办截止时间，批次 G2">
+                <Tooltip title="暂无交办截止时间">
                   <span>—</span>
                 </Tooltip>
               </Descriptions.Item>
             </Descriptions>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              「—」表示所需数据尚未接入：接收耗时 = 系统接收时间 − 来源上报时间。
-            </Typography.Text>
+
           </Card>
         </Col>
       </Row>
@@ -911,25 +955,19 @@ const ComplaintDetail: React.FC = () => {
           setDispatchOpen(false);
           dispatchForm.resetFields();
         }}
-        onOk={() => void handleCreateDispatch()}
+        okButtonProps={{disabled:!createAccess.can}} onOk={() => void handleCreateDispatch()}
         confirmLoading={submitting}
         okText="创建交办"
         width={560}
       >
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="同一诉求同一轮只能有一条有效交办"
-          description="该约束由数据库唯一键保证，不依赖前端判断。若并发下已存在交办，后端返回 created=false，此处会提示「该诉求已有交办」并刷新，不会产生第二条。"
-        />
+
         {enterpriseError && (
           <Alert
             type="warning"
             showIcon
             style={{ marginBottom: 12 }}
             message={'企业列表加载失败：' + enterpriseError}
-            description="下拉将为空，不会被本地示例企业替代。"
+            description="请重试后选择企业。"
             action={
               <Button size="small" onClick={() => void fetchEnterprises()}>
                 重试

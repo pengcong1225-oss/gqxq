@@ -1,69 +1,63 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Avatar, Dropdown, Tag, theme } from 'antd';
+import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Layout, Menu, Button, Avatar, Breadcrumb, Dropdown, Tag } from 'antd';
 import { useAppStore } from '../stores/appStore';
 import { getUserInfo } from '../api/auth';
-import { ROLE_ADMIN, ROLE_HANDLER, ROLE_READONLY, useRoleLabel, useRoles } from '../stores/roleAccess';
-import type { AppRole } from '../types/api';
+import { useRoleLabel } from '../stores/roleAccess';
 import {
   DashboardOutlined, FileTextOutlined, BarChartOutlined, WarningOutlined,
-  TeamOutlined, AppstoreOutlined, FireOutlined, PauseCircleOutlined,
-  ToolOutlined, FilePdfOutlined, DatabaseOutlined, SettingOutlined,
+  TeamOutlined, AppstoreOutlined, FireOutlined,
+  FilePdfOutlined, DatabaseOutlined, SettingOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined, LogoutOutlined, UserOutlined,
-  AuditOutlined, FolderOpenOutlined
+  AuditOutlined, FolderOpenOutlined, CustomerServiceOutlined, SafetyCertificateOutlined
 } from '@ant-design/icons';
 
+const NavigatePassword=()=>{const navigate=useNavigate();useEffect(()=>{navigate('/change-password',{replace:true});},[navigate]);return null;};
 const { Header, Sider, Content } = Layout;
 
 interface MenuEntry {
   key: string;
   icon: React.ReactNode;
   label: string;
-  /** 可见档位；不给就是三档皆可见（读页面人人能看） */
-  roles?: AppRole[];
+  /** 页面对应的服务端功能权限 */
+  permission: string;
 }
 
-const R_ALL: AppRole[] = [ROLE_ADMIN, ROLE_HANDLER, ROLE_READONLY];
-const R_WRITE: AppRole[] = [ROLE_ADMIN, ROLE_HANDLER];
-const R_ADMIN: AppRole[] = [ROLE_ADMIN];
-
-/**
- * 菜单档位口径（docs/2026-09-21-角色权限映射.md §1、§3.4、§3.5）：
- *   * 纯操作入口（整体纠偏 / 敏感交办 / 交办归档）只读档看不到；
- *   * 字典管理与系统管理 admin 独占；
- *   * 其余是读页面，三档都留。
- *
- * 这道过滤**只是体验层**：真正的判定在后端 enforceRolePolicy()。
- * 只读用户手敲 URL 也进得来页面，但拿不到写权限（403 统一提示），
- * admin 独占的两条路由另有 App.tsx 的 RequireRole 挡住。
- */
+/** Menus reflect backend permissions. Buttons use their endpoint capability;
+ * the server always independently validates access. */
 const menuEntries: MenuEntry[] = [
-  { key: '/dashboard', icon: <DashboardOutlined />, label: '数据大屏', roles: R_ALL },
-  { key: '/complaints', icon: <FileTextOutlined />, label: '诉求管理', roles: R_ALL },
-  { key: '/address-correction', icon: <AuditOutlined />, label: '整体纠偏', roles: R_WRITE },
-  { key: '/analysis', icon: <BarChartOutlined />, label: '数据分析', roles: R_ALL },
-  { key: '/dispatch', icon: <WarningOutlined />, label: '敏感交办', roles: R_WRITE },
-  { key: '/dispatch/archive', icon: <FolderOpenOutlined />, label: '交办归档', roles: R_WRITE },
-  { key: '/companies', icon: <TeamOutlined />, label: '企业管理', roles: R_ALL },
-  { key: '/grids', icon: <AppstoreOutlined />, label: '网格管理', roles: R_ALL },
-  { key: '/heatmap', icon: <FireOutlined />, label: '热力图', roles: R_ALL },
-  { key: '/shutdowns', icon: <PauseCircleOutlined />, label: '停供管理', roles: R_ALL },
-  { key: '/pipelines', icon: <ToolOutlined />, label: '管道施工', roles: R_ALL },
-  { key: '/reports', icon: <FilePdfOutlined />, label: '分析报告', roles: R_ALL },
-  { key: '/dicts', icon: <DatabaseOutlined />, label: '字典管理', roles: R_ADMIN },
-  { key: '/system/users', icon: <SettingOutlined />, label: '系统管理', roles: R_ADMIN },
+  {key:'/shutdowns',icon:<WarningOutlined/>,label:'停水停气申请',permission:'shutdown.read'},
+  {key:'/pipelines',icon:<AppstoreOutlined/>,label:'管道施工改造',permission:'pipeline.read'},
+  {key:'/utility-timeouts',icon:<WarningOutlined/>,label:'停供超时推送',permission:'shutdown.read'},
+  {key:'/master-data/imports',icon:<DatabaseOutlined/>,label:'导入批次',permission:'masterdata.import'},
+  { key: '/dashboard', icon: <DashboardOutlined />, label: '数据概览', permission: 'dashboard.read' },
+  { key: '/complaints', icon: <FileTextOutlined />, label: '诉求管理', permission: 'complaint.read' },
+  { key: '/address-correction', icon: <AuditOutlined />, label: '诉求核验', permission: 'complaint.correct' },
+  { key: '/analysis', icon: <BarChartOutlined />, label: '数据分析', permission: 'analysis.read' },
+  { key: '/dispatch', icon: <WarningOutlined />, label: '敏感交办', permission: 'dispatch.read' },
+  { key: '/dispatch/archive', icon: <FolderOpenOutlined />, label: '交办归档', permission: 'dispatch.read' },
+  { key: '/companies', icon: <TeamOutlined />, label: '企业管理', permission: 'enterprise.read' },
+  { key: '/grids', icon: <AppstoreOutlined />, label: '网格管理', permission: 'grid.read' },
+  {key:'/heat-rules',icon:<FireOutlined/>,label:'五档热力规则',permission:'heatmap.manage'},
+  { key: '/heatmap', icon: <FireOutlined />, label: '热力效果预览', permission: 'heatmap.read' },
+  {key:'/tender-support',icon:<BarChartOutlined/>,label:'专题数据与预警管理',permission:'statistics.read'},
+  { key: '/reports', icon: <FilePdfOutlined />, label: '分析报告', permission: 'report.read' },
+  { key: '/dicts', icon: <DatabaseOutlined />, label: '字典管理', permission: 'system.dict.manage' },
+  { key: '/system/users', icon: <SettingOutlined />, label: '账号管理', permission: 'system.users.manage' },
 ];
+
+menuEntries.push({key:'/system/roles',icon:<SettingOutlined/>,label:'角色权限',permission:'system.roles.manage'});
+menuEntries.push({key:'/system/audit-logs',icon:<AuditOutlined/>,label:'登录与操作日志',permission:'system.audit.read'});
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { token } = theme.useToken();
   const logout = useAppStore((s) => s.logout);
   const userInfo = useAppStore((s) => s.userInfo);
   const setUserInfo = useAppStore((s) => s.setUserInfo);
   const tokenValue = useAppStore((s) => s.token);
-  const roles = useRoles();
+  const permissions=userInfo?.permissions??[];
   const roleLabel = useRoleLabel();
 
   /**
@@ -72,56 +66,70 @@ const MainLayout: React.FC = () => {
    * 失败不用管：401 由响应拦截器清令牌并跳登录页。
    */
   useEffect(() => {
-    if (tokenValue === null || tokenValue === '' || userInfo !== null) return;
-    let cancelled = false;
-    void getUserInfo()
-      .then((info) => {
-        if (!cancelled) setUserInfo(info);
-      })
-      .catch(() => {
-        /* 令牌本身有问题，交给拦截器处理 */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [tokenValue, userInfo, setUserInfo]);
+    if (!tokenValue) return;
+    let cancelled=false;
+    const refreshIdentity=()=>{void getUserInfo().then(info=>{if(!cancelled)setUserInfo(info);}).catch(()=>{/* 401 interceptor handles expired identity. */});};
+    refreshIdentity();
+    window.addEventListener('focus',refreshIdentity);
+    return ()=>{cancelled=true;window.removeEventListener('focus',refreshIdentity);};
+  }, [tokenValue,setUserInfo,location.pathname]);
 
-  const selectedKey = '/' + location.pathname.split('/').filter(Boolean).slice(0, 2).join('/');
+  const currentEntry = menuEntries
+    .filter(entry => location.pathname === entry.key || location.pathname.startsWith(entry.key + '/'))
+    .sort((a, b) => b.key.length - a.key.length)[0];
+  const selectedKey = currentEntry?.key;
 
-  const menuItems = useMemo(
-    () =>
-      menuEntries
-        .filter((e) => e.roles === undefined || e.roles.some((r) => roles.includes(r)))
-        .map(({ key, icon, label }) => ({ key, icon, label })),
-    [roles]
-  );
+  const menuItems = useMemo(() => {
+    const available = menuEntries.filter(e => permissions.includes(e.permission) && !userInfo?.mustChangePassword &&
+      (e.key !== '/master-data/imports' || ['enterprise.manage', 'grid.manage', 'system.dict.manage'].some(code => permissions.includes(code))));
+    const groups = [
+      { label: '诉求办理', keys: ['/complaints', '/dispatch', '/address-correction', '/dispatch/archive'] },
+      { label: '公共事业填报对接', keys: ['/shutdowns','/pipelines','/utility-timeouts'] },
+      { label: '统计与报告', keys: ['/dashboard', '/analysis', '/reports'] },
+      { label: '规则与数据管理', keys: ['/heat-rules', '/tender-support', '/heatmap'] },
+      { label: '基础资料', keys: ['/companies', '/grids', '/master-data/imports', '/dicts'] },
+      { label: '系统管理', keys: ['/system/users', '/system/roles', '/system/audit-logs'] },
+    ];
+    const visible = groups.map(group => ({ key: group.label, type: 'group' as const, label: group.label,
+      children: group.keys.flatMap(key => available.filter(entry => entry.key === key).map(({key, icon, label}) => ({key, icon, label})))
+    })).filter(group => group.children.length);
+    return collapsed ? visible.flatMap(group => group.children) : visible;
+  }, [permissions, userInfo, collapsed]);
 
   const userMenuItems = [
-    { key: 'profile', icon: <UserOutlined />, label: '个人中心' },
+    { key: 'password', icon: <UserOutlined />, label: '修改密码' },
     { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true },
   ];
 
   return (
-    <Layout style={{ height: '100vh' }}>
-      <Sider trigger={null} collapsible collapsed={collapsed} width={220}
-        style={{ background: token.colorBgContainer, borderRight: '1px solid #f0f0f0' }}>
-        <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          borderBottom: '1px solid #f0f0f0', fontWeight: 700, fontSize: collapsed ? 14 : 16, color: token.colorPrimary }}>
-          {collapsed ? '水燃' : '宜昌水燃诉求分析平台'}
-        </div>
-        <Menu mode="inline" selectedKeys={[selectedKey]} items={menuItems}
+    <Layout className="app-layout">
+      <Sider trigger={null} collapsible collapsed={collapsed} width={220} collapsedWidth={72}
+        theme="light" className="app-sider" breakpoint="lg" onBreakpoint={setCollapsed}>
+        <Link to="/dashboard" className="app-brand" aria-label="诉求平台首页">
+          <span className="brand-mark"><CustomerServiceOutlined /></span>
+          {!collapsed && <span>宜昌水燃诉求分析</span>}
+        </Link>
+        {!collapsed && <div className="nav-caption">业务工作台</div>}
+        <nav className="app-navigation" aria-label="业务导航">
+        <Menu mode="inline" selectedKeys={selectedKey ? [selectedKey] : []} items={menuItems}
           onClick={({ key }) => navigate(key)}
-          style={{ borderRight: 0, marginTop: 8 }} />
+        />
+        </nav>
+        {!collapsed && <div className="sider-footer"><SafetyCertificateOutlined /> 诉求 · 协同 · 分析</div>}
       </Sider>
-      <Layout>
-        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0', height: 64 }}>
+      <Layout className="main-layout">
+        <Header className="app-header">
+          <div className="header-left">
           <Button type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            aria-label={collapsed ? '展开导航' : '收起导航'}
             onClick={() => setCollapsed(!collapsed)} style={{ fontSize: 16 }} />
-          <Dropdown
+          <Breadcrumb items={[{ title: '供水燃气诉求' }, { title: currentEntry?.label ?? '工作台' }]} />
+          </div>
+          <Dropdown trigger={['click']}
             menu={{
               items: userMenuItems,
               onClick: ({ key }) => {
+                if(key==='password') navigate('/change-password');
                 if (key === 'logout') {
                   logout();
                   navigate('/login', { replace: true });
@@ -129,16 +137,20 @@ const MainLayout: React.FC = () => {
               },
             }}
           >
-            <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Avatar icon={<UserOutlined />} style={{ backgroundColor: token.colorPrimary }} />
+            <button type="button" className="user-menu" aria-label="账户菜单">
+              <Avatar size="small" icon={<UserOutlined />} />
               {/* 显示真实登录用户与档位：按钮为什么是灰的，这里给得出答案 */}
               <span>{userInfo !== null && userInfo !== undefined ? userInfo.realName : '未登录'}</span>
               <Tag color="blue">{roleLabel}</Tag>
-            </div>
+            </button>
           </Dropdown>
         </Header>
-        <Content style={{ margin: 16, padding: 24, background: '#fff', borderRadius: 8, overflow: 'auto' }}>
-          <Outlet />
+        <Content className="workspace">
+          <div className="workspace-heading"><span>供水燃气行业诉求管理</span><span>业务管理端</span></div>
+          <section className="page-content" aria-label={currentEntry?.label ?? '工作台'}>
+          {userInfo?.mustChangePassword ? <NavigatePassword/> : <Outlet />}
+          </section>
+          <footer className="workspace-footer">宜昌市供水燃气行业诉求分析平台</footer>
         </Content>
       </Layout>
     </Layout>

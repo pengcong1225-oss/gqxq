@@ -1,17 +1,9 @@
-// 角色 × 路由 × 方法 策略表 —— 后端鉴权的**唯一真源**。
-//
-// 与 docs/2026-09-21-角色权限映射.md 逐条对应（编号 P/S/R/W/U/D/X 保留在 desc 里，
-// 便于文档与代码互相定位）。verify:rbac 会断言本表的条目数与文档端点数一致。
-//
-// 交付纪律（红线，改动前必读）：
-//   1) **默认拒绝**：新增路由如果没有在下面的 ROLE_POLICY 里加一条，
-//      isAllowed() 会按「仅 admin」处理 —— 表现为 handler / readonly 拿 403，
-//      而不是"谁都能调"。加功能时同步加策略行，是路由改动的一部分，不是可选项。
-//   2) 机器对机器端点（P3 宜接就办入站、P4 公网回调）**不在本表**：
-//      它们在 routes/index.ts 里挂在 requireAuth 之前，靠网络边界 / 签名鉴权，
-//      不发放平台账号，因此也不参与角色判定。要给用户态端点加豁免必须走评审。
-//   3) readonly 只能 GET 是**代码里的硬不变量**（见 isAllowed），
-//      不靠表格自觉：即使有人误加一条 roles 含 readonly 的 POST 策略也不会放开。
+// Endpoint capability policy. roles is the historical built-in seed matrix;
+// current HTTP requests use permissionCode plus the persisted enabled role.
+// Unregistered endpoints deny effective grants, including administrator grants.
+// readonly cannot mutate business; own authenticated password change is the
+// narrow identity exception. Machine ingress/callbacks stay before requireAuth.
+import type { PermissionCode } from './permissionCatalog';
 import type { AuthUser } from '../http/errors';
 
 export const ROLE_ADMIN = 'admin';
@@ -39,6 +31,9 @@ export interface PolicyRule {
   /** 相对挂载前缀 /api/v1 的路径；参数段统一写成 [^/]+ */
   path: RegExp;
   roles: readonly Role[];
+  permissionCode?: PermissionCode;
+  selfService?: boolean;
+  anyPermissionCodes?: readonly PermissionCode[];
   /** 文档编号 + 人读依据 */
   desc: string;
 }
@@ -53,65 +48,131 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
+  {method:'GET',path:/^\/screen\/(bootstrap|demands|compare|evidence|events\/[^/]+)$/,roles:R,permissionCode:'statistics.read',desc:'诉求大屏只读：另核 dashboard.read、complaint.read 和当前数据范围'},
+  {method:'GET',path:/^\/complaints\/[^/]+\/(?:followups|source-processes)$/,roles:R,permissionCode:'complaint.read',desc:'回访及来源流程明细'},
+  {method:'POST',path:/^\/complaints\/[^/]+\/followups$/,roles:A,permissionCode:'followup.create',desc:'回访登记，服务内重核当前身份范围'},
+  {method:'PATCH',path:/^\/followups\/[^/]+$/,roles:A,permissionCode:'followup.create',desc:'本人回访修订'},
+  {method:'PATCH',path:/^\/followups\/[^/]+\/conclusion$/,roles:A,permissionCode:'followup.conclude',desc:'内部主管回访结论'},
+  {method:'GET',path:/^\/utility\/events(?:\/[^/]+)?$/,roles:R,anyPermissionCodes:['shutdown.read','pipeline.read'],desc:'申请查询：服务内按停供或施工权限及数据范围授权'},
+  {method:'GET',path:/^\/utility\/timeouts$/,roles:R,permissionCode:'shutdown.read',desc:'停供超时任务，另核诉求查询'},
+  {method:'POST',path:/^\/utility\/(?:events|import|timeouts\/[^/]+\/push)$/,roles:A,permissionCode:'masterdata.import',desc:'模拟申请维护、来源导入或模拟超时推送，服务内核全域范围'},
+  {method:'PATCH',path:/^\/utility\/events\/[^/]+$/,roles:A,permissionCode:'masterdata.import',desc:'模拟申请版本编辑，服务内核全域范围'},
+  {method:'GET',path:/^\/tender-support\/report$/,roles:R,permissionCode:'report.download',desc:'专题报告导出，另核报告与统计明细权限'},
+  {method:'GET',path:/^\/tender-support\/(dataset|warning-rules)$/,roles:R,permissionCode:'statistics.read',desc:'标书专题数据，另核诉求查询及当前数据范围'},
+  {method:'POST',path:/^\/tender-support\/dataset\/preview$/,roles:A,permissionCode:'masterdata.import',desc:'专题数据导入校验，要求全域范围'},
+  {method:'PUT',path:/^\/tender-support\/dataset$/,roles:A,permissionCode:'masterdata.import',desc:'专题真实数据版本化替换，要求全域范围'},
+  {method:'PUT',path:/^\/tender-support\/warning-rules$/,roles:A,permissionCode:'heatmap.manage',desc:'四场景预警配置，要求全域范围'},
+  {method:'POST',path:/^\/complaint-imports\/preview$/,roles:A,permissionCode:'complaint.import',desc:'诉求文件校验预览'},
+  {method:'POST',path:/^\/complaint-imports\/[^/]+\/commit$/,roles:A,permissionCode:'complaint.import',desc:'诉求整批事务确认'},
+  {method:'GET',path:/^\/complaint-imports(?:\/[^/]+)?$/,roles:A,permissionCode:'complaint.import',desc:'本人诉求导入批次'},
+  {method:'GET',path:/^\/heat-rules(?:\/categories)?$/,roles:A,permissionCode:'heatmap.manage',desc:'D2 全局热力草稿'},
+  {method:'POST',path:/^\/heat-rules(?:\/tender|\/[^/]+\/(?:preview|publish))?$/,roles:A,permissionCode:'heatmap.manage',desc:'D2 热力规则保存与发布'},
+  {method:'GET',path:/^\/statistics\/(summary|complaints)$/,roles:R,permissionCode:'statistics.read',desc:'D1 候选统计，另需数据集能力；明细另需complaint.read'},
+  {method:'GET',path:/^\/statistics\/tender$/,roles:R,permissionCode:'statistics.read',desc:'标书统计驾驶舱，沿用数据集能力与当前诉求范围'},
+  {method:'GET',path:/^\/statistics\/tender\/community-complaints$/,roles:R,permissionCode:'statistics.read',desc:'标书小区精确诉求明细，另核complaint.read与数据集能力'},
+  {method:'GET',path:/^\/heatmap\/administrative-(data|complaints)$/,roles:R,permissionCode:'heatmap.read',desc:'行政网格热力与明细，另核statistics及complaint查询能力'},
+  {method:'GET',path:/^\/master-data\/import-templates\/[^/]+$/,roles:A,permissionCode:'masterdata.import',desc:'B4 模板（另核目标维护权限）'},
+  {method:'POST',path:/^\/master-data\/imports\/preview$/,roles:A,permissionCode:'masterdata.import',desc:'B4 上传校验预览'},
+  {method:'GET',path:/^\/master-data\/imports(?:\/[^/]+(?:\/errors)?)?$/,roles:A,permissionCode:'masterdata.import',desc:'B4 本人批次与当前对象范围'},
+  {method:'POST',path:/^\/master-data\/imports\/[^/]+\/commit$/,roles:A,permissionCode:'masterdata.import',desc:'B4 整批事务确认'},
+  {method:'GET',path:/^\/enterprise-reference-options$/,roles:R,permissionCode:'enterprise.read',desc:'企业维护选项（已发布字典只读）'},
+  {method:'GET',path:/^\/enterprise-options$/,roles:R,permissionCode:'enterprise.read',desc:'登记目标最小选单'},
+  {method:'POST',path:/^\/enterprises$/,roles:A,permissionCode:'enterprise.manage',desc:'企业新增'},
+  {method:'PATCH',path:/^\/enterprises\/[^/]+$/,roles:A,permissionCode:'enterprise.manage',desc:'企业维护'},
+  {method:'GET',path:/^\/enterprises\/[^/]+\/(households|department-mappings)$/,roles:R,permissionCode:'enterprise.read',desc:'企业经营历史'},
+  {method:'POST',path:/^\/enterprises\/[^/]+\/(households|department-mappings)$/,roles:A,permissionCode:'enterprise.manage',desc:'企业经营数据维护'},
+
+  {method:'GET',path:/^\/categories$/,roles:R,permissionCode:'dict.read',desc:'正式分类可选项'},
+  {method:'POST',path:/^\/complaints\/[^/]+\/category$/,roles:W,permissionCode:'complaint.correct',desc:'正式分类纠偏'},
+  {method:'GET',path:/^\/complaints\/[^/]+\/category-history$/,roles:R,permissionCode:'complaint.read',desc:'正式分类修订'},
+  ...(['GET','POST'] as const).map(method=>({method,path:/^\/dict-types$/,roles:A,permissionCode:'system.dict.manage' as const,desc:'通用字典类型管理'})),
+  ...(['PATCH','DELETE'] as const).map(method=>({method,path:/^\/dict-types\/[^/]+$/,roles:A,permissionCode:'system.dict.manage' as const,desc:'字典类型维护'})),
+  ...(['GET','POST'] as const).map(method=>({method,path:/^\/dict-types\/[^/]+\/items$/,roles:A,permissionCode:'system.dict.manage' as const,desc:'字典条目管理'})),
+  ...(['PATCH','DELETE'] as const).map(method=>({method,path:/^\/dict-types\/[^/]+\/items\/[^/]+$/,roles:A,permissionCode:'system.dict.manage' as const,desc:'字典条目维护'})),
+  {method:'GET',path:/^\/dict-types\/[^/]+\/items\/[^/]+\/references$/,roles:A,permissionCode:'system.dict.manage',desc:'字典条目可见引用'},
+  {method:'GET',path:/^\/dict-types\/[^/]+\/references$/,roles:A,permissionCode:'system.dict.manage',desc:'字典类型可见引用'},
+  {method:'GET',path:/^\/audit-logs$/,roles:A,permissionCode:'system.audit.read',desc:'A6 登录与操作日志列表'},
+  {method:'GET',path:/^\/audit-logs\/[^/]+$/,roles:A,permissionCode:'system.audit.read',desc:'A6 安全审计详情与当前对象范围'},
+  {method:'GET',path:/^\/users\/[^/]+\/scopes$/,roles:A,permissionCode:'system.users.manage',desc:'U4 读取用户数据范围'},
+  {method:'PUT',path:/^\/users\/[^/]+\/scopes$/,roles:A,permissionCode:'system.users.manage',desc:'U5 配置用户数据范围'},
+  {method:'GET',path:/^\/complaints\/[^/]+\/source-document$/,roles:A,permissionCode:'source_document.read',desc:'R24 来源原件（显式能力与对象范围）'},
+  {method:'POST',path:/^\/auth\/change-password$/,roles:R,selfService:true,desc:'本人改密'},
+  {method:'POST',path:/^\/users\/[^/]+\/reset-password$/,roles:A,permissionCode:'system.users.manage',desc:'管理员重置口令'},
+  {method:'GET',path:/^\/roles$/,roles:A,permissionCode:'system.roles.manage',desc:'角色列表'},
+  {method:'POST',path:/^\/roles$/,roles:A,permissionCode:'system.roles.manage',desc:'创建角色'},
+  {method:'PATCH',path:/^\/roles\/[^/]+$/,roles:A,permissionCode:'system.roles.manage',desc:'修改角色'},
+  {method:'GET',path:/^\/permissions$/,roles:A,permissionCode:'system.roles.manage',desc:'权限目录'},
   // ---------- S：身份自查询（三档皆放，只看自己） ----------
-  { method: 'GET', path: new RegExp('^/auth/user-info$'), roles: R, desc: 'S1 当前登录用户信息' },
+  { method: 'GET', path: new RegExp('^/auth/user-info$'), roles: R, selfService: true, desc: 'S1 当前登录用户信息' },
 
   // ---------- R：读端点（23 条） ----------
-  { method: 'GET', path: new RegExp('^/complaints$'), roles: R, desc: 'R1 诉求总账列表' },
-  { method: 'GET', path: new RegExp('^/complaints/' + param + '$'), roles: R, desc: 'R2 诉求详情' },
-  { method: 'GET', path: new RegExp('^/complaints/' + param + '/timeline$'), roles: R, desc: 'R3 诉求时间线' },
-  { method: 'GET', path: new RegExp('^/complaints/' + param + '/corrections$'), roles: R, desc: 'R4 单条纠偏清单' },
-  { method: 'GET', path: new RegExp('^/enterprises$'), roles: R, desc: 'R5 企业主数据列表' },
-  { method: 'GET', path: new RegExp('^/enterprises/' + param + '$'), roles: R, desc: 'R6 企业详情' },
-  { method: 'GET', path: new RegExp('^/dashboard/overview$'), roles: R, desc: 'R7 数据大屏' },
-  { method: 'GET', path: new RegExp('^/dicts/' + param + '/items$'), roles: R, desc: 'R8 通用字典项只读查询' },
-  { method: 'GET', path: new RegExp('^/dispatch/orders$'), roles: R, desc: 'R9 交办列表' },
-  { method: 'GET', path: new RegExp('^/dispatch/orders/' + param + '$'), roles: R, desc: 'R10 交办详情' },
-  { method: 'GET', path: new RegExp('^/dispatch/orders/' + param + '/push-logs$'), roles: R, desc: 'R11 推送留痕' },
-  { method: 'GET', path: new RegExp('^/dispatch/orders/' + param + '/approval-trace$'), roles: R, desc: 'R12 审批轨迹' },
-  { method: 'GET', path: new RegExp('^/corrections/pending$'), roles: R, desc: 'R13 待纠偏队列' },
-  { method: 'GET', path: new RegExp('^/corrections/pending-complaints$'), roles: R, desc: 'R23 诉求级待纠偏列表' },
-  { method: 'GET', path: new RegExp('^/analysis/records$'), roles: R, desc: 'R14 分析库列表' },
-  { method: 'GET', path: new RegExp('^/analysis/records/' + param + '$'), roles: R, desc: 'R15 分析下钻' },
-  { method: 'GET', path: new RegExp('^/report-todos$'), roles: R, desc: 'R16 待查报告待办' },
-  { method: 'GET', path: new RegExp('^/source-status$'), roles: R, desc: 'R17 来源适配器状态' },
-  { method: 'GET', path: new RegExp('^/grids$'), roles: R, desc: 'R18 网格（501 桩，放行后仍 501）' },
-  { method: 'GET', path: new RegExp('^/shutdowns$'), roles: R, desc: 'R19 停供（501 桩）' },
-  { method: 'GET', path: new RegExp('^/pipeline-projects$'), roles: R, desc: 'R20 管道施工（501 桩）' },
-  { method: 'GET', path: new RegExp('^/reports$'), roles: R, desc: 'R21 分析报告（501 桩）' },
-  { method: 'GET', path: new RegExp('^/heatmap/data$'), roles: R, desc: 'R22 热力图（501 桩）' },
+  { method: 'GET', path: new RegExp('^/complaints$'), roles: R, permissionCode: 'complaint.read', desc: 'R1 诉求总账列表' },
+  { method: 'GET', path: new RegExp('^/complaints/' + param + '$'), roles: R, permissionCode: 'complaint.read', desc: 'R2 诉求详情' },
+  { method: 'GET', path: new RegExp('^/complaints/' + param + '/timeline$'), roles: R, permissionCode: 'complaint.read', desc: 'R3 诉求时间线' },
+  { method: 'GET', path: new RegExp('^/complaints/' + param + '/corrections$'), roles: R, permissionCode: 'complaint.read', desc: 'R4 单条纠偏清单' },
+  { method: 'GET', path: new RegExp('^/enterprises$'), roles: R, permissionCode: 'enterprise.read', desc: 'R5 企业主数据列表' },
+  { method: 'GET', path: new RegExp('^/enterprises/' + param + '$'), roles: R, permissionCode: 'enterprise.read', desc: 'R6 企业详情' },
+  { method: 'GET', path: new RegExp('^/dashboard/overview$'), roles: R, permissionCode: 'dashboard.read', desc: 'R7 数据大屏' },
+  { method: 'GET', path: new RegExp('^/dicts/' + param + '/items$'), roles: R, permissionCode: 'dict.read', desc: 'R8 通用字典项只读查询' },
+  { method: 'GET', path: new RegExp('^/dispatch/orders$'), roles: R, permissionCode: 'dispatch.read', desc: 'R9 交办列表' },
+  { method: 'GET', path: new RegExp('^/dispatch/orders/' + param + '$'), roles: R, permissionCode: 'dispatch.read', desc: 'R10 交办详情' },
+  { method: 'GET', path: new RegExp('^/dispatch/orders/' + param + '/push-logs$'), roles: R, permissionCode: 'dispatch.read', desc: 'R11 推送留痕' },
+  { method: 'GET', path: new RegExp('^/dispatch/orders/' + param + '/approval-trace$'), roles: R, permissionCode: 'dispatch.read', desc: 'R12 审批轨迹' },
+  { method: 'GET', path: new RegExp('^/corrections/pending$'), roles: R, permissionCode: 'complaint.read', desc: 'R13 待纠偏队列' },
+  { method: 'GET', path: new RegExp('^/corrections/pending-complaints$'), roles: R, permissionCode: 'complaint.read', desc: 'R23 诉求级待纠偏列表' },
+  { method: 'GET', path: new RegExp('^/analysis/records$'), roles: R, permissionCode: 'analysis.read', desc: 'R14 分析库列表' },
+  { method: 'GET', path: new RegExp('^/analysis/records/' + param + '$'), roles: R, permissionCode: 'analysis.read', desc: 'R15 分析下钻' },
+  { method: 'GET', path: new RegExp('^/report-todos$'), roles: R, permissionCode: 'report.read', desc: 'R16 待查报告待办' },
+  { method: 'GET', path: new RegExp('^/source-status$'), roles: R, permissionCode: 'source_status.read', desc: 'R17 来源适配器状态' },
+  { method: 'GET', path: /^\/grids$/, roles: R, permissionCode: 'grid.read', desc: '网格全覆盖范围列表' },
+  { method: 'GET', path: /^\/grids\/[^/]+(?:\/(?:history|boundary))?$/, roles: R, permissionCode: 'grid.read', desc: '网格详情/历史/授权边界' },
+  { method: 'GET', path: /^\/grid-reference-options$/, roles: R, permissionCode: 'grid.read', desc: '受控空间编码选单' },
+  { method: 'GET', path: /^\/admin-grids\/[^/]+$/, roles: R, permissionCode: 'grid.read', desc: '行政网格授权几何与版本' },
+  { method: 'POST', path: /^\/(?:grids|admin-grids|communities)$/, roles: A, permissionCode: 'grid.manage', desc: '网格及空间主数据维护' },
+  { method: 'PATCH', path: /^\/grids\/[^/]+$/, roles: A, permissionCode: 'grid.manage', desc: '网格覆盖版本维护' },
+  { method: 'GET', path: new RegExp('^/shutdowns$'), roles: R, permissionCode: 'shutdown.read', desc: 'R19 停供（501 桩）' },
+  { method: 'GET', path: new RegExp('^/pipeline-projects$'), roles: R, permissionCode: 'pipeline.read', desc: 'R20 管道施工（501 桩）' },
+  { method: 'GET', path: /^\/reports$/, roles: R, permissionCode: 'report.read', desc: 'D3 报告列表（另需冻结数据能力）' },
+  { method: 'GET', path: /^\/reports\/[^/]+$/, roles: R, permissionCode: 'report.read', desc: 'D3 报告状态' },
+  { method: 'GET', path: /^\/reports\/[^/]+\/download$/, roles: R, permissionCode: 'report.download', desc: 'D3 全快照授权下载' },
+  { method: 'POST', path: /^\/reports$/, roles: A, permissionCode: 'report.generate', desc: 'D3 生成草稿（另需统计数据能力）' },
+  { method: 'POST', path: /^\/reports\/[^/]+\/retry$/, roles: A, permissionCode: 'report.retry', desc: 'D3 同快照重试' },
+  { method: 'GET', path: new RegExp('^/heatmap/data$'), roles: R, permissionCode: 'heatmap.read', desc: 'D2 热力图（另需统计与数据集权限）' },
 
   // ---------- W：业务写端点（13 条，readonly 一律 403） ----------
-  { method: 'POST', path: new RegExp('^/complaints/' + param + '/assignment$'), roles: W, desc: 'W1 匹配/调整责任单位' },
-  { method: 'POST', path: new RegExp('^/complaints/' + param + '/disposition$'), roles: W, desc: 'W2 归库（无需交办/误报）' },
-  { method: 'POST', path: new RegExp('^/complaints/' + param + '/corrections/generate$'), roles: W, desc: 'W3 生成纠偏待办' },
-  { method: 'POST', path: new RegExp('^/complaints/' + param + '/close$'), roles: W, desc: 'W4 本系统办结' },
-  { method: 'POST', path: new RegExp('^/complaints/' + param + '/source-sync$'), roles: W, desc: 'W5 来源状态回填' },
-  { method: 'POST', path: new RegExp('^/corrections/generate-batch$'), roles: W, desc: 'W6 批量补挂纠偏待办' },
-  { method: 'POST', path: new RegExp('^/corrections/' + param + '/confirm$'), roles: W, desc: 'W7 纠偏确认' },
-  { method: 'POST', path: new RegExp('^/corrections/' + param + '/reject$'), roles: W, desc: 'W8 判定无需纠偏' },
-  { method: 'POST', path: new RegExp('^/dispatch/orders$'), roles: W, desc: 'W9 创建交办' },
-  { method: 'POST', path: new RegExp('^/dispatch/orders/' + param + '/cancel$'), roles: W, desc: 'W10 受控撤销（basis 必填 + 到人）' },
-  { method: 'POST', path: new RegExp('^/dispatch/orders/' + param + '/push$'), roles: W, desc: 'W11 推送交办' },
-  { method: 'POST', path: new RegExp('^/dispatch/orders/' + param + '/repush$'), roles: W, desc: 'W12 重推交办' },
-  { method: 'POST', path: new RegExp('^/dispatch/orders/' + param + '/archive$'), roles: W, desc: 'W13 交办归档' },
+  { method: 'POST', path: new RegExp('^/complaints/' + param + '/assignment$'), roles: W, permissionCode: 'complaint.assign', desc: 'W1 匹配/调整责任单位' },
+  { method: 'POST', path: new RegExp('^/complaints/' + param + '/disposition$'), roles: W, permissionCode: 'complaint.disposition', desc: 'W2 归库（无需交办/误报）' },
+  { method: 'POST', path: new RegExp('^/complaints/' + param + '/corrections/generate$'), roles: W, permissionCode: 'complaint.correct', desc: 'W3 生成纠偏待办' },
+  { method: 'POST', path: new RegExp('^/complaints/' + param + '/close$'), roles: W, permissionCode: 'complaint.close', desc: 'W4 本系统办结' },
+  { method: 'POST', path: new RegExp('^/complaints/' + param + '/source-sync$'), roles: W, permissionCode: 'complaint.source_sync', desc: 'W5 来源状态回填' },
+  { method: 'POST', path: new RegExp('^/corrections/generate-batch$'), roles: W, permissionCode: 'complaint.correct', desc: 'W6 批量补挂纠偏待办' },
+  { method: 'POST', path: new RegExp('^/corrections/' + param + '/confirm$'), roles: W, permissionCode: 'complaint.correct', desc: 'W7 纠偏确认' },
+  {method:'POST',path:new RegExp('^/complaints/'+param+'/location-corrections/defer$'),roles:W,permissionCode:'complaint.correct',desc:'暂缓位置核验'},
+  {method:'POST',path:new RegExp('^/complaints/'+param+'/location-corrections$'),roles:W,permissionCode:'complaint.correct',desc:'原子位置组纠偏'},
+  {method:'GET',path:new RegExp('^/complaints/'+param+'/location-correction-options$'),roles:W,permissionCode:'complaint.correct',desc:'位置组业务选择'},
+  { method: 'POST', path: new RegExp('^/corrections/' + param + '/reject$'), roles: W, permissionCode: 'complaint.correct', desc: 'W8 判定无需纠偏' },
+  { method: 'POST', path: new RegExp('^/dispatch/orders$'), roles: W, permissionCode: 'dispatch.create', desc: 'W9 创建交办' },
+  { method: 'POST', path: new RegExp('^/dispatch/orders/' + param + '/cancel$'), roles: W, permissionCode: 'dispatch.cancel', desc: 'W10 受控撤销（basis 必填 + 到人）' },
+  { method: 'POST', path: new RegExp('^/dispatch/orders/' + param + '/push$'), roles: W, permissionCode: 'dispatch.push', desc: 'W11 推送交办' },
+  { method: 'POST', path: new RegExp('^/dispatch/orders/' + param + '/repush$'), roles: W, permissionCode: 'dispatch.push', desc: 'W12 重推交办' },
+  { method: 'POST', path: new RegExp('^/dispatch/orders/' + param + '/archive$'), roles: W, permissionCode: 'dispatch.archive', desc: 'W13 交办归档' },
 
-  {method:'POST',path:new RegExp('^/dispatch/orders/'+param+'/preflight$'),roles:W,desc:'integration readiness'},
-  {method:'GET',path:new RegExp('^/dispatch/orders/'+param+'/reporting-result$'),roles:R,desc:'authorized reporting result'},
-  {method:'GET',path:new RegExp('^/dispatch/orders/'+param+'/reporting-attachments/'+param+'$'),roles:R,desc:'authorized reporting attachment'},
-  {method:'POST',path:new RegExp('^/dispatch/orders/'+param+'/reconcile$'),roles:W,desc:'integration reconciliation'},
+  {method:'POST',path:new RegExp('^/dispatch/orders/'+param+'/preflight$'),roles:W,permissionCode: 'dispatch.push', desc:'integration readiness'},
+  {method:'GET',path:new RegExp('^/dispatch/orders/'+param+'/reporting-result$'),roles:R,permissionCode: 'dispatch.read', desc:'authorized reporting result'},
+  {method:'GET',path:new RegExp('^/dispatch/orders/'+param+'/reporting-attachments/'+param+'$'),roles:R,permissionCode: 'dispatch.read', desc:'authorized reporting attachment'},
+  {method:'POST',path:new RegExp('^/dispatch/orders/'+param+'/reconcile$'),roles:W,permissionCode: 'dispatch.reconcile', desc:'integration reconciliation'},
   // ---------- U / X：admin 独占 ----------
-  { method: 'GET', path: new RegExp('^/users$'), roles: A, desc: 'U1 用户列表（原 501 桩已摘除）' },
-  { method: 'POST', path: new RegExp('^/users$'), roles: A, desc: 'U2 建号（bcrypt 入库，口令不回显）' },
-  { method: 'PATCH', path: new RegExp('^/users/' + param + '$'), roles: A, desc: 'U3 改角色/姓名/启停（无删除端点）' },
-  { method: 'GET', path: new RegExp('^/dicts/sensitive-words$'), roles: A, desc: 'D1 敏感词管理列表' },
-  { method: 'POST', path: new RegExp('^/dicts/sensitive-words$'), roles: A, desc: 'D2 新增敏感词' },
-  { method: 'PATCH', path: new RegExp('^/dicts/sensitive-words/' + param + '$'), roles: A, desc: 'D3 编辑/启停敏感词' },
-  { method: 'POST', path: new RegExp('^/dicts/sensitive-words/rescan-preview$'), roles: A, desc: 'D4 历史重扫预览' },
-  { method: 'POST', path: new RegExp('^/dicts/sensitive-words/rescan$'), roles: A, desc: 'D5 确认历史重扫' },
-  { method: 'POST', path: new RegExp('^/address-candidates/backfill-preview$'), roles: A, desc: '地址候选存量预览' },
-  { method: 'POST', path: new RegExp('^/address-candidates/backfill$'), roles: A, desc: '地址候选存量补提取' },
-  { method: 'POST', path: new RegExp('^/external/tianbao/status-callback$'), roles: A, desc: 'X1 旧轮询回调（501 桩；它在 requireAuth 之后，仍需 Bearer）' },
+  { method: 'GET', path: new RegExp('^/users$'), roles: A, permissionCode: 'system.users.manage', desc: 'U1 用户列表（原 501 桩已摘除）' },
+  { method: 'POST', path: new RegExp('^/users$'), roles: A, permissionCode: 'system.users.manage', desc: 'U2 建号（bcrypt 入库，口令不回显）' },
+  { method: 'PATCH', path: new RegExp('^/users/' + param + '$'), roles: A, permissionCode: 'system.users.manage', desc: 'U3 改角色/姓名/启停（无删除端点）' },
+  { method: 'GET', path: new RegExp('^/dicts/sensitive-words$'), roles: A, permissionCode: 'system.dict.manage', desc: 'D1 敏感词管理列表' },
+  { method: 'POST', path: new RegExp('^/dicts/sensitive-words$'), roles: A, permissionCode: 'system.dict.manage', desc: 'D2 新增敏感词' },
+  { method: 'PATCH', path: new RegExp('^/dicts/sensitive-words/' + param + '$'), roles: A, permissionCode: 'system.dict.manage', desc: 'D3 编辑/启停敏感词' },
+  { method: 'POST', path: new RegExp('^/dicts/sensitive-words/rescan-preview$'), roles: A, permissionCode: 'system.dict.manage', desc: 'D4 历史重扫预览' },
+  { method: 'POST', path: new RegExp('^/dicts/sensitive-words/rescan$'), roles: A, permissionCode: 'system.dict.manage', desc: 'D5 确认历史重扫' },
+  { method: 'POST', path: new RegExp('^/address-candidates/backfill-preview$'), roles: A, permissionCode: 'system.address.backfill', desc: '地址候选存量预览' },
+  { method: 'POST', path: new RegExp('^/address-candidates/backfill$'), roles: A, permissionCode: 'system.address.backfill', desc: '地址候选存量补提取' },
+  { method: 'POST', path: new RegExp('^/external/tianbao/status-callback$'), roles: A, permissionCode: 'system.integration.manage', desc: 'X1 旧轮询回调（501 桩；它在 requireAuth 之后，仍需 Bearer）' },
 ];
 
 /** 未声明端点的有效角色集合 —— 默认拒绝，等价于 admin-only */
@@ -140,37 +201,32 @@ export interface AccessDecision {
   allowedRoles: readonly Role[];
 }
 
-/**
- * 角色判定。三条规则按顺序生效：
- *   1. admin 全量放行（设计口径：admin = 全部）；
- *   2. 非 GET 先剔除 readonly（硬不变量）；
- *   3. 其余按策略表；**表里没有 ⇒ 仅 admin**（默认拒绝）。
- */
+/** Identity self-service, forced-change restriction, readonly business-write
+ * invariant, then the registered endpoint's effective capability. */
 export function isAllowed(user: AuthUser, method: string, rawPath: string): AccessDecision {
-  const held = new Set(user.roles);
-  if (held.has(ROLE_ADMIN)) {
-    return { allowed: true, reason: 'admin 全量放行', allowedRoles: [ROLE_ADMIN] };
-  }
-
   const rule = matchRule(method, rawPath);
-  const allowedRoles = rule === null ? DEFAULT_DENY_ROLES : rule.roles;
-  const isRead = method === 'GET';
-  const candidates = isRead ? allowedRoles : allowedRoles.filter((r) => r !== ROLE_READONLY);
-  const hit = candidates.find((r) => held.has(r));
-
-  if (hit !== undefined) {
-    return {
-      allowed: true,
-      reason: (rule === null ? '默认拒绝集合' : '策略 ' + rule.desc) + ' 命中角色 ' + hit,
-      allowedRoles,
-    };
+  const allowedRoles = rule?.roles ?? DEFAULT_DENY_ROLES;
+  const deny = (reason: string): AccessDecision => ({allowed:false,reason,allowedRoles});
+  if (rule?.selfService) return {allowed:true,reason:'已认证本人身份服务',allowedRoles};
+  if (user.mustChangePassword) return deny('需要先修改初始或重置口令');
+  if (user.roles.includes(ROLE_READONLY) && method !== 'GET') return deny('readonly 禁止业务写入');
+  if (rule?.anyPermissionCodes && user.permissionCodes !== undefined) {const allowed=rule.anyPermissionCodes.some(p=>user.permissionCodes!.includes(p));return {allowed,reason:allowed?'命中申请查询权限':'缺少申请查询权限',allowedRoles};}
+  // Production requireAuth always supplies permissionCodes. Legacy pure callers retain
+  // the original matrix; custom role labels never get this fallback.
+  if (user.permissionCodes !== undefined) {
+    if (!rule || !rule.permissionCode) return deny('端点未登记权限，默认拒绝');
+    const protectedCode = rule.permissionCode === 'system.users.manage' || rule.permissionCode === 'system.roles.manage';
+    if (protectedCode && !user.roles.includes(ROLE_ADMIN)) return deny('受保护的管理员配置');
+    const allowed = user.permissionCodes.includes(rule.permissionCode);
+    return {allowed,reason:allowed ? '命中权限 '+rule.permissionCode : '缺少端点权限',allowedRoles};
   }
-  const basis = rule === null
-    ? '端点未在 ROLE_POLICY 声明 ⇒ 默认拒绝（视同 admin-only）'
-    : '策略 ' + rule.desc + ' 允许 ' + allowedRoles.join('/') + (isRead ? '' : '（非 GET 已剔除 readonly）');
-  return {
-    allowed: false,
-    reason: basis + '；调用方角色 ' + (user.roles.length > 0 ? user.roles.join('/') : '(无)'),
-    allowedRoles,
-  };
+  if (user.roles.includes(ROLE_ADMIN)) return {allowed:true,reason:'兼容内置管理员策略',allowedRoles};
+  const hit = allowedRoles.some(role => user.roles.includes(role));
+  return {allowed:hit,reason:hit ? '兼容内置角色策略' : '缺少端点权限',allowedRoles};
+}
+
+export function builtinPermissionCodes(roleCode: string): PermissionCode[] {
+  if (roleCode === ROLE_ADMIN) return [...new Set(ROLE_POLICY.flatMap(r => r.permissionCode ? [r.permissionCode] : [...(r.anyPermissionCodes??[])]))];
+  return [...new Set(ROLE_POLICY.filter(r => r.roles.includes(roleCode as Role) &&
+    (roleCode !== ROLE_READONLY || r.method === 'GET')).flatMap(r => r.permissionCode ? [r.permissionCode] : [...(r.anyPermissionCodes??[])]))];
 }

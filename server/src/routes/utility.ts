@@ -1,0 +1,15 @@
+import {Router,type Request} from 'express';
+import {currentAccessContext} from '../auth/accessScope';
+import {ok} from '../http/respond';
+import type {MasterDataContext} from '../types/masterData';
+import {supportMode} from '../services/tenderSupportService';
+import {utilityList,utilityDetail,saveUtility,importUtility,utilityTimeouts,pushUtility} from '../services/utilityService';
+export const utilityRouter=Router();
+const ctx=(r:Request):MasterDataContext=>({userId:r.user!.id,userName:r.user!.username,clientIp:r.ip??null,access:r.accessContext??currentAccessContext(),permissionCodes:r.user!.permissionCodes??[]});
+utilityRouter.get('/utility/events',async(r,s,n)=>{try{ok(s,await utilityList(supportMode(r.query.mode),String(r.query.kind),ctx(r)));}catch(e){n(e);}});
+utilityRouter.get('/utility/events/:id',async(r,s,n)=>{try{ok(s,await utilityDetail(supportMode(r.query.mode),String(r.params.id),ctx(r)));}catch(e){n(e);}});
+utilityRouter.post('/utility/events',async(r,s,n)=>{try{ok(s,await saveUtility(supportMode(r.query.mode),undefined,r.body,ctx(r)));}catch(e){n(e);}});
+utilityRouter.patch('/utility/events/:id',async(r,s,n)=>{try{ok(s,await saveUtility(supportMode(r.query.mode),String(r.params.id),r.body,ctx(r)));}catch(e){n(e);}});
+utilityRouter.post('/utility/import',async(r,s,n)=>{try{ok(s,await importUtility(r.body,ctx(r)));}catch(e){n(e);}});
+utilityRouter.get('/utility/timeouts',async(r,s,n)=>{try{ok(s,await utilityTimeouts(supportMode(r.query.mode),ctx(r)));}catch(e){n(e);}});
+utilityRouter.post('/utility/timeouts/:id/push',async(r,s,n)=>{try{ok(s,await pushUtility(supportMode(r.query.mode),String(r.params.id),r.body,ctx(r)));}catch(e){n(e);}});

@@ -1,3 +1,5 @@
+import { projectDisposalValue } from '../services/complaintProjection';
+import { currentScopeSql, relatedScopeSql } from '../auth/accessScope';
 // correction_item（纠偏待办，逐字段一行）。
 //
 // 设计约束（业主 2026-09-20 裁定，推翻 2026-09-17 的旧口径）：
@@ -36,7 +38,8 @@ export const CORRECTION_FIELD_DEFS: readonly CorrectionFieldDef[] = [
   { code: 'enterprise_name', label: '企业名称/归属', column: 'enterprise_name', pairedCodeColumn: 'enterprise_code' },
   { code: 'district_name', label: '归属区域', column: 'district_name' },
   { code: 'address', label: '地址', column: 'address' },
-  { code: 'complaint_type', label: '诉求分类', column: 'complaint_type' },
+  { code: 'complaint_type', label: '诉求性质', column: 'complaint_type' },
+  { code: 'formal_category', label: '正式大小类', column: null },
   { code: 'location_lng', label: '经度', column: 'location_lng' },
   { code: 'location_lat', label: '纬度', column: 'location_lat' },
   { code: 'summary', label: '诉求摘要', column: 'title' },
@@ -48,6 +51,15 @@ const DEF_BY_CODE = new Map(CORRECTION_FIELD_DEFS.map((d) => [d.code, d]));
 
 export function fieldDef(code: string): CorrectionFieldDef | null {
   return DEF_BY_CODE.get(code) ?? null;
+}
+
+/** Human decisions protect paired district/coordinate columns as one effective group. */
+export function protectedColumnsForCorrection(code: string): string[] {
+  if (code === 'formal_category') return ['major_category_code','minor_category_code','category_dictionary_version'];
+  if (code === 'district_name') return ['district_name', 'district_code'];
+  if (code === 'location_lng' || code === 'location_lat') return ['location_lng', 'location_lat'];
+  const def = fieldDef(code);
+  return def?.column ? [def.column, ...(def.pairedCodeColumn ? [def.pairedCodeColumn] : [])] : [];
 }
 
 export function isCorrectionFieldCode(code: string): boolean {
@@ -71,6 +83,8 @@ export function statusLabel(status: string): string {
 }
 
 export interface CorrectionRow {
+  editVersion?: number;
+  effectiveValue?: string | null;
   id: number;
   correctionId: string;
   complaintId: string;
@@ -95,6 +109,8 @@ export function rowToCorrectionItem(r: CorrectionRow, hasDispatch: boolean): Cor
   const status = String(r.status);
   const def = fieldDef(String(r.fieldName));
   return {
+    editVersion: Number(r.editVersion ?? 1),
+    effectiveValue: r.effectiveValue == null ? null : String(r.fieldName)==='disposal_result'?projectDisposalValue(String(r.effectiveValue)):String(r.effectiveValue),
     id: Number(r.id),
     correctionId: String(r.correctionId),
     complaintId: String(r.complaintId),
@@ -102,10 +118,10 @@ export function rowToCorrectionItem(r: CorrectionRow, hasDispatch: boolean): Cor
     hasDispatch,
     fieldName: String(r.fieldName),
     fieldLabel: r.fieldLabel === null || r.fieldLabel === undefined ? (def ? def.label : null) : String(r.fieldLabel),
-    oldValue: r.oldValue === null || r.oldValue === undefined ? null : String(r.oldValue),
-    newValue: r.newValue === null || r.newValue === undefined ? null : String(r.newValue),
+    oldValue: r.oldValue === null || r.oldValue === undefined ? null : String(r.fieldName)==='disposal_result'?projectDisposalValue(String(r.oldValue)):String(r.oldValue),
+    newValue: r.newValue === null || r.newValue === undefined ? null : String(r.fieldName)==='disposal_result'?projectDisposalValue(String(r.newValue)):String(r.newValue),
     basis: r.basis === null || r.basis === undefined ? null : String(r.basis),
-    status: isCorrectionItemStatus(status) ? status : 'pending',
+    status,
     statusName: statusLabel(status),
     confirmerId: r.confirmerId === null || r.confirmerId === undefined ? null : String(r.confirmerId),
     confirmerName: r.confirmerName === null || r.confirmerName === undefined ? null : String(r.confirmerName),
@@ -115,7 +131,11 @@ export function rowToCorrectionItem(r: CorrectionRow, hasDispatch: boolean): Cor
 }
 
 const SELECT_COLUMNS =
-  'id, correction_id as correctionId, complaint_id as complaintId, assignment_id as assignmentId,' +
+  "(select case correction_item.field_name when 'formal_category' then case when c.major_category_code is null then null else json_object('majorCode',c.major_category_code,'minorCode',c.minor_category_code,'dictionaryVersion',c.category_dictionary_version) end " + CORRECTION_FIELD_DEFS.filter(def => def.column).map(def =>
+    "when '" + def.code + "' then cast(c." + (def.pairedCodeColumn ?? def.column) + ' as char)'
+  ).join(' ') + " when 'disposal_result' then case when correction_item.status = 'confirmed' then correction_item.new_value else correction_item.old_value end else correction_item.old_value end from complaint c where c.complaint_id = correction_item.complaint_id) as effectiveValue," +
+  '(select c.edit_version from complaint c where c.complaint_id = correction_item.complaint_id) as editVersion,' +
+  ' id, correction_id as correctionId, complaint_id as complaintId, assignment_id as assignmentId,' +
   ' field_name as fieldName, field_label as fieldLabel, old_value as oldValue, new_value as newValue,' +
   ' basis, status, confirmer_id as confirmerId, confirmer_name as confirmerName,' +
   ' confirmed_at as confirmedAt, created_at as createdAt';
@@ -155,9 +175,10 @@ export async function insertCorrections(tx: Tx, items: InsertCorrectionInput[]):
 }
 
 export async function listByComplaint(db: Queryable, complaintId: string): Promise<CorrectionItem[]> {
+  const scope = relatedScopeSql('correction_item.complaint_id');
   const [rows] = await db.query(
-    'select ' + SELECT_COLUMNS + ' from correction_item where complaint_id = ? order by id asc',
-    [complaintId]
+    'select ' + SELECT_COLUMNS + ' from correction_item where complaint_id = ? and '+scope.sql+' order by id asc',
+    [complaintId,...scope.params]
   );
   const list = rows as unknown as CorrectionRow[];
   const dispatched = await findDispatchedComplaintIds(db, [complaintId]);
@@ -190,8 +211,9 @@ export async function findPendingPage(
   page: number,
   size: number
 ): Promise<{ content: CorrectionItem[]; total: number }> {
-  const parts: string[] = ["status = 'pending'"];
-  const params: unknown[] = [];
+  const scope = relatedScopeSql('correction_item.complaint_id');
+  const parts: string[] = ["status = 'pending'",scope.sql];
+  const params: unknown[] = [...scope.params];
   if (filter.complaintId !== undefined) {
     parts.push('complaint_id = ?');
     params.push(filter.complaintId);
@@ -234,8 +256,9 @@ export async function findPendingComplaintPage(
   page: number,
   size: number
 ): Promise<{ content: PendingComplaintSummary[]; total: number }> {
-  const parts: string[] = ["ci.status = 'pending'"];
-  const params: unknown[] = [];
+  const scope = currentScopeSql();
+  const parts: string[] = ["ci.status = 'pending'",scope.sql];
+  const params: unknown[] = [...scope.params];
   if (filter.complaintId !== undefined) {
     parts.push('ci.complaint_id = ?');
     params.push(filter.complaintId);
@@ -277,7 +300,8 @@ export async function findPendingComplaintPage(
 /** 待纠偏项数量。分析入库与办结的前置校验都要用它，必须在同一事务内调用。 */
 export async function countPendingByComplaint(db: Queryable, complaintId: string): Promise<number> {
   const [rows] = await db.query(
-    "select count(*) as total from correction_item where complaint_id = ? and status = 'pending'",
+    "select count(*) as total from correction_item where complaint_id = ? and" +
+      " (status = 'pending' or status not in ('pending', 'confirmed', 'rejected'))",
     [complaintId]
   );
   return Number((rows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);
@@ -291,6 +315,19 @@ export async function lockCorrection(tx: Tx, correctionId: string): Promise<Corr
   );
   const row = (rows as unknown as CorrectionRow[])[0];
   return row ?? null;
+}
+
+export const LOCATION_CORRECTION_FIELDS=['district_name','address','location_lng','location_lat'] as const;
+export const LOCATION_GROUP_COLUMNS=['district_code','district_name','address','location_lng','location_lat','admin_grid_code','community_code','location_coordinate_system','location_coordinate_source'] as const;
+export async function lockLocationCorrections(tx:Tx,complaintId:string):Promise<CorrectionRow[]> {
+ const [rows]=await tx.query('select '+SELECT_COLUMNS+' from correction_item where complaint_id = ? and field_name in (?,?,?,?) order by field_name, correction_id for update',[complaintId,...LOCATION_CORRECTION_FIELDS]);
+ return rows as CorrectionRow[];
+}
+/** Caller holds the complaint/group locks and appends the old decision to audit in the same Tx. */
+export async function decideLocationCorrection(tx:Tx,row:CorrectionRow,input:DecideCorrectionInput):Promise<void> {
+ const [result]=await tx.execute('update correction_item set status=?,new_value=?,basis=?,confirmer_id=?,confirmer_name=?,confirmed_at=? where correction_id=? and status=?',
+  [input.status,input.newValue,cut(input.basis,500),input.confirmerId,input.confirmerName,input.decidedAt,row.correctionId,row.status]);
+ if(Number((result as {affectedRows:number}).affectedRows)!==1)throw new Error('位置组纠偏决定并发变化');
 }
 
 export interface DecideCorrectionInput {
@@ -336,18 +373,20 @@ export async function countByComplaint(db: Queryable, complaintId: string): Prom
 
 /** 存活诉求总数（软删不算）。批量补挂用它做分母。 */
 export async function countLiveComplaints(db: Queryable): Promise<number> {
+  const scope = currentScopeSql();
   const [rows] = await db.query(
-    'select count(*) as total from complaint c where coalesce(c.deleted, 0) = 0'
+    'select count(*) as total from complaint c where '+scope.sql, scope.params
   );
   return Number((rows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);
 }
 
 /** 尚无任何纠偏项的诉求数。补挂完成后必须为 0，非 0 就是没覆盖全。 */
 export async function countComplaintsWithoutCorrections(db: Queryable): Promise<number> {
+  const scope = currentScopeSql();
   const [rows] = await db.query(
     'select count(*) as total from complaint c' +
       " left join correction_item ci on ci.complaint_id = c.complaint_id where ci.id is null" +
-      ' and coalesce(c.deleted, 0) = 0'
+      ' and '+scope.sql, scope.params
   );
   return Number((rows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);
 }
@@ -360,11 +399,12 @@ export async function findComplaintIdsWithoutCorrections(
   db: Queryable,
   limit: number
 ): Promise<string[]> {
+  const scope = currentScopeSql();
   const [rows] = await db.query(
     'select c.complaint_id as complaintId from complaint c' +
       " left join correction_item ci on ci.complaint_id = c.complaint_id where ci.id is null" +
-      ' and coalesce(c.deleted, 0) = 0 order by c.id asc limit ?',
-    [limit]
+      ' and '+scope.sql+' order by c.id asc limit ?',
+    [...scope.params,limit]
   );
   return (rows as unknown as Array<{ complaintId: string }>).map((r) => String(r.complaintId));
 }

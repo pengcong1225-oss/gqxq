@@ -1,4 +1,5 @@
 // 服务端对外 DTO —— **契约唯一真源**。
+export type {ReportCreateInput,ReportArtifact,ReportPage} from './report';
 // 与前端 packages/web-admin/src/types/api.ts 逐字段对齐；改这里必须同步改那边。
 //
 // 关键约定（见 docs/2026-09-17-gqxq_service现状核对与G1迁移设计.md §3）：
@@ -15,6 +16,8 @@ export interface Paged<T> {
   size: number;
   totalPages: number;
 }
+
+export type {SourceProcessNode,SourceProcessRevision,SourceProcessResult} from '../domain/sourceProcess';
 
 export interface ComplaintListItem {
   id: number;
@@ -98,11 +101,27 @@ export interface LocationClueView {
 }
 
 export interface ComplaintDetail extends ComplaintListItem {
+  sourceSummary?: import('../domain/complaintSourceSummary').ComplaintSourceSummary;
+  category?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
+  sourceCategory?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
+  sourceAddress: string | null;
+  effectiveAddress: string | null;
+  sourceDeadlineAt: string | null;
+  sourceCompletedAt: string | null;
+  sourceSnapshotAt: string | null;
+  businessTimeSource: 'source_reported_at' | 'platform_received_at' | 'unavailable';
+  sourceFieldReasons: {sourceAddress:string|null;sourceDeadlineAt:string|null;sourceCompletedAt:string|null;sourceSnapshotAt:string|null};
+  effectiveFieldState: Record<string, unknown> | null;
+  editVersion: number;
   content: string | null;
   address: string | null;
   correctedAddress: string | null;
   locationLng: number | null;
   locationLat: number | null;
+  adminGridCode:string|null;
+  communityCode:string|null;
+  locationCoordinateSystem:'WGS84'|'CGCS2000'|'unknown'|null;
+  locationCoordinateSource:string|null;
 
   ruleConfidence: number | null;
   ruleVersion: string | null;
@@ -110,8 +129,6 @@ export interface ComplaintDetail extends ComplaintListItem {
   locationClues: LocationClueView[];
   locationConflict: boolean;
 
-  sourcePayload: Record<string, unknown> | null;
-  sourcePayloadHash: string | null;
   sourceUpdatedAt: string | null;
 
   responsibleMatchedAt: string | null;
@@ -151,6 +168,8 @@ export interface TimelineItem {
 export type OvertimeFilterCode = '1' | '0' | 'none';
 
 export interface ComplaintFilter {
+  sourceMajorCategory?: string;
+  sourceMinorCategory?: string;
   keyword?: string;
   businessType?: string[];
   complaintType?: string[];
@@ -281,12 +300,15 @@ export interface SensitiveRescanExecution {
 }
 
 export interface UserInfo {
+  accountType: AccountType;
   id: number;
   userId: string;
   username: string;
   realName: string;
   roles: string[];
   permissions: string[];
+  mustChangePassword: boolean;
+  authorizationVersion: number;
 }
 
 export interface LoginResult {
@@ -349,6 +371,8 @@ export interface SourceSyncResult {
 export type CorrectionItemStatus = 'pending' | 'confirmed' | 'rejected';
 
 export interface CorrectionItem {
+  editVersion: number;
+  effectiveValue: string | null;
   id: number;
   correctionId: string;
   complaintId: string;
@@ -365,7 +389,7 @@ export interface CorrectionItem {
   oldValue: string | null;
   newValue: string | null;
   basis: string | null;
-  status: CorrectionItemStatus;
+  status: CorrectionItemStatus | (string & {});
   statusName: string;
   confirmerId: string | null;
   confirmerName: string | null;
@@ -374,11 +398,13 @@ export interface CorrectionItem {
 }
 
 export interface CorrectionConfirmRequest {
+  expectedVersion: number;
   newValue?: string;
   basis?: string;
 }
 
 export interface CorrectionRejectRequest {
+  expectedVersion: number;
   basis?: string;
 }
 
@@ -493,10 +519,13 @@ export interface AnalysisDrilldown {
 /* ==================== G3 出站：创建填报任务 ==================== */
 
 export type PushResultKind =
+  | 'queued' | 'unknown'
   | 'success' | 'replay' | 'conflict' | 'auth_failed'
   | 'payload_too_large' | 'validation_failed' | 'timeout' | 'network_error';
 
 export interface PushDispatchResult {
+  deliveryState: DeliveryState;
+  nextAttemptAt: string | null;
   assignmentId: string;
   requestId: string;
   /** 本次推送被对方接受（HTTP 200）。**不表示是否首次创建** */
@@ -518,6 +547,9 @@ export interface PushDispatchResult {
   /** 是否建议自动重试（replay/timeout/network_error 为 true；conflict/auth_failed 为 false） */
   retryable: boolean;
 }
+
+export type DeliveryState = 'pending'|'sending'|'unknown'|'succeeded'|'failed';
+export interface DispatchOutboxItem {requestId:string;assignmentId:string;payloadHash:string;state:DeliveryState;attempts:number;nextAttemptAt:string|null}
 
 export interface DispatchRequestLogItem {
   id: number;
@@ -567,9 +599,12 @@ export interface ApprovalTraceItem {
 }
 
 export interface EnterpriseListItem {
+  sourceSystem?: 'public-utility' | null;
   id: number;
   enterpriseCode: string;
   enterpriseName: string;
+  displayOnScreen?: boolean | null;
+  screenName?: string | null;
   businessType: string;
   businessTypeName: string;
   uscc: string | null;
@@ -580,6 +615,9 @@ export interface EnterpriseListItem {
 }
 
 export interface EnterpriseDetail extends EnterpriseListItem {
+  version?: number;
+  districtCode?: string | null;
+  address?: string | null;
   legalPerson: string | null;
   annualScore: number | null;
 }
@@ -591,6 +629,10 @@ export interface EnterpriseFilter {
 }
 
 export interface DispatchOrderListItem {
+  deliveryState?: DeliveryState;
+  deliveryAttempts?: number;
+  deliveryNextAttemptAt?: string | null;
+  deliveryRetryAllowed?: boolean;
   id: number;
   assignmentId: string;
   orderNo: string;
@@ -706,10 +748,11 @@ export interface DispositionResult {
  * 三档角色。真源是 server/src/auth/rolePolicy.ts 的 ROLES，
  * 与 docs/2026-09-21-角色权限映射.md §1 逐条对应；前端 types/api.ts 同步一份。
  */
-export type AppRole = 'admin' | 'handler' | 'readonly';
+export type AppRole = string;
 
 /** 用户管理列表项：**绝不含 password_hash**（仓储层不 select 它，DTO 也不带） */
 export interface UserAdminItem {
+  accountType: AccountType;
   userId: string;
   username: string;
   realName: string;
@@ -721,6 +764,7 @@ export interface UserAdminItem {
   status: 0 | 1;
   lastLoginAt: string | null;
   createdAt: string | null;
+  mustChangePassword: boolean;
 }
 
 export interface UserAdminFilter {
@@ -734,6 +778,7 @@ export type UserAdminListResult = Paged<UserAdminItem>;
 
 /** POST /users：初始口令只在请求里出现一次，响应不回显、也不落明文 */
 export interface CreateUserRequest {
+  accountType?: AccountType;
   username: string;
   realName: string;
   role: AppRole;
@@ -742,7 +787,33 @@ export interface CreateUserRequest {
 
 /** PATCH /users/:userId：字段可选，未传的不动。没有 DELETE —— 禁用代替删除 */
 export interface UpdateUserRequest {
+  accountType?: AccountType;
   realName?: string;
   role?: AppRole;
   status?: 0 | 1;
 }
+
+export type ScopeRule = {kind:'all'} | {kind:'restricted';enterpriseCodes:string[];districtCodes:string[]};
+export interface UserScope {scopeVersion:number;rules:ScopeRule[]}
+
+export interface ComplaintSourceDocument {complaintId:string;sourcePayload:Record<string,unknown>|null;sourceFields:Record<string,unknown>|null;sourcePayloadHash:string|null}
+
+export interface AuditLogFilter {
+ category?:'login'|'operation';from?:string;to?:string;actor?:string;module?:string;action?:string;
+ result?:'success'|'failed'|'rejected'|'duplicate'|'unknown';businessNo?:string;
+}
+export interface AuditLogView {
+ auditId:string;userId:string|null;category:'login'|'operation';appCode:string|null;module:string;action:string;
+ bizType:string|null;bizId:string|null;businessNo:string|null;result:'success'|'failed'|'rejected'|'duplicate'|'unknown';originalResult:string;
+ clientIp:string|null;createdAt:string|null;detail:Record<string,unknown>;
+}
+
+// C3 local facts and supervisor conclusions are independent of Q5 formal satisfaction.
+export type AccountType = 'internal'|'enterprise'|'unknown';
+export interface FollowupFacts {contacted:boolean;occurredAt:string;evaluationCode:'satisfied'|'dissatisfied'|null;dissatisfactionReason:string|null;notes:string|null}
+export interface FollowupInput extends FollowupFacts {complaintId:string;requestId:string}
+export interface FollowupView extends FollowupFacts {followupId:string;complaintId:string;ownerId:string;version:number;order:number;action:'create'|'revise'|'conclude';operatorId:string;operatorName:string;reason:string|null;createdAt:string;revisedAt:string;conclusion:string|null;concludedBy:string|null;concludedAt:string|null}
+export interface SourceEvaluationView {state:'available'|'unavailable'|'withheld';label:string|null;reason:string|null;provenance:string}
+export interface ComplaintFollowupsView {complaintId:string;records:FollowupView[];history:FollowupView[];sourceEvaluation:SourceEvaluationView;formalEvaluation:{state:'unavailable';reason:string}}
+export interface FollowupRevisionInput extends FollowupFacts {requestId:string;expectedVersion:number;reason:string}
+export interface FollowupConclusionInput {requestId:string;expectedVersion:number;conclusion:string;reason:string}

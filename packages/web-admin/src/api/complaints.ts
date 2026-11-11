@@ -33,6 +33,8 @@ export async function listComplaints(
     page: params.page,
     size: params.size,
     keyword: params.keyword,
+    sourceMajorCategory: params.sourceMajorCategory,
+    sourceMinorCategory: params.sourceMinorCategory,
     businessType: toCsv(params.businessType),
     complaintType: toCsv(params.complaintType),
     urgencyLevel: toCsv(params.urgencyLevel),
@@ -78,3 +80,8 @@ export async function getComplaintTimeline(idOrNo: ComplaintIdOrNo): Promise<Tim
     `/complaints/${encodeURIComponent(String(idOrNo))}/timeline`
   );
 }
+
+/** Dedicated audited source access; never prefetch as part of ordinary detail. */
+export function getComplaintSourceDocument(idOrNo:ComplaintIdOrNo){return request.get<never,import('../types/api').ComplaintSourceDocument>('/complaints/'+encodeURIComponent(String(idOrNo))+'/source-document');}
+
+export function getComplaintSourceProcesses(idOrNo:ComplaintIdOrNo){return request.get<never,import('../types/api').SourceProcessResult>('/complaints/'+encodeURIComponent(String(idOrNo))+'/source-processes');}

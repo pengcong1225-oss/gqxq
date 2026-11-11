@@ -30,17 +30,26 @@
     "test:sensitive-words": "tsx --test tests/sensitive-word-management.test.ts",
     "verify:hardening": "npm run verify:m1 && npm run verify:m3 && npm run verify:m4",
     "mock:public-utility": "node scripts/mock-public-utility.mjs",
-    "mock:public-utility-callback": "node scripts/mock-public-utility-callback.mjs"
+    "mock:public-utility-callback": "node scripts/mock-public-utility-callback.mjs",
+    "prepare:local-data": "node scripts/prepare-local-data.mjs",
+    "prebuild": "npm run prepare:local-data",
+    "pretypecheck": "npm run prepare:local-data",
+    "predev": "npm run prepare:local-data"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
+    "csv-parse": "5.6.0",
+    "docx": "9.9.0",
     "dotenv": "^16.6.1",
+    "exceljs": "4.4.0",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "3.10.1",
     "knex": "^3.3.0",
     "morgan": "^1.10.0",
     "mysql2": "^3.24.4",
+    "yauzl": "3.2.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -50,6 +59,7 @@
     "@types/morgan": "^1.9.10",
     "@types/node": "^22.20.3",
     "@types/supertest": "^6.0.3",
+    "@types/yauzl": "2.10.3",
     "supertest": "^7.2.2",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3"

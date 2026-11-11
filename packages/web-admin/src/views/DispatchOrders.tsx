@@ -1,3 +1,4 @@
+import {chineseLabel,namedLabel,fieldLabel} from '../utils/chineseDisplay';
 import ReportingResultPanel from '../components/ReportingResultPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -42,7 +43,7 @@ import {
 } from '../api/dispatch';
 import { listComplaints } from '../api/complaints';
 import { createDispatch } from '../api/dispatch';
-import { listEnterprises } from '../api/enterprises';
+import { listEnterpriseOptions } from '../api/enterprises';
 import { getDictItems } from '../api/dicts';
 import type { Dayjs } from 'dayjs';
 import { useWriteAccess, WriteGate } from '../stores/roleAccess';
@@ -61,7 +62,7 @@ import type {
   FieldError,
   Paged,
   PushDispatchResult,
-  EnterpriseListItem,
+  EnterpriseOption,
 } from '../types/api';
 
 /**
@@ -111,6 +112,8 @@ const TERMINAL_DISPATCH_STATUSES = new Set<string>([
 
 /** 推送日志里 result 的配色（分类来自后端错误码处置表） */
 const PUSH_RESULT_COLOR: Record<string, string> = {
+  queued: 'processing',
+  unknown: 'warning',
   success: 'success',
   replay: 'warning',
   conflict: 'error',
@@ -157,71 +160,12 @@ interface PushFeedback {
  * 是否给「重推」按钮由后端返回的 retryable 决定（不在这里自己判断），
  * 因为"能不能重试"是对方的语义，前端不该猜。
  */
-function pushFeedback(r: PushDispatchResult): PushFeedback {
-  switch (r.result) {
-    case 'success':
-      // 注意 created 的语义：它描述的是**场景**，不是「本次是否新建」。
-      //   契约（落地计划 §3.1）：sceneCode=GQXQ_SENSITIVE_DISPATCH -> created=true 且返回 task；
-      //                            sceneCode=GQXQ_ORDINARY_ARCHIVE  -> created=false 且没有 task。
-      //   gqxq 只会发敏感交办场景，所以正常路径恒为 created=true。
-      //   「是否幂等命中」不能从这里判断——要看任务号是否与既有相同、以及日志里的 attempt。
-      return r.created
-        ? {
-            level: 'success',
-            title: r.attempt > 1 ? '重推成功（第 ' + r.attempt + ' 次尝试）' : '推送成功',
-            description: '对方已受理为敏感交办任务，任务号已回填。同一请求号重复推送不会新建任务。',
-          }
-        : {
-            level: 'warning',
-            title: '对方按「仅归档」处理，未创建任务',
-            description:
-              '返回 created=false。按契约这表示对方把该场景判为普通归档（sceneCode 非敏感交办）；gqxq 只发送敏感交办场景，出现该结果说明场景编码或对方登记有误，请核对。',
-          };
-    case 'replay':
-      return {
-        level: 'warning',
-        title: '对方检测到 nonce 重放（409 REPLAY）',
-        description: '已换新 nonce 与时间戳重试。若仍失败可重推——请求号与报文保持不变。',
-      };
-    case 'conflict':
-      return {
-        level: 'error',
-        title: '同请求号但报文不同（409 CONFLICT）',
-        description:
-          '不可自动重试。需人工核对该请求号下两系统的报文差异，确认后再决定；盲目重试只会继续冲突。',
-      };
-    case 'auth_failed':
-      return {
-        level: 'error',
-        title: '鉴权失败（401）',
-        description:
-          '凭证、路径或时钟不符（时间戳容差 ±300 秒）。请检查 keyId/secret 与本机时钟，勿盲目重试。',
-      };
-    case 'payload_too_large':
-      return {
-        level: 'error',
-        title: '报文超过 1 MiB（413）',
-        description: '请精简 prefilledData / metadata 后重推，请求号不变。',
-      };
-    case 'validation_failed':
-      return {
-        level: 'error',
-        title: '对方校验失败（422）',
-        description:
-          '请按下方字段错误修正后重推。注意：不要发送 organizationCode——它在对方验签白名单之外，发了必被 422。',
-      };
-    case 'timeout':
-    case 'network_error':
-      return {
-        level: 'warning',
-        title: '结果未知（超时 / 网络错误）',
-        description: '将用同一请求号、同一报文重试，换新 nonce，不会新建交办。',
-      };
-    default:
-      return { level: 'error', title: '推送失败：' + r.result, description: r.message ?? '' };
-  }
+const DELIVERY_LABEL:Record<string,string>={pending:'已排队',sending:'发送中',unknown:'结果未知 · 需人工核验',succeeded:'已确认创建',failed:'失败／已停止'};
+const DELIVERY_COLOR:Record<string,string>={pending:'processing',sending:'processing',unknown:'warning',succeeded:'success',failed:'error'};
+function pushFeedback(r:PushDispatchResult):PushFeedback {
+ const state=r.deliveryState;
+ return {level:state==='succeeded'?'success':state==='failed'?'error':state==='unknown'?'warning':'info',title:DELIVERY_LABEL[state]??'推送状态待核对',description:state==='succeeded'?'对方任务号已核验并关联。创建填报任务不代表诉求已办结。':state==='unknown'?'外部可能已创建任务。原请求号与报文已冻结；没有确认的恢复契约时，请联系管理员人工核验，勿另建交办或换号重发。':state==='failed'?'对方明确拒绝或交办已取消；核对配置与原请求，不可修改冻结报文后沿用原号重发。':'已保存推送意图，请刷新查看外发状态。排队或发送中均未证明对方已创建任务。'};
 }
-
 const DASH = <span style={{ color: '#bfbfbf' }}>—</span>;
 
 function fmtDateTime(iso: string | null | undefined): string {
@@ -269,7 +213,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
   const seqRef = useRef(0);
   const [dispatchTarget, setDispatchTarget] = useState<ComplaintListItem | null>(null);
   const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
-  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseListItem[]>([]);
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseOption[]>([]);
   const [enterpriseLoading, setEnterpriseLoading] = useState(false);
   const [dispatchForm] = Form.useForm<{
     targetEnterpriseCode: string;
@@ -278,7 +222,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
     requirement?: string;
     reason?: string;
   }>();
-  const writeAccess = useWriteAccess();
+  const writeAccess = useWriteAccess('dispatch.create');
 
   const params = useMemo(
     () => buildSensitiveComplaintParams(page, size, keyword),
@@ -304,7 +248,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
   const fetchEnterpriseOptions = useCallback(async (keyword?: string) => {
     setEnterpriseLoading(true);
     try {
-      const result = await listEnterprises({ keyword: keyword?.trim() || undefined, size: 100 });
+      const result = await listEnterpriseOptions({ keyword: keyword?.trim() || undefined, size: 100 });
       setEnterpriseOptions(result.content);
     } catch (cause) {
       message.error('企业主数据加载失败：' + ((cause as ApiError)?.message ?? '未知错误'));
@@ -397,7 +341,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
         width: 100,
         render: (value: string, row) => (
           <Tag color={row.urgencyLevelCode === 'critical' ? 'red' : row.urgencyLevelCode === 'urgent' ? 'orange' : 'blue'}>
-            {value}
+            {namedLabel(row.supervisionStatusCode,value,'supervision_status')}
           </Tag>
         ),
       },
@@ -415,7 +359,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
         width: 120,
         render: (value: string, row) => (
           <Tag color={row.supervisionStatusCode === 'pending_match' ? 'warning' : 'processing'}>
-            {value}
+            {namedLabel(row.supervisionStatusCode,value,'supervision_status')}
           </Tag>
         ),
       },
@@ -466,14 +410,8 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
   return (
     <>
     <Card>
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="这里展示规则命中的敏感诉求，不等于已经生成交办单"
-        description="数据按服务端 isSensitive=1 筛选；命中词来自入站规则引擎。业务经办或管理员可在本表直接发起交办，已有有效交办会直接打开记录。"
-      />
-      <Space style={{ marginBottom: 16 }} wrap>
+
+      <Space className="filter-bar" wrap>
         <Input.Search
           placeholder="搜索诉求编号、标题或内容"
           prefix={<SearchOutlined />}
@@ -541,13 +479,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
         width={560}
         destroyOnClose
       >
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="同一诉求已有有效交办时会复用现有记录"
-          description="提交使用现有幂等接口；并发下命中已有交办时不会重复创建，并会直接打开对应交办详情。"
-        />
+
         <Form form={dispatchForm} layout="vertical">
           <Form.Item name="targetEnterpriseCode" label="交办企业" rules={[{ required: true, message: '请选择交办企业' }]}>
             <Select
@@ -588,6 +520,8 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
 };
 
 const DispatchOrders: React.FC = () => {
+  const pushAccess=useWriteAccess('dispatch.push');
+  const cancelAccess=useWriteAccess('dispatch.cancel');
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeView, setActiveView] = useState<'matches' | 'orders'>(
@@ -796,7 +730,7 @@ const DispatchOrders: React.FC = () => {
           : await pushDispatch(order.assignmentId);
         setPushOutcome({ kind: 'result', order, result: res });
         if (res.result === 'success') {
-          message.success(res.created ? '推送成功' : '对方按仅归档处理，未创建任务');
+          message.success('已确认创建填报任务');
         }
       } catch (err) {
         const e = err as ApiError;
@@ -819,8 +753,8 @@ const DispatchOrders: React.FC = () => {
     () =>
       DISPATCH_STATUSES.map((code) => {
         const hit = statusDict.find((d) => d.value === code);
-        // 字典缺项时回退显示状态码本身，不编造中文
-        return { value: code, label: hit ? hit.label : code };
+        // 字典缺项时仍使用中文状态名称。
+        return { value: code, label: namedLabel(code,hit?.label,'supervision_status') };
       }),
     [statusDict]
   );
@@ -858,22 +792,26 @@ const DispatchOrders: React.FC = () => {
         title: '交办方式',
         dataIndex: 'dispatchType',
         width: 100,
-        // 契约里没有 dispatchTypeName / triggerTypeName，这里如实显示状态码，不编造中文
-        render: (v: string | null) => (v ? <Tag color={v === 'auto' ? 'blue' : 'purple'}>{v}</Tag> : DASH),
+        // 内部方式和触发编码仅用于接口，界面显示中文。
+        render: (v: string | null) => (v ? <Tag color={v === 'auto' ? 'blue' : 'purple'}>{chineseLabel(v,'dispatch_type')}</Tag> : DASH),
       },
       {
         title: '触发类型',
         dataIndex: 'triggerType',
         width: 120,
-        render: (v: string | null) => (v ? <Tag>{v}</Tag> : DASH),
+        render: (v: string | null) => (v ? <Tag>{chineseLabel(v,'trigger_type')}</Tag> : DASH),
       },
       {
         title: '状态',
         dataIndex: 'status',
         width: 120,
         render: (_: unknown, r) => (
-          <Tag color={STATUS_COLOR[r.status] ?? 'default'}>{r.statusName}</Tag>
+          <Tag color={STATUS_COLOR[r.status] ?? 'default'}>{namedLabel(r.status,r.statusName,'supervision_status')}</Tag>
         ),
+      },
+      {
+        title:'外发状态',dataIndex:'deliveryState',width:190,
+        render:(value:string|undefined)=><Tag color={DELIVERY_COLOR[value??'']??'default'}>{DELIVERY_LABEL[value??'']??'尚未排队'}</Tag>,
       },
       {
         title: '截止时间',
@@ -903,7 +841,7 @@ const DispatchOrders: React.FC = () => {
           v ? (
             <Tooltip title={v}>{v}</Tooltip>
           ) : (
-            <Tooltip title="填报任务号由批次 G3 推送成功后回填">
+            <Tooltip title="推送成功后显示填报任务号">
               <span style={{ color: '#bfbfbf' }}>—</span>
             </Tooltip>
           ),
@@ -924,39 +862,40 @@ const DispatchOrders: React.FC = () => {
               >
                 详情
               </Button>
-              {r.status === 'pending' ? (
+              {r.status === 'pending' && !r.deliveryState ? (
                 <Button
+                  data-testid={'dispatch-push-'+r.assignmentId}
                   type="link"
                   size="small"
                   icon={<SendOutlined />}
-                  loading={pushBusyId === r.assignmentId}
+                  disabled={!pushAccess.can} loading={pushBusyId === r.assignmentId}
                   onClick={() => void handlePush(r, false)}
                 >
                   推送
                 </Button>
               ) : (
                 <Tooltip
-                  title={'当前状态为「' + r.statusName + '」，不能首次推送；如需重试请用「重推」'}
+                  title={'当前交办或外发状态为「' + r.statusName + '」，不能首次推送；如需重试请用「重推」'}
                 >
                   <span>
-                    <Button type="link" size="small" disabled icon={<SendOutlined />}>
+                    <Button data-testid={'dispatch-push-'+r.assignmentId} type="link" size="small" disabled icon={<SendOutlined />}>
                       推送
                     </Button>
                   </span>
                 </Tooltip>
               )}
-              {r.status === 'pushed' || r.status === 'returned' ? (
+              {r.deliveryRetryAllowed || (!r.deliveryState && ['pushed','accepted','processing','returned'].includes(r.status)) ? (
                 <Button
                   type="link"
                   size="small"
                   icon={<RedoOutlined />}
-                  loading={pushBusyId === r.assignmentId}
+                  disabled={!pushAccess.can} loading={pushBusyId === r.assignmentId}
                   onClick={() => void handlePush(r, true)}
                 >
                   重推
                 </Button>
               ) : (
-                <Tooltip title="仅「已推送」或「退回补正」可重推；重推使用同一请求号、同一报文、新 nonce，不会新建交办">
+                <Tooltip title="仅已确认恢复契约的未知结果可核验并恢复；其它结果需人工核验">
                   <span>
                     <Button type="link" size="small" disabled icon={<RedoOutlined />}>
                       重推
@@ -964,20 +903,8 @@ const DispatchOrders: React.FC = () => {
                   </span>
                 </Tooltip>
               )}
-              <Tooltip title="无需手动同步：结果事件由 public-utility 主动回传（批次 G4），已在详情内展示审批轨迹">
-                <span>
-                  <Button type="link" size="small" disabled>
-                    同步
-                  </Button>
-                </span>
-              </Tooltip>
-              <Tooltip title="功能未实现（批次 G5）">
-                <span>
-                  <Button type="link" size="small" disabled>
-                    归档
-                  </Button>
-                </span>
-              </Tooltip>
+              <Button type="link" size="small" onClick={() => void openDetail(r.assignmentId)}>查看进度</Button>
+              <Button type="link" size="small" onClick={() => navigate('/dispatch/archive')}>前往归档</Button>
               {terminal ? (
                 <Tooltip title={'已是终态（' + r.statusName + '），不可撤销'}>
                   <span>
@@ -991,6 +918,7 @@ const DispatchOrders: React.FC = () => {
                   type="link"
                   size="small"
                   danger
+                  disabled={!cancelAccess.can}
                   icon={<StopOutlined />}
                   onClick={() => {
                     cancelForm.resetFields();
@@ -1005,7 +933,7 @@ const DispatchOrders: React.FC = () => {
         },
       },
     ],
-    [navigate, openDetail, cancelForm, handlePush, pushBusyId]
+    [navigate, openDetail, cancelForm, handlePush, pushBusyId,pushAccess.can,cancelAccess.can]
   );
 
   /** G3 推送记录列（一次尝试一行） */
@@ -1016,23 +944,23 @@ const DispatchOrders: React.FC = () => {
         title: '结果',
         dataIndex: 'result',
         width: 140,
-        render: (v: string) => <Tag color={PUSH_RESULT_COLOR[v] ?? 'default'}>{v}</Tag>,
+        render: (v: string) => <Tag color={PUSH_RESULT_COLOR[v] ?? 'default'}>{chineseLabel(v,undefined,'推送结果待核对')}</Tag>,
       },
       {
-        title: 'HTTP',
+        title: '响应状态码',
         dataIndex: 'httpStatus',
         width: 70,
         render: (v: number | null) => (v == null ? DASH : v),
       },
       {
-        title: '错误码',
+        title: '错误原因',
         dataIndex: 'errorCode',
         width: 180,
         ellipsis: true,
-        render: (v: string | null) => (v ? <Tooltip title={v}>{v}</Tooltip> : DASH),
+        render: (v: string | null) => (v ? <span>{chineseLabel(v,undefined,'外部响应未成功')}</span> : DASH),
       },
       {
-        title: 'nonce',
+        title: '请求校验号',
         dataIndex: 'nonce',
         width: 190,
         ellipsis: true,
@@ -1051,7 +979,7 @@ const DispatchOrders: React.FC = () => {
         render: (_: unknown, r) => {
           if (!r.startedAt || !r.finishedAt) return DASH;
           const ms = new Date(r.finishedAt).getTime() - new Date(r.startedAt).getTime();
-          return Number.isFinite(ms) ? ms + ' ms' : DASH;
+          return Number.isFinite(ms) ? ms + ' 毫秒' : DASH;
         },
       },
       {
@@ -1079,9 +1007,9 @@ const DispatchOrders: React.FC = () => {
           children: (
             <div>
               <div style={{ fontWeight: 500 }}>
-                {EVENT_TYPE_LABEL[t.eventType] ?? t.eventType}
+                {EVENT_TYPE_LABEL[t.eventType] ?? chineseLabel(t.eventType,'event_type','审批进度待核对')}
                 {t.approvalConclusion
-                  ? ' · ' + (CONCLUSION_LABEL[t.approvalConclusion] ?? t.approvalConclusion)
+                  ? ' · ' + (CONCLUSION_LABEL[t.approvalConclusion] ?? chineseLabel(t.approvalConclusion,undefined,'审批结论待核对'))
                   : ''}
               </div>
               <div style={{ color: '#999', fontSize: 12 }}>
@@ -1104,13 +1032,7 @@ const DispatchOrders: React.FC = () => {
   return (
     <div>
       <h2 style={{ marginBottom: 8 }}>敏感交办工作台</h2>
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 12 }}
-        message="规则命中与正式交办分开呈现"
-        description="「规则命中诉求」按敏感规则筛选候选；「交办记录」只展示已经人工决定并生成的交办单。规则命中不会自动替代人工交办。"
-      />
+
       <Tabs
         activeKey={activeView}
         onChange={(key) => setActiveView(key as 'matches' | 'orders')}
@@ -1129,13 +1051,7 @@ const DispatchOrders: React.FC = () => {
         />
       ) : (
         <>
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-            message="这里展示已生成的交办记录及其进度"
-            description="新交办从上方「规则命中诉求」发起；已有交办记录可在此查询、推送或查看详情。"
-          />
+
 
           {dictError && (
             <Alert
@@ -1143,12 +1059,12 @@ const DispatchOrders: React.FC = () => {
               showIcon
               style={{ marginBottom: 16 }}
               message={'状态字典加载失败：' + dictError}
-              description="状态筛选下拉的文案来自服务端字典；加载失败时下拉回退显示状态码本身，表格数据不受影响。"
+              description="部分状态筛选暂不可用，请稍后重试。"
             />
           )}
 
           <Card>
-            <Space style={{ marginBottom: 16 }} wrap>
+            <Space className="filter-bar" wrap>
               <Input.Search
                 placeholder="搜索交办单号/诉求编号/标题"
                 prefix={<SearchOutlined />}
@@ -1267,7 +1183,7 @@ const DispatchOrders: React.FC = () => {
             <Descriptions bordered size="small" column={2}>
             <Descriptions.Item label="交办单号">{detail.orderNo}</Descriptions.Item>
             <Descriptions.Item label="状态">
-              <Tag color={STATUS_COLOR[detail.status] ?? 'default'}>{detail.statusName}</Tag>
+              <Tag color={STATUS_COLOR[detail.status] ?? 'default'}>{namedLabel(detail.status,detail.statusName,'supervision_status')}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="诉求编号">
               {detail.complaintNo ?? DASH}
@@ -1281,8 +1197,8 @@ const DispatchOrders: React.FC = () => {
             <Descriptions.Item label="企业编码">
               {detail.targetEnterpriseCode ?? DASH}
             </Descriptions.Item>
-            <Descriptions.Item label="交办方式">{detail.dispatchType ?? DASH}</Descriptions.Item>
-            <Descriptions.Item label="触发类型">{detail.triggerType ?? DASH}</Descriptions.Item>
+            <Descriptions.Item label="交办方式">{chineseLabel(detail.dispatchType,'dispatch_type')}</Descriptions.Item>
+            <Descriptions.Item label="触发类型">{chineseLabel(detail.triggerType,'trigger_type')}</Descriptions.Item>
             <Descriptions.Item label="敏感词" span={2}>
               {detail.sensitiveWords.length > 0
                 ? detail.sensitiveWords.map((w) => (
@@ -1302,28 +1218,31 @@ const DispatchOrders: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="填报任务号">
               {detail.reportingTaskId ?? (
-                <Tooltip title="填报任务号由批次 G3 推送成功后回填">
+                <Tooltip title="推送成功后显示填报任务号">
                   <span style={{ color: '#bfbfbf' }}>—</span>
                 </Tooltip>
               )}
             </Descriptions.Item>
             <Descriptions.Item label="填报状态">
-              {detail.externalStatus ?? DASH}
+              {chineseLabel(detail.externalStatus,'reporting_status')}
             </Descriptions.Item>
-            <Descriptions.Item label="推送状态">{detail.syncStatus ?? DASH}</Descriptions.Item>
+            <Descriptions.Item label="推送状态">{chineseLabel(detail.syncStatus)}</Descriptions.Item>
             <Descriptions.Item label="推送时间">{fmtDateTime(detail.pushedAt)}</Descriptions.Item>
+            <Descriptions.Item label="外发状态"><Tag color={DELIVERY_COLOR[detail.deliveryState??'']??'default'}>{DELIVERY_LABEL[detail.deliveryState??'']??'尚未排队'}</Tag></Descriptions.Item>
+            <Descriptions.Item label="恢复处理次数">{detail.deliveryAttempts??0}</Descriptions.Item>
+            {detail.deliveryState==='unknown'&&<Descriptions.Item label="核验提示" span={2}>原请求号与报文已冻结。请联系管理员核验外部任务；勿另建交办或换号重发。</Descriptions.Item>}
             <Descriptions.Item label="完成时间">{fmtDateTime(detail.completedAt)}</Descriptions.Item>
             <Descriptions.Item label="归档时间">{fmtDateTime(detail.archivedAt)}</Descriptions.Item>
             <Descriptions.Item label="模板">
               {detail.templateCode
-                ? detail.templateCode + (detail.templateVersion != null ? ' v' + detail.templateVersion : '')
+                ? '已配置填报模板' + (detail.templateVersion != null ? '，版本 ' + detail.templateVersion : '')
                 : DASH}
             </Descriptions.Item>
             <Descriptions.Item label="审批定义">
               {detail.approvalDefinitionCode
-                ? detail.approvalDefinitionCode +
+                ? '已配置审批流程' +
                   (detail.approvalDefinitionVersion != null
-                    ? ' v' + detail.approvalDefinitionVersion
+                    ? '，版本 ' + detail.approvalDefinitionVersion
                     : '')
                 : DASH}
             </Descriptions.Item>
@@ -1364,7 +1283,7 @@ const DispatchOrders: React.FC = () => {
                 columns={pushLogColumns}
                 pagination={false}
                 scroll={{ x: 1040 }}
-                locale={{ emptyText: <Empty description="尚未推送" /> }}
+                locale={{ emptyText: <Empty description="尚无外发尝试记录" /> }}
               />
             )}
 
@@ -1392,13 +1311,7 @@ const DispatchOrders: React.FC = () => {
               <Timeline items={timelineItems} />
             )}
 
-            <Alert
-              style={{ marginTop: 12 }}
-              type="info"
-              showIcon
-              message="签收不在回传事件里"
-              description="对方的结果事件只有 提交/退回/通过/不同意 四类，无法表达「企业签收」，因此本轨迹不会出现签收节点（落地计划 §3.2 已标注的契约缺口）。"
-            />
+
           </>
         )}
       </Modal>
@@ -1414,19 +1327,19 @@ const DispatchOrders: React.FC = () => {
             {pushOutcome?.kind === 'error' && (
               <Button
                 type="primary"
-                loading={pushBusyId === pushOutcome.order.assignmentId}
+                disabled={!pushAccess.can} loading={pushBusyId === pushOutcome.order.assignmentId}
                 onClick={() => void handlePush(pushOutcome.order, true)}
               >
-                重试（同一请求号、同一报文、新 nonce）
+                重试推送
               </Button>
             )}
             {pushOutcome?.kind === 'result' && pushOutcome.result.retryable && (
               <Button
                 type="primary"
-                loading={pushBusyId === pushOutcome.order.assignmentId}
+                disabled={!pushAccess.can} loading={pushBusyId === pushOutcome.order.assignmentId}
                 onClick={() => void handlePush(pushOutcome.order, true)}
               >
-                重推（同一请求号、同一报文、新 nonce）
+                重新推送
               </Button>
             )}
           </Space>
@@ -1440,7 +1353,7 @@ const DispatchOrders: React.FC = () => {
               <ul style={{ marginTop: 12, paddingLeft: 20 }}>
                 {pushOutcome.fieldErrors.map((f) => (
                   <li key={f.field}>
-                    <Typography.Text code>{f.field}</Typography.Text>：{f.message}
+                    <Typography.Text>{fieldLabel(f.field)}</Typography.Text>：{f.message}
                   </li>
                 ))}
               </ul>
@@ -1459,7 +1372,7 @@ const DispatchOrders: React.FC = () => {
             <Descriptions bordered size="small" column={1} style={{ marginTop: 12 }}>
               <Descriptions.Item label="交办单号">{pushOutcome.order.orderNo}</Descriptions.Item>
               <Descriptions.Item label="请求号">{pushOutcome.result.requestId}</Descriptions.Item>
-              <Descriptions.Item label="尝试次数">{pushOutcome.result.attempt}</Descriptions.Item>
+              <Descriptions.Item label="处理次数">{pushOutcome.result.attempt}</Descriptions.Item>
               <Descriptions.Item label="结果分类">
                 <Tag color={PUSH_RESULT_COLOR[pushOutcome.result.result] ?? 'default'}>
                   {pushOutcome.result.result}
@@ -1487,7 +1400,7 @@ const DispatchOrders: React.FC = () => {
                 type="warning"
                 showIcon
                 message="该结果不可自动重试"
-                description="请先人工核对（凭证与时钟、同请求号的报文差异、或字段错误），确认后再手动重推。"
+                description="请先人工核对（凭证与时钟、同请求号的报文差异、或字段错误），确认后按原请求关联核验；不可改报文或换号重发。"
               />
             )}
           </>
@@ -1513,7 +1426,7 @@ const DispatchOrders: React.FC = () => {
           showIcon
           style={{ marginBottom: 12 }}
           message="撤销后不可复活"
-          description="该交办会进入终态「已撤销」，且本次操作会写入审计。如需重新交办，请在诉求总账重新发起。"
+          description="撤销后无法恢复。如需重新交办，请在诉求总账重新发起。"
         />
         <Form form={cancelForm} layout="vertical">
           <Form.Item

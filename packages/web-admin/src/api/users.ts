@@ -38,3 +38,8 @@ export async function updateUser(
 ): Promise<UpdateUserResult> {
   return request.patch<never, UpdateUserResult>('/users/' + encodeURIComponent(userId), body);
 }
+
+export function resetPassword(userId:string,password:string){return request.post<never,{changed:boolean}>('/users/'+encodeURIComponent(userId)+'/reset-password',{password});}
+
+export function getUserScope(userId:string){return request.get<never,import('../types/api').UserScope>('/users/'+encodeURIComponent(userId)+'/scopes');}
+export function updateUserScope(userId:string,rules:import('../types/api').ScopeRule[],expectedVersion:number){return request.put<never,import('../types/api').UserScope>('/users/'+encodeURIComponent(userId)+'/scopes',{rules,expectedVersion});}

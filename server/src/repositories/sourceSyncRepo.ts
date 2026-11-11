@@ -1,3 +1,4 @@
+import { currentScopeSql, assertLockedComplaintAccess } from '../auth/accessScope';
 // G6 来源同步的数据访问。复用既有的 sync_log 表，不新增日志表。
 import { randomUUID } from 'node:crypto';
 import { pool, type Row } from '../db/pool';
@@ -24,11 +25,12 @@ export async function findComplaintForSync(idOrNo: string): Promise<ComplaintSou
   const trimmed = idOrNo.trim();
   if (trimmed === '') return null;
   const numeric = /^\d+$/.test(trimmed);
+  const scope=currentScopeSql('complaint');
   const sql = numeric
-    ? 'select ' + SYNC_COLUMNS + ' from complaint where deleted = 0 and id = ? limit 1'
-    : 'select ' + SYNC_COLUMNS + ' from complaint where deleted = 0 and (complaint_id = ? or complaint_no = ?) limit 1';
+    ? 'select ' + SYNC_COLUMNS + ' from complaint where id = ? and '+scope.sql+' limit 1'
+    : 'select ' + SYNC_COLUMNS + ' from complaint where (complaint_id = ? or complaint_no = ?) and '+scope.sql+' limit 1';
   const params = numeric ? [Number(trimmed)] : [trimmed, trimmed];
-  const [rows] = await pool.query<Row[]>(sql, params);
+  const [rows] = await pool.query<Row[]>(sql, [...params,...scope.params]);
   const row = (rows as unknown as ComplaintSourceRow[])[0];
   return row ?? null;
 }
@@ -42,6 +44,7 @@ export interface SyncLogInput {
 }
 
 export async function insertSyncLog(tx: Tx, input: SyncLogInput): Promise<void> {
+  await assertLockedComplaintAccess(tx,input.complaintId);
   await tx.execute(
     'insert into sync_log (sync_log_id, app_code, target_system, biz_type, biz_id, result, ' +
       'request_body, response_body, retry_count, error_message) values (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)',

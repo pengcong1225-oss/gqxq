@@ -1,0 +1,6 @@
+export type UtilityMode='simulation'|'real';
+export interface UtilityEvent {id:string;kind:'shutdown'|'pipeline';title:string;businessType:'water'|'gas';enterpriseId:string;gridIds:string[];districtCode:string;startsAt:string;endsAt:string;restoredAt:string|null;households:number;workers:number;reason:string;area:string;plan:string;housing:string;sourceApplicationNo:string;approvalStatus:'pending'|'approved'|'rejected';approvalNote:string;approvedBy:string;approvedAt:string|null;relatedTypes:string[];revision:number;updatedAt:string;mode:UtilityMode;sourceSystem?:'public-utility';sourceRevision?:string;sourceStatus?:string;approvalTraces?:unknown[]}
+export interface UtilityComplaint {id:string;title:string;type:string;occurredAt:string;gridId:string}
+export interface TimeoutItem {sourceSystem?:'public-utility';id:string;eventId:string;eventTitle:string;from:string;to:string;complaints:UtilityComplaint[];status:'pending'|'failed'|'simulated'|'blocked'|'sent'|'superseded';attempts:{at:string;result:string;message:string}[];eventRevision:number}
+export interface UtilityState {events:UtilityEvent[];deliveries:Record<string,TimeoutItem>}
+export interface UtilityOptions {enterprises:{id:string;name:string;businessType:string}[];grids:{id:string;name:string;districtCode:string}[]}

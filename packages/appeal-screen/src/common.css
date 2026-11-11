@@ -1,0 +1,5 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 大屏通用样式；原工程中的地图弹窗业务样式已随弹窗组件一并移除 */

@@ -1,0 +1,7 @@
+@font-face {
+    /* 大屏标题字体；文件名大小写与磁盘保持一致，避免 Linux 部署 404 */
+    font-family: 'YouSheBiaoTiHei';
+    src: url('./YouSheBiaoTiHei.ttf');
+    font-weight: normal;
+    font-style: normal;
+}

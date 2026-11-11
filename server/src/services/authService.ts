@@ -1,8 +1,10 @@
 // 鉴权服务：bcrypt 口令校验 + JWT 签发 + 登录审计。
 // 设计要点（见 docs/2026-09-17-诉求平台G1详细实施方案.md §5.9）：
 //   * 对外不区分"用户不存在 / 口令错误 / 已停用"，统一 401，防用户名枚举
-//   * JWT 载荷只放 sub / username / roles，权限明细一律从库读（便于回收）
+//   * JWT 载荷只放 sub / username / sessionVersion，权限明细一律从库读（便于回收）
 //   * 登录成功与失败都写 operation_audit_log（复用既有表，不新建 audit_log）
+import { resolveAuthorization } from './roleService';
+import { validatePassword } from './passwordService';
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -82,6 +84,7 @@ export async function login(
   password: string,
   ctx: LoginContext
 ): Promise<LoginResult> {
+  validatePassword(password, false);
   const user = await findByUsername(pool, username);
   const hash = user === null ? TIMING_DUMMY_HASH : user.passwordHash;
   const matched = await bcrypt.compare(password, hash);
@@ -104,9 +107,9 @@ export async function login(
     throw AppError.unauthenticated('用户名或密码错误');
   }
 
-  // 载荷只放 sub / username / roles；权限明细由 /auth/user-info 查库返回
+  // 载荷只放 sub / username / sessionVersion；权限明细由 /auth/user-info 查库返回
   const token = jwt.sign(
-    { sub: user.userId, username: user.username, roles: user.roles },
+    { sub: user.userId, username: user.username, sessionVersion: user.sessionVersion },
     env.jwtSecret,
     { algorithm: 'HS256', expiresIn: env.jwtTtlSeconds }
   );
@@ -125,7 +128,7 @@ export async function login(
     });
   });
 
-  return { token, userInfo: toUserInfo(user) };
+  return { token, userInfo: await currentUser(user.userId) };
 }
 
 /** 令牌有效但用户已被删除或停用时同样按未认证处理 */
@@ -134,5 +137,6 @@ export async function currentUser(userId: string): Promise<UserInfo> {
   if (user === null || user.status !== 1) {
     throw AppError.unauthenticated('用户不存在或已停用');
   }
-  return toUserInfo(user);
+  const auth = await resolveAuthorization(userId);
+  return {...toUserInfo(user),roles:auth.roleCodes,permissions:auth.permissionCodes,authorizationVersion:auth.authorizationVersion};
 }

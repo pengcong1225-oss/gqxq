@@ -1,0 +1,38 @@
+{
+  "type": "FeatureCollection",
+  "templateVersion": "b4-v1",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "code": "001",
+        "coordinateSystem": "WGS84",
+        "geometrySource": "虚构边界样例，需替换为权威来源",
+        "conversion": "none"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              111,
+              30
+            ],
+            [
+              111.01,
+              30
+            ],
+            [
+              111.01,
+              30.01
+            ],
+            [
+              111,
+              30
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

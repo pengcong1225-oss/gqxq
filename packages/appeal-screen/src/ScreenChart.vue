@@ -1,0 +1,9 @@
+<script setup>
+import {ref, onMounted, onBeforeUnmount, watch} from 'vue'
+import * as echarts from 'echarts'
+const props=defineProps({items:Array, kind:{default:'bar'}}); const emit=defineEmits(['select']); const el=ref(); let chart, observer
+function draw(){if(!chart)return;const a=props.items||[];if(props.kind==='pie'){chart.setOption({color:['#4bdac2','#3999cb','#f0c858','#ec9161','#9a8cda','#8ecb79'],tooltip:{trigger:'item'},series:[{type:'pie',radius:['42%','70%'],center:['50%','50%'],data:a.map(x=>({name:x.name,value:x.value})),label:{color:'#d0eeea',formatter:'{b}: {c}'}}]},true);return}chart.setOption({grid:{left:8,right:22,top:12,bottom:20,containLabel:true},tooltip:{trigger:'axis'},xAxis:props.kind==='bar'?{type:'value',axisLabel:{color:'#9bc9c5'},splitLine:{lineStyle:{color:'#17443f'}}}:{type:'category',data:a.map(x=>x.name),axisLabel:{color:'#9bc9c5',hideOverlap:true},axisLine:{lineStyle:{color:'#377b72'}}},yAxis:props.kind==='bar'?{type:'category',inverse:true,data:a.map(x=>x.name),axisLabel:{color:'#d0eeea',width:110,overflow:'truncate'},axisLine:{show:false},axisTick:{show:false}}:{type:'value',axisLabel:{color:'#9bc9c5'},splitLine:{lineStyle:{color:'#17443f'}}},series:[{type:props.kind==='bar'?'bar':'line',data:a.map(x=>x.value),barMaxWidth:12,smooth:true,itemStyle:{color:'#54d5bc'},lineStyle:{width:2},areaStyle:props.kind==='line'?{color:'rgba(52,192,165,.15)'}:undefined}]},true)}
+onMounted(()=>{chart=echarts.init(el.value);chart.on('click',p=>emit('select',props.items[p.dataIndex]));observer=new ResizeObserver(()=>chart?.resize());observer.observe(el.value);draw()});watch(()=>[props.items,props.kind],draw,{deep:true});onBeforeUnmount(()=>{observer?.disconnect();chart?.dispose()})
+</script>
+<template><div ref="el" class="chart"></div></template>
+<style scoped>.chart{width:100%;height:100%;min-height:90px}</style>

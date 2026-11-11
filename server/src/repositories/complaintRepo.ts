@@ -1,3 +1,5 @@
+import { currentScopeSql } from '../auth/accessScope';
+import { excludeIntegrationTestsSql } from '../domain/integrationTestPolicy';
 // complaint 查询层（诉求总账）。
 // 硬约束（见 docs/2026-09-17-gqxq_service现状核对与G1迁移设计.md）：
 //   * 一律手写参数化 SQL，禁止 ORM，禁止 select *（统一用 COMPLAINT_SELECT_COLUMNS = COMPLAINT_COLUMNS）
@@ -80,8 +82,9 @@ function inClause(column: string, values: string[] | undefined, params: unknown[
 
 /** 列表与统计共用同一套筛选条件，保证「卡片数字」与「表格行」口径一致 */
 export function buildWhere(filter: ComplaintFilter): WhereClause {
-  const params: unknown[] = [];
-  const parts: string[] = [NOT_DELETED];
+  const scope = currentScopeSql();
+  const params: unknown[] = [...scope.params];
+  const parts: string[] = [scope.sql,excludeIntegrationTestsSql('c')];
 
   if (filter.keyword) {
     const like = '%' + escapeLike(filter.keyword) + '%';
@@ -89,9 +92,10 @@ export function buildWhere(filter: ComplaintFilter): WhereClause {
       '(c.complaint_no like ? escape ' + "'" + LIKE_ESCAPE + "'" +
         ' or c.title like ? escape ' + "'" + LIKE_ESCAPE + "'" +
         ' or c.content like ? escape ' + "'" + LIKE_ESCAPE + "'" +
-        ' or c.address like ? escape ' + "'" + LIKE_ESCAPE + "'" + ')'
+        ' or c.address like ? escape ' + "'" + LIKE_ESCAPE + "'" +
+        ' or c.source_id like ? escape ' + "'" + LIKE_ESCAPE + "'" + ')'
     );
-    params.push(like, like, like, like);
+    params.push(like, like, like, like, like);
   }
 
   const multi: Array<[string, string[] | undefined]> = [
@@ -110,6 +114,9 @@ export function buildWhere(filter: ComplaintFilter): WhereClause {
   if (filter.correctionStatus) {
     parts.push('c.correction_status = ?');
     params.push(filter.correctionStatus);
+  }
+  for(const [value,column,path] of [[filter.sourceMajorCategory,'c.source_major_category_code','$.metadata."案件主类型名"'],[filter.sourceMinorCategory,'c.source_minor_category_code','$.metadata."案件二级类型名"']] as const){
+    if(value){parts.push('('+column+' = ? or json_unquote(json_extract(c.source_payload, ?)) = ?)');params.push(value,path,value);}
   }
   // 超期时效（M11 派生列）：三态各自一档，**NULL 不并进"未超期"**。
   // 库里 NULL 的含义是"来源没给时效信息"（未同步 / 正常在办 / 认不出 / 历史未回填），
@@ -217,6 +224,7 @@ export async function findStats(filter: ComplaintFilter): Promise<ComplaintStats
 
 /** 纯数字按数值主键查；否则按业务键 complaint_id 或编号 complaint_no 查（两种都支持） */
 export async function findByIdOrNo(idOrNo: string): Promise<ComplaintRow | null> {
+  const scope = currentScopeSql();
   const numeric = /^\d+$/.test(idOrNo);
   const where = numeric ? 'c.id = ?' : '(c.complaint_id = ? or c.complaint_no = ?)';
   const params: unknown[] = numeric ? [Number(idOrNo)] : [idOrNo, idOrNo];
@@ -228,9 +236,9 @@ export async function findByIdOrNo(idOrNo: string): Promise<ComplaintRow | null>
       ' from complaint c' +
       ACTIVE_DISPATCH_JOIN +
       ' where ' +
-      where +
+      where + ' and ' + scope.sql +
       ' limit 1',
-    params
+    [...params, ...scope.params]
   );
   return (rows[0] as unknown as ComplaintRow | undefined) ?? null;
 }
