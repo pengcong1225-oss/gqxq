@@ -6,7 +6,7 @@ import type {ComplaintDetail,CorrectionItem} from '../types/api';
 import type {LocationCorrectionOptions,LocationCorrectionResult} from '../types/locationCorrection';
 import {confirmLocationGroup,deferLocationGroup,getLocationCorrectionOptions,listComplaintCorrections} from '../api/corrections';
 import {locationDraftInput,type LocationDraft} from './LocationCorrectionFields';
-import TiandituLocationPicker from './TiandituLocationPicker';
+import AmapLocationPicker from './AmapLocationPicker';
 import {adoptLocation,safePlaceQuery,suggestLocations,resolveAddressLocation} from '../utils/locationSuggestions';
 export interface LocationReviewPanelProps {detail:ComplaintDetail;items:CorrectionItem[];disabled?:boolean;onSaved:(result:LocationCorrectionResult,next:boolean)=>void;onDeferred:(next:boolean)=>void}
 const fields=new Set(['address','location_lng','location_lat','district_name','district_code','admin_grid_code','community_code']);
@@ -81,8 +81,8 @@ function Review({detail:incoming,items:incomingItems,disabled,onSaved,onDeferred
    <Typography.Text strong>核对依据</Typography.Text>
    <Input.TextArea aria-label="位置核对依据" value={draft.basis} maxLength={500} placeholder="调整或冲突时填写核对依据" disabled={blocked} onChange={e=>change({basis:e.target.value})}/>
   </Space>}
-  {(editing||suggestions?.unique)&&<TiandituLocationPicker contextKey={JSON.stringify([draft.districtCode,draft.adminGridCode,draft.communityCode])} address={safePlaceQuery(draft.address??'')??''} lng={draft.lng} lat={draft.lat} autoSearch={query} disabled={!!blocked} onPick={p=>change({lng:p.lng,lat:p.lat,coordinateSystem:'unknown',coordinateSource:p.coordinateSource,communityCode:null,adminGridCode:null})} onSelectPlace={place=>useMapAddress(place.address,place.name)} onUseAddressSuggestion={useMapAddress}/>}
-  <Collapse style={{marginTop:12}} items={[{key:'coordinates',label:'高级坐标细节（可选）',children:<><Typography.Text type="secondary">坐标系：{draft.coordinateSystem==='WGS84'?'已有来源声明':draft.coordinateSystem==='CGCS2000'?'国家大地坐标系（天地图自动定位）':'未知，不自动用于空间归属判定'}</Typography.Text><Space><Input aria-label="高级经度" value={draft.lng} disabled={blocked} onChange={e=>change({lng:e.target.value,coordinateSystem:'unknown',coordinateSource:'人工填写，坐标系未核实'})}/><Input aria-label="高级纬度" value={draft.lat} disabled={blocked} onChange={e=>change({lat:e.target.value,coordinateSystem:'unknown',coordinateSource:'人工填写，坐标系未核实'})}/></Space></>}]} />
+  {(editing||suggestions?.unique)&&<AmapLocationPicker contextKey={JSON.stringify([draft.districtCode,draft.adminGridCode,draft.communityCode])} address={safePlaceQuery(draft.address??'')??''} lng={draft.lng} lat={draft.lat} autoSearch={query} disabled={!!blocked} onPick={p=>change({lng:p.lng,lat:p.lat,coordinateSystem:'unknown',coordinateSource:p.coordinateSource,communityCode:null,adminGridCode:null})} onSelectPlace={place=>useMapAddress(place.address,place.name)} onUseAddressSuggestion={useMapAddress}/>}
+  <Collapse style={{marginTop:12}} items={[{key:'coordinates',label:'高级坐标细节（可选）',children:<><Typography.Text type="secondary">坐标系：{draft.coordinateSystem==='WGS84'?'已有来源声明':draft.coordinateSystem==='CGCS2000'?'国家大地坐标系（历史自动定位结果，来源见来源字段）':'未知，不自动用于空间归属判定'}</Typography.Text><Space><Input aria-label="高级经度" value={draft.lng} disabled={blocked} onChange={e=>change({lng:e.target.value,coordinateSystem:'unknown',coordinateSource:'人工填写，坐标系未核实'})}/><Input aria-label="高级纬度" value={draft.lat} disabled={blocked} onChange={e=>change({lat:e.target.value,coordinateSystem:'unknown',coordinateSource:'人工填写，坐标系未核实'})}/></Space></>}]} />
  </Card>;
 }
 export default function LocationReviewPanel(props:LocationReviewPanelProps){const token=useAppStore(s=>s.token),user=useAppStore(s=>s.userInfo);const actor=JSON.stringify([token,user?.userId,user?.permissions,user?.roles,user?.authorizationVersion,user?.mustChangePassword]);return <Review key={actor+':'+props.detail.complaintId} {...props}/>;}

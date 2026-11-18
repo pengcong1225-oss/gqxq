@@ -8,6 +8,8 @@ import type {ComplaintFollowupsView,FollowupView,FollowupFacts} from '../types/a
 const date=(value:string)=>new Date(value).toLocaleString('zh-CN',{hour12:false});
 const localDate=(value:string)=>{const d=new Date(value);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);};
 const label=(r:FollowupView)=>!r.contacted?'未接通':r.evaluationCode==='satisfied'?'满意':r.evaluationCode==='dissatisfied'?'不满意':'接通，未取得评价';
+/** 回访人展示（标书 1.1.5 要求「回访人姓名」）：优先后端 operatorName；缺姓名时如实标注"登记账号"，不拿账号冒充姓名。 */
+const followupPerson=(r:FollowupView)=>r.operatorName?.trim()?('回访人 '+r.operatorName.trim()):('登记账号 '+(r.ownerId||'—'));
 type Editor={key:string;epoch:number;mode:'create'|'revise'|'conclude';target:FollowupView|null};
 const inputStyle:React.CSSProperties={display:'block',width:'100%',padding:8,border:'1px solid #d9d9d9',borderRadius:6,marginTop:4};
 /** Each complaint/auth generation fences both reads and writes, including same-scope revocation. */
@@ -38,14 +40,14 @@ const ComplaintFollowups:React.FC<{complaintId:string}>=({complaintId})=>{
   finally{if(ownsWrite())setSubmitting(false);}
  };
  if(!read.can)return null;
- return <Card title="人工回访" style={{marginTop:16}} extra={<Button disabled={submitting} loading={loading} onClick={()=>void load()}>刷新回访</Button>}>
+ return <Card title="三、回访记录（标书 1.1.5）" style={{marginTop:16}} extra={<Button disabled={submitting} loading={loading} onClick={()=>void load()}>刷新回访</Button>}>
   <Typography.Text type="secondary">诉求：{complaintId}。回访事实、主管结论与来源评价分别保存。</Typography.Text>
   {error&&<Alert role="alert" type="error" message={error} style={{marginTop:8}}/>}{notice&&<Alert role="status" type="info" message={notice} style={{marginTop:8}}/>}
   {data&&<><p>来源坐席评价：{data.sourceEvaluation.label??data.sourceEvaluation.reason}（{chineseLabel(data.sourceEvaluation.provenance,undefined,'来源坐席记录')}）</p><Alert type="info" message={data.formalEvaluation.reason.replace(/^Q\d+\s*/,'')}/>
    {create.can&&<Button disabled={submitting} style={{marginTop:12}} onClick={()=>open('create',null)}>登记回访</Button>}
    {!data.records.length&&<p>暂无人工回访记录</p>}
-   {data.records.map(r=><div key={r.followupId} style={{borderBottom:'1px solid #eee',padding:'12px 0'}}><p>{date(r.occurredAt)} · {label(r)} · 登记人 {r.ownerId} · 版本 {r.version}</p>{r.dissatisfactionReason&&<p>不满意理由：{r.dissatisfactionReason}</p>}{r.notes&&<p>备注：{r.notes}</p>}<p>主管结论：{r.conclusion??'尚无主管结论'}{r.concludedBy&&'（'+r.concludedBy+'）'}</p><Space>{create.can&&r.ownerId===user?.userId&&<Button disabled={submitting} onClick={()=>open('revise',r)}>更正回访</Button>}{supervisor&&<Button disabled={submitting} onClick={()=>open('conclude',r)}>填写主管结论</Button>}</Space></div>)}
-   <details style={{marginTop:12}}><summary>查看版本历史（{data.history.length} 条）</summary>{data.history.map(r=><p key={r.followupId+':'+r.version}>{r.followupId} · 版本 {r.version} · {label(r)} · {r.operatorName} · {date(r.revisedAt)}{' · 回访时间：'+date(r.occurredAt)}{r.dissatisfactionReason&&' · 不满意理由：'+r.dissatisfactionReason}{r.reason&&' · 理由：'+r.reason}{r.notes&&' · 备注：'+r.notes}{r.conclusion&&' · 主管结论：'+r.conclusion}</p>)}</details>
+   {data.records.map(r=><div key={r.followupId} style={{borderBottom:'1px solid #eee',padding:'12px 0'}}><p>{date(r.occurredAt)} · {label(r)} · {followupPerson(r)} · 版本 {r.version}</p>{r.dissatisfactionReason&&<p>不满意理由：{r.dissatisfactionReason}</p>}{r.notes&&<p>备注：{r.notes}</p>}<p>主管结论：{r.conclusion??'尚无主管结论'}{r.concludedBy&&'（'+r.concludedBy+'）'}</p><Space>{create.can&&r.ownerId===user?.userId&&<Button disabled={submitting} onClick={()=>open('revise',r)}>更正回访</Button>}{supervisor&&<Button disabled={submitting} onClick={()=>open('conclude',r)}>填写主管结论</Button>}</Space></div>)}
+   <details style={{marginTop:12}}><summary>查看版本历史（{data.history.length} 条）</summary>{data.history.map(r=><p key={r.followupId+':'+r.version}>{r.followupId} · 版本 {r.version} · {label(r)} · {followupPerson(r)} · {date(r.revisedAt)}{' · 回访时间：'+date(r.occurredAt)}{r.dissatisfactionReason&&' · 不满意理由：'+r.dissatisfactionReason}{r.reason&&' · 理由：'+r.reason}{r.notes&&' · 备注：'+r.notes}{r.conclusion&&' · 主管结论：'+r.conclusion}</p>)}</details>
   </>}
   {active&&<form onSubmit={event=>void submit(event)} style={{marginTop:16,display:'grid',gap:12,maxWidth:620}}>
    {active.mode!=='conclude'?<><label>是否接通<select aria-label="是否接通" style={inputStyle} disabled={submitting} value={String(contacted)} onChange={e=>{const v=e.target.value==='true';setContacted(v);if(!v){setEvaluation(null);setDissatisfactionReason('');}}}><option value="false">未接通</option><option value="true">已接通</option></select></label>

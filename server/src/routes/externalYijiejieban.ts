@@ -49,6 +49,8 @@ const BodySchema = z.object({
   // 来源原值残留（导出表里的「督办状态」「诉求类型」原文、二级单位、处理结果等）：
   // 平台没有对应列，但**不丢**——随整包落 complaint.source_payload，可追溯、可回放。
   metadata: z.record(z.unknown()).nullish(),
+  citizenName: z.string().max(64).nullish(),
+  citizenPhone: z.string().max(32).nullish(),
 });
 
 /** 宜昌辖区大致范围；超范围**不拒单**，置 null 并写告警 */
@@ -88,6 +90,15 @@ externalRouter.post(
     const remoteIp = req.remoteIp ?? null;
     const requestId = req.requestId ?? null;
     const payload = toPayloadObject(raw);
+    // PII 不进 source_payload/日志；单独加密落 complaint_citizen
+    delete (payload as Record<string,unknown>).citizenName;
+    delete (payload as Record<string,unknown>).citizenPhone;
+    if (payload.metadata && typeof payload.metadata==='object' && !Array.isArray(payload.metadata)) {
+      delete (payload.metadata as Record<string,unknown>).citizenName;
+      delete (payload.metadata as Record<string,unknown>).citizenPhone;
+      delete (payload.metadata as Record<string,unknown>)['诉求人'];
+      delete (payload.metadata as Record<string,unknown>)['诉求人电话'];
+    }
 
     /** 一旦校验不通过：先留痕（事务外），再按统一封套返回 400 */
     const reject = async (message: string, fieldErrors: FieldError[]): Promise<never> => {
@@ -230,6 +241,8 @@ externalRouter.post(
       explicitComplaintType: explicit.complaintType,
       explicitUrgencyLevel: explicit.urgencyLevel,
       sourceReportedAt,
+      citizenName: optText(data.citizenName,64),
+      citizenPhone: optText(data.citizenPhone,32),
       payload,
       payloadHash: payloadHashOf(payload),
       warnings,

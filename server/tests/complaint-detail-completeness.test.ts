@@ -56,3 +56,21 @@ test('mounted followup HTTP routes reach guarded services and never accept an ab
  const invalid=await request(app).post('/complaints/C-1/followups').set('x-test-actor','yes').send({...facts,evaluationCode:'dissatisfied'});
  assert.equal(invalid.status,400);assert.ok(invalid.body.message.includes('回访请求不合法'));
 });
+
+test('v2 27-column export maps source summary and list filters fall back to v2 keys',()=>{
+ const v2row={...row,address:'宜昌市西陵区东山大道178号石马小区2栋',district_name:'西陵区',source_payload:{metadata:{'大类':'住','中类':'供气服务','小类':'燃气报损报修问题','主办单位':'中燃宜昌公司','事件状态':'已办结','办理结果':'已处理'}}};
+ const detail=projectComplaintDetail(v2row as never,access as never) as any;
+ assert.equal(detail.sourceSummary.caseType,'燃气报损报修问题');
+ assert.equal(detail.sourceSummary.majorCategory,'住');
+ assert.equal(detail.sourceSummary.minorCategory,'供气服务');
+ assert.equal(detail.sourceSummary.department,'中燃宜昌公司');
+ assert.equal(detail.sourceSummary.district,'西陵区');
+ assert.equal(detail.sourceSummary.community,'石马小区');
+ assert.equal(detail.sourceSummary.supervisionStatus,'已办结');
+ assert.equal(detail.sourceSummary.result,'已处理');
+ assert.equal(detail.sourceSummary.deadlineRaw,null);
+ const {filter}=parseListQuery({sourceMajorCategory:'住'});
+ const where=buildWhere(filter);
+ assert.ok(where.text.includes('json_unquote(json_extract(c.source_payload, ?)) = ?'));
+ assert.ok(where.params.includes('$.metadata."大类"'));
+});

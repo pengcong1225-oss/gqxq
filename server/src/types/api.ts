@@ -26,8 +26,17 @@ export interface ComplaintListItem {
   title: string;
 
   sourceSystem: string | null;
+  /** 案件公文号（来源系统流水号 complaint.source_id），列表「案件公文号」列 */
   sourceId: string | null;
   sourceChannel: string | null;
+  /**
+   * 来源案件主类型 / 二级类型**原值**（非平台字典码）。
+   * 取值顺序：complaint.source_major_category_code → source_payload.metadata「案件主类型名」/「大类」。
+   * 与筛选参数 sourceMajorCategory / sourceMinorCategory 同一口径，仅用于展示。
+   * 只有列表接口（complaintRepo.findPage + complaintService 组装）提供，详情/统计导出不保证。
+   */
+  sourceMajorCategoryName?: string | null;
+  sourceMinorCategoryName?: string | null;
 
   businessTypeCode: string;
   businessTypeName: string;
@@ -71,6 +80,21 @@ export interface ComplaintListItem {
   activeDispatchStatusCode: string | null;
   activeDispatchStatusName: string | null;
   legacyStatus: string;
+  satisfactionText: string | null;
+  satisfactionCode: string | null;
+  citizenFeedbackResolution: string | null;
+  thirdPartyEvaluation: string | null;
+  thirdPartyResolution: string | null;
+  industryDepartment: string | null;
+  isConfidential: string | null;
+  selfHandled: string | null;
+  itemCategory: string | null;
+  sourceSubCategory: string | null;
+  sourceDepartmentName: string | null;
+  handlingResult: string | null;
+  replyToCitizen: string | null;
+  statusCode: string;
+  statusName: string;
 
   sourceReportedAt: string | null;
   receivedAt: string | null;
@@ -101,6 +125,8 @@ export interface LocationClueView {
 }
 
 export interface ComplaintDetail extends ComplaintListItem {
+  citizenName?: string | null;
+  citizenPhone?: string | null;
   sourceSummary?: import('../domain/complaintSourceSummary').ComplaintSourceSummary;
   category?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
   sourceCategory?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
@@ -170,6 +196,8 @@ export type OvertimeFilterCode = '1' | '0' | 'none';
 export interface ComplaintFilter {
   sourceMajorCategory?: string;
   sourceMinorCategory?: string;
+  /** 案件公文号（complaint.source_id）精确匹配（= 等值），不是模糊 LIKE；不传 = 不筛 */
+  sourceId?: string;
   keyword?: string;
   businessType?: string[];
   complaintType?: string[];
@@ -183,6 +211,8 @@ export interface ComplaintFilter {
   districtCode?: string;
   /** 责任企业 business key */
   enterpriseCode?: string;
+  /** 满意度多值筛选（satisfied/basically_satisfied/unsatisfied/no_reply） */
+  satisfaction?: string[];
   isSensitive?: boolean;
   startDate?: string;
   endDate?: string;

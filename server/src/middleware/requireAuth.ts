@@ -5,6 +5,7 @@ import { resolveAuthorization } from '../services/roleService';
 import { env } from '../config/env';
 import { pool } from '../db/pool';
 import { findAuthIdentity } from '../repositories/userRepo';
+import { bearerToken, findBoundUserId, verifyPlatformToken } from '../auth/platformIdentity';
 import { AppError } from '../http/errors';
 
 interface GqxqJwtPayload {
@@ -21,6 +22,36 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   const matched = /^Bearer\s+(.+)$/i.exec(header.trim());
   if (!matched) {
     next(AppError.unauthenticated('缺少 Bearer 令牌'));
+    return;
+  }
+
+  // 先尝试平台统一身份令牌：验签通过后按 platform_identity 绑定解析本地用户，
+  // 角色与权限仍从本地库读取，平台令牌不携带任何本地授权结论。
+  const platformClaims = await verifyPlatformToken(matched[1]).catch(() => null);
+  if (platformClaims && platformClaims.iss && platformClaims.sub) {
+    const boundUserId = await findBoundUserId(platformClaims.iss, platformClaims.sub);
+    if (!boundUserId) {
+      next(AppError.unauthenticated('当前平台账号尚未绑定本系统账号，请联系管理员绑定'));
+      return;
+    }
+    const identity = await findAuthIdentity(pool, boundUserId);
+    if (identity === null || identity.status !== 1) {
+      next(AppError.unauthenticated('绑定账号已停用，请联系管理员'));
+      return;
+    }
+    const authorization = await resolveAuthorization(identity.userId);
+    req.user = {
+      accountType: identity.accountType,
+      id: identity.userId,
+      username: identity.username,
+      roles: authorization.roleCodes,
+      permissionCodes: authorization.permissionCodes,
+      authorizationVersion: authorization.authorizationVersion,
+      mustChangePassword: identity.mustChangePassword,
+      sessionVersion: identity.sessionVersion,
+    };
+    req.accessContext = await resolveAccessContext(identity.userId, authorization);
+    runWithAccessContext(req.accessContext, () => next());
     return;
   }
 

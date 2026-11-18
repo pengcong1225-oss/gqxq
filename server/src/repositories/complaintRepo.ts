@@ -57,6 +57,24 @@ export const ACTIVE_DISPATCH_COLUMNS =
   ', ad.assignment_id as active_dispatch_id, ad.status as active_dispatch_status';
 
 /**
+ * 「来源案件类型」原值列（列表「来源类型」列）。
+ *
+ * 关键事实（2026-11-18 实测 gqxq_service）：complaint.source_major_category_code /
+ * source_minor_category_code 当前**全为 NULL**，真实值只在 source_payload.metadata 里：
+ *   * v1 导出（464 条）：案件主类型名 / 案件二级类型名
+ *   * v2 导出（21110 条）：大类 / 中类
+ * 取值顺序与 buildWhere 的筛选口径一致：先取列（将来补录时优先），再回退 v1 → v2。
+ * 只做展示，不参与筛选（筛选条件仍走 buildWhere 的 = / json 等值比较）。
+ */
+export const SOURCE_CATEGORY_COLUMNS =
+  ', coalesce(c.source_major_category_code, ' +
+  "json_unquote(json_extract(c.source_payload, '$.metadata.\"案件主类型名\"')), " +
+  "json_unquote(json_extract(c.source_payload, '$.metadata.\"大类\"'))) as source_major_category_raw" +
+  ', coalesce(c.source_minor_category_code, ' +
+  "json_unquote(json_extract(c.source_payload, '$.metadata.\"案件二级类型名\"')), " +
+  "json_unquote(json_extract(c.source_payload, '$.metadata.\"中类\"'))) as source_minor_category_raw";
+
+/**
  * 统一选列清单 = 冻结的共享列清单，不做任何替换。
  *
  * 历史：本文件曾把 c.correction_confidence 替换为 "null as correction_confidence"，
@@ -98,6 +116,14 @@ export function buildWhere(filter: ComplaintFilter): WhereClause {
     params.push(like, like, like, like, like);
   }
 
+  // 案件公文号**精确筛选**（标书 1.1.1）：= 等值，不是 LIKE。
+  // 关键词模糊搜索里 source_id 只是命中的一种字段，会连标题/正文/地址一起误命中；
+  // 这里独立成键，传了就只按公文号等值过滤（大小写/比较规则由列排序规则决定，不做额外改写）。
+  if (filter.sourceId) {
+    parts.push('c.source_id = ?');
+    params.push(filter.sourceId);
+  }
+
   const multi: Array<[string, string[] | undefined]> = [
     ['c.business_type', filter.businessType],
     ['c.complaint_type', filter.complaintType],
@@ -115,8 +141,17 @@ export function buildWhere(filter: ComplaintFilter): WhereClause {
     parts.push('c.correction_status = ?');
     params.push(filter.correctionStatus);
   }
-  for(const [value,column,path] of [[filter.sourceMajorCategory,'c.source_major_category_code','$.metadata."案件主类型名"'],[filter.sourceMinorCategory,'c.source_minor_category_code','$.metadata."案件二级类型名"']] as const){
-    if(value){parts.push('('+column+' = ? or json_unquote(json_extract(c.source_payload, ?)) = ?)');params.push(value,path,value);}
+  // 来源分类筛选：v1 综合查询键优先，回退 v2 新版导出键（大类/中类）。
+  const sourceFilters:Array<[string|undefined,string,readonly string[]]>=[
+    [filter.sourceMajorCategory,'c.source_major_category_code',['$.metadata."案件主类型名"','$.metadata."大类"']],
+    [filter.sourceMinorCategory,'c.source_minor_category_code',['$.metadata."案件二级类型名"','$.metadata."中类"']],
+  ];
+  for(const [value,column,paths] of sourceFilters){
+    if(!value)continue;
+    const ors=paths.map(()=> 'json_unquote(json_extract(c.source_payload, ?)) = ?').join(' or ');
+    parts.push('('+column+' = ? or '+ors+')');
+    params.push(value);
+    for(const path of paths)params.push(path,value);
   }
   // 超期时效（M11 派生列）：三态各自一档，**NULL 不并进"未超期"**。
   // 库里 NULL 的含义是"来源没给时效信息"（未同步 / 正常在办 / 认不出 / 历史未回填），
@@ -129,6 +164,11 @@ export function buildWhere(filter: ComplaintFilter): WhereClause {
       parts.push('c.overtime_flag = ?');
       params.push(Number(filter.overtime));
     }
+  }
+  // 满意度筛选（标书 1.2.3 明细核对）：多值 IN，空值不筛。
+  if (filter.satisfaction && filter.satisfaction.length > 0) {
+    const clause = inClause('c.satisfaction_code', filter.satisfaction, params);
+    if (clause) parts.push(clause);
   }
   if (filter.districtCode) {
     parts.push('c.district_code = ?');
@@ -183,6 +223,7 @@ export async function findPage(
     'select ' +
       COMPLAINT_SELECT_COLUMNS +
       ACTIVE_DISPATCH_COLUMNS +
+      SOURCE_CATEGORY_COLUMNS +
       ' from complaint c' +
       ACTIVE_DISPATCH_JOIN +
       ' where ' +

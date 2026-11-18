@@ -20,10 +20,10 @@ const rule={ruleId:'gas-rule',kind:'alert',expectedVersion:0,name:'正式燃气�
 const fact=(id:string)=>({complaintId:id,enterpriseCode:'E1',districtCode:'D1',adminGridCode:'G1',businessType:'gas',businessAt:'2026-11-09T04:00:00Z'});
 test('alert identities are stable, deduplicate facts and separate rule versions and grid ownership',()=>{
  const rows=[fact('1'),fact('1'),fact('2'),{...fact('3'),enterpriseCode:'E2'}, {...fact('4'),adminGridCode:null}];
- const first=alertCandidates({ruleId:'R',version:1,threshold:2},rows,'2026-11-01','2026-11-10');
+ const first=alertCandidates({ruleId:'R',version:1,threshold:2,scope:'grid'},rows,'2026-11-01','2026-11-10');
  assert.equal(first.length,1);assert.equal(first[0].quantity,2);assert.deepEqual(first[0].complaintIds,['1','2']);
- assert.equal(alertCandidates({ruleId:'R',version:1,threshold:2},[...rows].reverse(),'2026-11-01','2026-11-10')[0].alertId,first[0].alertId);
- assert.notEqual(alertCandidates({ruleId:'R',version:2,threshold:2},rows,'2026-11-01','2026-11-10')[0].alertId,first[0].alertId);
+ assert.equal(alertCandidates({ruleId:'R',version:1,threshold:2,scope:'grid'},[...rows].reverse(),'2026-11-01','2026-11-10')[0].alertId,first[0].alertId);
+ assert.notEqual(alertCandidates({ruleId:'R',version:2,threshold:2,scope:'grid'},rows,'2026-11-01','2026-11-10')[0].alertId,first[0].alertId);
 });
 function planned(){return {syncStatus:'mapped',issues:[],source:{dataMode:'real',kind:'gas-stops',fields:{nature:'planned'},sourceApplicationNo:'PU-1',revision:'v1',status:'11',approvalStatus:'APPROVED'},events:[{id:'U1',mode:'real',kind:'shutdown',sourceSystem:'public-utility',businessType:'gas',enterpriseId:'E1',districtCode:'D1',gridIds:['G1'],startsAt:'2026-11-09T00:00:00Z',endsAt:'2026-11-10T00:00:00Z',approvalStatus:'approved',revision:2}]} as any;}
 test('planned shutdown uses current utility real evidence only, with explicit nature and approved matching ownership/time',()=>{
@@ -36,7 +36,7 @@ test('published rule input requires formal mapping, confirmed gas definition, bo
  for(const patch of [{kind:'restoration'},{majorCodes:[],minorCodes:[]},{definitionConfirmed:false},{businessType:'water'},{threshold:0},{windowDays:367},{effectiveTo:'2019-01-01'}])assert.throws(()=>parseBusinessRule({...rule,...patch}));
 });
 function dbFixture(incomplete=false){const saved=new Map<string,unknown[]>();const queried:string[]=[];const db={query:async(sql:string,params:unknown[]=[])=>{queried.push(sql);
- if(sql.includes('from business_rule_version'))return [params[0]==='alert'?[{content:rule,version:1}]:[],[]];
+ if(sql.includes('from business_rule_version'))return [params[0]==='alert'?[{content:{...rule,scope:incomplete?'grid':'city'},version:1}]:[],[]];
  if(sql.includes(' from complaint c')){assert.match(sql,/c.enterprise_code in \(\?\)/);return [[1,2].map(id=>({id,complaint_id:String(id),complaint_no:'C'+id,business_type:'gas',complaint_type:'complaint',source_system:'宜接就办',source_id:'S'+id,source_event_status:'completed',source_synced_at:'2026-11-10T00:00:00Z',source_reported_at:'2026-11-09T04:00:00Z',enterprise_code:'E1',district_code:'D1',admin_grid_code:incomplete?null:'G1',major_category_code:'pressure',category_dictionary_version:'1',edit_version:1})),[]];}
  return [[],[]];},execute:async(sql:string,params:unknown[]=[])=>{if(sql.startsWith('insert ignore into business_alert')){const existed=saved.has(String(params[0]));if(!existed)saved.set(String(params[0]),params);return [{affectedRows:existed?0:1},[]];}return [{affectedRows:1},[]];}} as unknown as Tx;return {db,saved,queried};}
 test('real alert service persists frozen trigger evidence, remains idempotent, and incomplete location cannot report normal',async()=>{

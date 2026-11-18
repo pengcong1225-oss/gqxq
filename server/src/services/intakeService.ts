@@ -15,6 +15,7 @@ import { withTransaction } from '../db/tx';
 import { pool } from '../db/pool';
 import { allocateBizNo, shanghaiDate } from '../db/sequence';
 import { COMPLAINT_INSERT_COLUMNS, REDELIVERY_UPDATABLE_COLUMNS } from '../repositories/complaintMapper';
+import {encryptPii,maskName,maskPhone} from './piiCrypto';
 import { canonicalJson } from '../repositories/canonicalJson';
 import { insertSourceLog, type Queryable, type IntakeResultCode } from '../repositories/complaintSourceLogRepo';
 import { insertFieldVersions, toFieldText, type FieldVersionEntry } from '../repositories/complaintFieldVersionRepo';
@@ -57,6 +58,8 @@ export interface IntakeCommand {
   explicitComplaintType: string | null;
   explicitUrgencyLevel: string | null;
   sourceReportedAt: Date | null;
+  citizenName: string | null;
+  citizenPhone: string | null;
   /** 原始报文（完整 parsed body）：既落 source_payload，也参与 payloadHash */
   payload: Record<string, unknown>;
   payloadHash: string;
@@ -371,6 +374,7 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
     throw err;
   }
 
+  await upsertCitizen(tx, complaintId, cmd, receivedAt);
   await generateCorrectionsInTx(tx, { complaintId, assignmentId: null, operatorId: null, operatorName: null, now: receivedAt, source: 'intake' });
   await syncAddressCandidate(tx, complaintId, { title: cmd.title, content: cmd.content });
   await syncLocationClues(tx, complaintId, { title: cmd.title, content: cmd.content });
@@ -483,6 +487,17 @@ async function recordDuplicateSame(
   };
 }
 
+async function upsertCitizen(tx:Tx,complaintId:string,cmd:IntakeCommand,now:Date):Promise<void>{
+  if(!cmd.citizenName&&!cmd.citizenPhone)return;
+  const name=cmd.citizenName?encryptPii(cmd.citizenName):null;
+  const phone=cmd.citizenPhone?encryptPii(cmd.citizenPhone):null;
+  await tx.execute(
+   'insert into complaint_citizen (complaint_id,name_enc,phone_enc,name_masked,phone_masked,source_system,updated_at) values (?,?,?,?,?,?,?) '+
+   'on duplicate key update name_enc=values(name_enc),phone_enc=values(phone_enc),name_masked=values(name_masked),phone_masked=values(phone_masked),source_system=values(source_system),updated_at=values(updated_at)',
+   [complaintId,name,phone,cmd.citizenName?maskName(cmd.citizenName):null,cmd.citizenPhone?maskPhone(cmd.citizenPhone):null,cmd.sourceSystem,now]
+  );
+}
+
 async function applyRedelivery(
   tx: Tx,
   row: Record<string, unknown>,
@@ -591,6 +606,8 @@ async function applyRedelivery(
     await tx.execute('update complaint set source_fields = ?, effective_field_state = ?, updated_at = ? where complaint_id = ?',
       [JSON.stringify(sourceFields), JSON.stringify(states), receivedAt, complaintId]);
   }
+
+  await upsertCitizen(tx, complaintId, cmd, receivedAt);
 
   // Candidates describe the arriving source evidence, separately from protected effective values.
   if (!previousSource || previousSource.title !== cmd.title || previousSource.content !== cmd.content) {

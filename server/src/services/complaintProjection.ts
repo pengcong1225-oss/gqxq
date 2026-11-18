@@ -12,7 +12,7 @@ export function projectComplaintDetail(row:ComplaintRow,_ctx:AccessContext):Comp
   Object.entries(detail.effectiveFieldState).filter(([field])=>[...EFFECTIVE_COLUMNS,...LOCATION_GROUP_COLUMNS,'enterprise_code','enterprise_name','major_category_code','minor_category_code','category_dictionary_version'].includes(field as typeof EFFECTIVE_COLUMNS[number])).map(([field,state])=>[field,pick(state,['resolution','value','version','reason','correctionId'])]));
  const sourceAddress=typeof fields?.address==='string'?fields.address:null;
  const sourceSnapshotAt=typeof _fields?._receivedAt==='string'?toIso(_fields._receivedAt):null;
- const summary=sourceSummary(_payload);
+ const summary=sourceSummary(_payload,{districtName:detail.districtName,address:detail.address});
  const hasProcessSnapshot=row.source_process_received_at!=null;
  const sourceDeadlineAt=hasProcessSnapshot?toIso(row.source_deadline_at):sourceExportTime(summary.deadlineRaw),sourceCompletedAt=hasProcessSnapshot?toIso(row.source_completed_at):sourceExportTime(summary.completedRaw);
  return {...detail,effectiveFieldState,sourceAddress,effectiveAddress:detail.address,

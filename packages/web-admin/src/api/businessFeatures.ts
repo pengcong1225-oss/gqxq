@@ -1,5 +1,5 @@
 import request from './request';
-export interface BusinessRuleInput {ruleId:string;kind:'seasonal'|'alert';expectedVersion:number;name:string;businessType:'water'|'gas';dictionaryVersion:string;majorCodes:string[];minorCodes:string[];effectiveFrom:string;effectiveTo:string;scene:'winter'|'summer'|'planned_shutdown'|'gas_three_piece'|null;startMonth:number|null;endMonth:number|null;threshold:number|null;windowDays:number|null;definitionBasis:string;definitionConfirmed:boolean;enabled:boolean}
+export interface BusinessRuleInput {ruleId:string;kind:'seasonal'|'alert';expectedVersion:number;name:string;businessType:'water'|'gas';dictionaryVersion:string;majorCodes:string[];minorCodes:string[];effectiveFrom:string;effectiveTo:string;scene:'winter'|'summer'|'planned_shutdown'|'gas_three_piece'|null;startMonth:number|null;endMonth:number|null;threshold:number|null;windowDays:number|null;scope?:'city'|'district'|'enterprise'|'grid';multiplier?:number|null;baseline?:{avgPerDay:number;windowBase:number;baseDays:number;daysFrom:string;daysTo:string}|null;definitionBasis:string;definitionConfirmed:boolean;enabled:boolean}
 export interface BusinessRuleRow {input:BusinessRuleInput;editVersion:number;publishedVersion:number}
 export const businessRules=()=>request.get<never,BusinessRuleRow[]>('/business-rules');
 export const saveBusinessRule=(v:BusinessRuleInput)=>request.post<never,{editVersion:number}>('/business-rules',v);
@@ -13,8 +13,28 @@ export const comparisonGrids=()=>request.get<never,{code:string;name:string;vers
 export const gridComparison=(params:Record<string,unknown>)=>request.get<never,ComparisonResult>('/assessment/grid-comparison',{params});
 export const historicalAssessment=(params:Record<string,unknown>)=>request.get<never,HistoricalResult>('/assessment/historical',{params});
 export const seasonalAssessment=(params:Record<string,unknown>)=>request.get<never,SeasonalResult>('/assessment/seasonal',{params});
-export interface BusinessAlert {alertId:string;ruleId:string;ruleVersion:number;from:string;to:string;enterpriseCode:string;districtCode:string;adminGridCode:string;quantity:number;threshold:number;state:string;createdAt:string;scene:string;ruleName:string;definitionBasis:string;complaintIds:string[]|null;dataCutoffAt:string}
+export interface BusinessAlert {alertId:string;ruleId:string;ruleVersion:number;from:string;to:string;enterpriseCode:string|null;districtCode:string|null;adminGridCode:string|null;scope?:'city'|'district'|'enterprise'|'grid';quantity:number;threshold:number;state:string;createdAt:string;scene:string;ruleName:string;definitionBasis:string;complaintIds:string[]|null;dataCutoffAt:string}
 export const businessAlerts=()=>request.get<never,BusinessAlert[]>('/business-alerts');
 export const evaluateAlerts=(day:string)=>request.post<never,{created:number;statuses:{ruleId:string;name:string;status:string;reason:string|null;count?:number}[];unconfiguredScenes:string[]}>('/business-alerts/evaluate',{day});
 export const alertAction=(id:string,action:string,notes:string)=>request.post('/business-alerts/'+id+'/actions',{action,notes});
 export const alertHistory=(id:string)=>request.get<never,{action:string;notes:string;user_id:string;created_at:string}[]>('/business-alerts/'+id+'/history');
+/** 预警基线（POST /business-rules/baseline）：常态窗口量 × 倍数的只读预览 */
+export interface AlertBaselinePreview {
+  avgPerDay: number;
+  windowBase: number;
+  windowDays?: number;
+  baseDays: number;
+  daysFrom: string;
+  daysTo: string;
+  season?: { startMonth: number; endMonth: number; months: number[] } | null;
+  suggestions: { multiplier: number; threshold: number }[];
+}
+export const previewAlertBaseline = (input: {
+  businessType: 'water' | 'gas';
+  minorCodes: string[];
+  majorCodes?: string[];
+  windowDays: number;
+  scene?: 'winter' | 'summer' | 'planned_shutdown' | 'gas_three_piece' | null;
+  from?: string;
+  to?: string;
+}) => request.post<never, AlertBaselinePreview>('/business-rules/baseline', input);

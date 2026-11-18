@@ -1,0 +1,1196 @@
+/* =============================================================================
+ * 验收大屏 #/accept · 8002 风格外壳样式
+ * 参考实现 D:\codex\projects\住新局\燃气入户安检项目\large-screen（只借鉴风格/版式）
+ * 主色：深青底 #061d1e / #082525、边框 #347d72、高亮 #86fbe7、正文 #d6f6ef
+ * 布局百分比与 8002 一致：顶部标题 8%、Tab 9.5%、筛选 15%、两侧各 21% 宽、
+ * 底部按钮条 9%、TOP3 跑马灯 3%。
+ * ========================================================================== */
+
+@font-face {
+  font-family: 'YouSheBiaoTiHei';
+  src: url('/assets/screen/font/YouSheBiaoTiHei.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.accept-root {
+  /* 把统计组件（PanelShell / DrilldownDrawer 等）的 --st-* 变量改成 8002 青绿配色，
+     使抽屉里复用的现有面板与验收屏风格一致（组件本身不改） */
+  --st-bg0: #061d1e;
+  --st-bg1: #082525;
+  --st-panel: rgba(8, 45, 42, 0.88);
+  --st-border: rgba(52, 139, 124, 0.42);
+  --st-border-strong: rgba(134, 251, 231, 0.6);
+  --st-cyan: #86fbe7;
+  --st-cyan-deep: #35b9a2;
+  --st-text: #d6f6ef;
+  --st-sub: #8ab9b0;
+  --st-muted: #7fa9a0;
+  --st-water: #54d5bc;
+  --st-gas: #ffd67c;
+  --st-red: #ff8f8f;
+  --st-orange: #ffb36b;
+  --st-yellow: #ffd67c;
+  --st-green: #7cffd8;
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background:
+    radial-gradient(1200px 620px at 50% -12%, rgba(18, 92, 82, 0.24), transparent 62%),
+    radial-gradient(760px 460px at 10% 108%, rgba(14, 74, 66, 0.18), transparent 62%),
+    #061d1e;
+  color: #d6f6ef;
+  font-family: Arial, 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+}
+
+.accept-root *,
+.accept-root *::before,
+.accept-root *::after {
+  box-sizing: border-box;
+}
+
+/* 复用现有统计面板时统一成青绿底（只覆盖外观，不改组件结构与业务） */
+.accept-root .st-panel {
+  background: linear-gradient(180deg, rgba(8, 42, 39, 0.94), rgba(4, 28, 27, 0.92));
+  border-color: rgba(52, 139, 124, 0.42);
+  box-shadow: inset 0 0 26px rgba(11, 73, 64, 0.2);
+}
+.accept-root .st-panel__head {
+  border-bottom-color: rgba(134, 251, 231, 0.14);
+  background: linear-gradient(90deg, rgba(24, 102, 90, 0.32), rgba(24, 102, 90, 0.04) 60%, transparent);
+}
+.accept-root .drill__panel {
+  background: linear-gradient(100deg, rgba(5, 35, 33, 0.99), rgba(3, 24, 25, 0.98));
+  border-left-color: #59a998;
+}
+.accept-root .drill__head {
+  background: linear-gradient(90deg, rgba(24, 102, 90, 0.4), transparent);
+}
+.accept-root .drill__tag {
+  color: #041d1e;
+  background: #86fbe7;
+}
+
+/* 8002 顶部/底部 HUD 光带（三维画面之上仅保留顶/底装饰） */
+.accept-bg {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: 1;
+}
+.accept-bg--top {
+  top: 0;
+  height: 18%;
+  background-image: url('/assets/screen/img/top_bg.png');
+}
+.accept-bg--bottom {
+  bottom: 0;
+  height: 15%;
+  background-image: url('/assets/screen/img/bottom_bg.png');
+}
+
+/* ---------------------------------------------------------------- 顶部标题栏 */
+
+.accept-header {
+  position: absolute;
+  top: 0;
+  left: 2%;
+  right: 2%;
+  height: 8%;
+  z-index: 4;
+  display: flex;
+  align-items: flex-start;
+  pointer-events: none;
+}
+.accept-header__side {
+  flex: none;
+  width: 300px;
+  padding-top: 22px;
+  font-size: 17px;
+  color: #d6f6ef;
+  letter-spacing: 0.5px;
+  pointer-events: auto;
+}
+.accept-header__side--right {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 15px;
+}
+.accept-header__date {
+  display: block;
+  font-family: 'Bahnschrift', 'Microsoft YaHei', sans-serif;
+}
+.accept-header__cutoff {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: #70d8c2;
+}
+.accept-header__mode {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+  vertical-align: middle;
+  color: #ffd67c;
+  background: rgba(97, 68, 12, 0.5);
+  border: 1px solid rgba(255, 214, 124, 0.45);
+}
+.accept-header__center {
+  flex: 1;
+  text-align: center;
+  pointer-events: none;
+}
+.accept-header__center h1 {
+  margin: 10px 0 0;
+  font-family: 'YouSheBiaoTiHei', 'Bahnschrift', sans-serif;
+  font-size: 36px;
+  font-weight: 400;
+  letter-spacing: 4px;
+  color: #ffffff;
+  text-shadow: 0 2px 8px #7cdecf, 0 0 22px rgba(134, 251, 231, 0.45);
+  white-space: nowrap;
+}
+.accept-header__sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: #70d8c2;
+}
+.accept-header button {
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  color: #d5f8ef;
+  background: #0c3632;
+  border: 1px solid #347d72;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.accept-header button:hover {
+  background: #1b7466;
+  border-color: #86fbe7;
+  color: #fff;
+}
+
+/* ---------------------------------------------------------------- 三板块 Tab */
+
+.accept-tabs {
+  position: absolute;
+  top: 9.6%;
+  left: 35%;
+  width: 30%;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+.accept-tabs button {
+  width: 125px;
+  height: 40px;
+  padding: 0;
+  font-family: 'YouSheBiaoTiHei', 'Bahnschrift', sans-serif;
+  font-size: 17px;
+  letter-spacing: 2px;
+  color: #a8d8ce;
+  background: linear-gradient(180deg, rgba(12, 54, 50, 0.92), rgba(6, 30, 29, 0.92));
+  border: 1px solid #347d72;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.accept-tabs button:hover {
+  color: #eafffa;
+  border-color: #86fbe7;
+  background: #1b7466;
+}
+.accept-tabs button.is-active {
+  color: #041d1e;
+  background: linear-gradient(180deg, #86fbe7, #35b9a2);
+  border-color: #86fbe7;
+  box-shadow: 0 0 14px rgba(134, 251, 231, 0.4);
+}
+
+/* ---------------------------------------------------------------- 筛选条 */
+
+.accept-filters {
+  position: absolute;
+  top: 13.6%;
+  left: 23.4%;
+  right: auto;
+  z-index: 5;
+  /* 客户要求「别占满宽度、别挡地图中心」：紧凑一行、左对齐贴住地图左上，不再居中横贯 54% */
+  max-width: 790px;
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.accept-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: #b8ded6;
+  background: rgba(6, 38, 36, 0.72);
+  border: 1px solid rgba(52, 139, 124, 0.5);
+  border-radius: 3px;
+}
+.accept-filters input[type='date'] {
+  width: 112px;
+  padding: 2px 3px;
+  font-family: inherit;
+  font-size: 11px;
+  color: #d5f8ef;
+  background: #0c3632;
+  border: 1px solid #2b7064;
+  border-radius: 2px;
+  color-scheme: dark;
+}
+.accept-filters select {
+  max-width: 104px;
+  padding: 2px 3px;
+  font-family: inherit;
+  font-size: 11px;
+  color: #d5f8ef;
+  background: #0c3632;
+  border: 1px solid #2b7064;
+  border-radius: 2px;
+  outline: none;
+}
+.accept-filters button {
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  color: #d5f8ef;
+  background: #0c3632;
+  border: 1px solid #347d72;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.accept-filters button:hover {
+  background: #1b7466;
+  border-color: #86fbe7;
+  color: #fff;
+}
+.accept-filters .is-primary {
+  border-color: #86fbe7;
+  color: #eafffa;
+  background: linear-gradient(180deg, #1b7466, #0c4640);
+}
+/* 真实数据缺主数据：筛选条里明确「不可用」，不把默认选项装成可选 */
+.accept-filters__na {
+  color: #8ab9b0;
+  border-style: dashed;
+  background: rgba(6, 38, 36, 0.45);
+}
+.accept-filters__na em {
+  font-style: normal;
+  color: #ffd67c;
+  font-size: 10.5px;
+}
+/* 图层浮层里的真实缺项说明 */
+.accept-layerpop__na {
+  margin: 4px 0 0;
+  padding: 5px 8px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: #ffd67c;
+  background: rgba(61, 48, 12, 0.32);
+  border: 1px dashed rgba(255, 214, 124, 0.4);
+}
+.accept-mapmeta__gap {
+  color: #ffd67c !important;
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+/* ---------------------------------------------------------------- 左右两侧卡片 */
+
+.accept-side {
+  position: absolute;
+  top: 9.5%;
+  bottom: 2%;
+  width: 21%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1%;
+  min-height: 0;
+  /* 收起/展开动效 ≤200ms（客户要求；OL 视口在动效结束后 updateSize） */
+  transition: width 0.18s ease;
+}
+.accept-side--left {
+  left: 2%;
+}
+.accept-side--right {
+  right: 2%;
+}
+/* 收起按钮：贴在每栏靠地图一侧的细长把手（收起后地图直接露出，不留空白栏位） */
+.accept-side__toggle {
+  position: absolute;
+  top: 45%;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 58px;
+  padding: 0;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1;
+  color: #86fbe7;
+  background: linear-gradient(180deg, rgba(12, 54, 50, 0.94), rgba(6, 30, 29, 0.94));
+  border: 1px solid rgba(83, 191, 173, 0.45);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.accept-side__toggle:hover {
+  color: #041d1e;
+  background: linear-gradient(180deg, #86fbe7, #35b9a2);
+}
+.accept-side__toggle--left {
+  right: -13px;
+  border-left: 0;
+}
+.accept-side__toggle--right {
+  left: -13px;
+  border-right: 0;
+}
+.accept-side.is-collapsed {
+  width: 0;
+  gap: 0;
+  overflow: visible;
+}
+.accept-side.is-collapsed > .acc-card {
+  display: none;
+}
+/* 收起状态把手再往外贴一点，保持不压地图中心 */
+.accept-side.is-collapsed .accept-side__toggle--left {
+  right: -16px;
+}
+.accept-side.is-collapsed .accept-side__toggle--right {
+  left: -16px;
+}
+
+.acc-card {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 12px 10px;
+  background: linear-gradient(100deg, rgba(5, 35, 33, 0.94), rgba(3, 24, 25, 0.78));
+  border: 1px solid rgba(51, 139, 124, 0.5);
+  box-shadow: inset 0 0 24px rgba(11, 73, 64, 0.28);
+}
+/* 四角科技描边（六角徽标在标题栏 title_bg.png 上） */
+.acc-card::before,
+.acc-card::after {
+  content: '';
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(134, 251, 231, 0.55);
+  pointer-events: none;
+  z-index: 1;
+}
+.acc-card::before {
+  left: -1px;
+  top: -1px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.acc-card::after {
+  right: -1px;
+  bottom: -1px;
+  border-left: 0;
+  border-top: 0;
+}
+
+.acc-card__head {
+  flex: none;
+  height: 40px;
+  margin: 0 -12px 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 46px;
+  background: url('/assets/screen/img/title_bg.png') left center / 100% 100% no-repeat;
+}
+.acc-card__head h2 {
+  margin: 0;
+  font-family: 'YouSheBiaoTiHei', 'Bahnschrift', sans-serif;
+  font-size: 21px;
+  font-weight: 400;
+  letter-spacing: 2px;
+  color: #e5fff8;
+  white-space: nowrap;
+}
+.acc-card__head small {
+  margin-left: auto;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: 0;
+  color: #97cbc0;
+}
+.acc-card__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------------------------------------------------------------- 卡片底部信息带（CardFooter.vue 共用）
+ * 统一前缀 acc-card__foot；不复用 OverviewCard 的 .ov__*，避免两套改版样式互相牵连。
+ * 信息带贴卡片底边（margin-top:auto），内容少时也不会在卡片下半部留大块空白。 */
+.acc-card__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  margin-top: auto;
+  padding: 5px 2px 0;
+  border-top: 1px solid rgba(83, 191, 173, 0.22);
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #86a8a3;
+}
+.acc-card__foot-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.acc-card__foot-item em {
+  font-style: normal;
+  color: #6f928d;
+}
+.acc-card__foot-item b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: #b9e8e0;
+  font-variant-numeric: tabular-nums;
+}
+.acc-card__foot-item.is-warn b {
+  color: #ffd67c;
+}
+/* 可点击条目（如区域分布的「未定位」）：去掉小盒子边框，只保留文字链接感 */
+.acc-card__foot-item.is-link {
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.acc-card__foot-item.is-link:hover b {
+  color: #86fbe7;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.acc-card__foot-drill {
+  flex: none;
+  margin-left: auto;
+  padding: 2px 8px;
+  font-family: inherit;
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: #8fffe8;
+  white-space: nowrap;
+  background: rgba(18, 84, 76, 0.5);
+  border: 1px solid rgba(83, 191, 173, 0.45);
+  border-radius: 2px;
+  cursor: pointer;
+}
+.acc-card__foot-drill:hover {
+  color: #04121f;
+  background: linear-gradient(180deg, #6ff0ff, #1fb9d9);
+  border-color: #6ff0ff;
+}
+
+/* 空态 / 错误态（各卡片共用） */
+.acc-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  text-align: center;
+  border: 1px dashed rgba(52, 139, 124, 0.4);
+  color: #8ab9b0;
+}
+.acc-empty b {
+  font-size: 13px;
+  color: #a8d8ce;
+}
+.acc-empty span {
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+.acc-empty--error b {
+  color: #ffb3b3;
+}
+.acc-empty--error button {
+  margin-top: 4px;
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  color: #ffd67c;
+  background: rgba(97, 68, 12, 0.5);
+  border: 1px solid rgba(255, 214, 124, 0.45);
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- 地图区收敛：图层胶囊 + 浮层 + 3D 小状态卡
+ * 客户要求「中间尽量干净」：原 CIM 底图状态大卡 / 网格热力图例 / 地图与图层说明 / 图层开关
+ * 全部收进一个默认收起的胶囊浮层；3D 模式只留左上角 3 行小状态卡。 */
+
+/* 胶囊按钮：贴地图左上角，默认收起 */
+.accept-layersbar {
+  position: absolute;
+  left: 23.4%;
+  top: 9.7%;
+  z-index: 7;
+}
+.accept-layersbar__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  font-family: inherit;
+  font-size: 11.5px;
+  letter-spacing: 0.3px;
+  color: #cfe9e3;
+  white-space: nowrap;
+  background: rgba(5, 32, 31, 0.9);
+  border: 1px solid rgba(83, 191, 173, 0.45);
+  border-radius: 14px;
+  box-shadow: inset 0 0 12px rgba(11, 73, 64, 0.3);
+  cursor: pointer;
+}
+.accept-layersbar__btn:hover {
+  color: #041d1e;
+  background: linear-gradient(180deg, #86fbe7, #35b9a2);
+  border-color: #86fbe7;
+}
+.accept-layersbar__btn.is-open {
+  border-color: rgba(134, 251, 231, 0.75);
+  box-shadow: 0 0 12px rgba(134, 251, 231, 0.28);
+}
+.accept-layersbar__dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: #7fa9a0;
+  box-shadow: 0 0 6px rgba(134, 251, 231, 0.35);
+}
+.accept-layersbar__dot.is-loaded {
+  background: #4ee08a;
+}
+.accept-layersbar__dot.is-capabilities {
+  background: #54d5bc;
+}
+.accept-layersbar__dot.is-tiles-denied {
+  background: #ffd67c;
+}
+.accept-layersbar__dot.is-unreachable {
+  background: #ff8f8f;
+}
+.accept-layersbar__dot.is-off,
+.accept-layersbar__dot.is-unconfigured,
+.accept-layersbar__dot.is-loading {
+  background: #9db8ca;
+}
+.accept-layersbar__btn em {
+  font-style: normal;
+  font-size: 9px;
+  color: #8ab9b0;
+}
+.accept-layersbar__btn:hover em {
+  color: #041d1e;
+}
+
+/* 客户要求只保留三维：已删除「2D 影像 / 3D 白模」视图切换入口，地图恒为 Cesium 白模 */
+
+/* 胶囊浮层：默认不渲染；打开后才占地图，Esc / × 收起 */
+.accept-layerpop {
+  position: absolute;
+  left: 23.4%;
+  top: 12.6%;
+  z-index: 9;
+  width: 470px;
+  max-height: 75%;
+  overflow: auto;
+  padding: 9px 11px 11px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #a8d8ce;
+  background: linear-gradient(100deg, rgba(5, 35, 33, 0.97), rgba(3, 24, 25, 0.94));
+  border: 1px solid rgba(83, 191, 173, 0.55);
+  box-shadow: inset 0 0 22px rgba(11, 73, 64, 0.34), 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.accept-layerpop__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.accept-layerpop__head b {
+  font-family: 'YouSheBiaoTiHei', 'Bahnschrift', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  color: #b9fff3;
+  white-space: nowrap;
+}
+.accept-layerpop__sub {
+  font-size: 9.5px;
+  color: #7fa9a0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.accept-layerpop__close {
+  margin-left: auto;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: #a8d8ce;
+  background: transparent;
+  border: 1px solid rgba(83, 191, 173, 0.4);
+  cursor: pointer;
+}
+.accept-layerpop__close:hover {
+  color: #041d1e;
+  background: #86fbe7;
+}
+.accept-layerpop__block {
+  padding: 6px 0;
+  border-top: 1px solid rgba(83, 191, 173, 0.18);
+}
+.accept-layerpop__block:first-of-type {
+  padding-top: 2px;
+  border-top: 0;
+}
+.accept-layerpop__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.accept-layerpop__label {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: #86a8a3;
+}
+.accept-layerpop__meta {
+  margin-left: auto;
+  font-size: 9.5px;
+  color: #7fa9a0;
+}
+.accept-layerpop__row .accept-cim__retry {
+  margin-left: auto;
+}
+
+/* CIM / 3D 状态内容（原大卡内容，现只在浮层里出现） */
+.accept-cim__pill {
+  padding: 1px 8px;
+  font-size: 10.5px;
+  color: #d6f6ef;
+  border: 1px solid rgba(134, 251, 231, 0.5);
+  background: rgba(20, 92, 82, 0.5);
+}
+.accept-cim__pill.is-unreachable {
+  color: #ffb3b3;
+  border-color: rgba(255, 91, 91, 0.55);
+  background: rgba(120, 28, 28, 0.45);
+}
+.accept-cim__pill.is-tiles-denied {
+  color: #ffd67c;
+  border-color: rgba(255, 214, 124, 0.55);
+  background: rgba(97, 68, 12, 0.5);
+}
+.accept-cim__pill.is-loaded {
+  color: #7cffd8;
+  border-color: rgba(64, 224, 178, 0.6);
+  background: rgba(10, 92, 71, 0.55);
+}
+.accept-cim__pill.is-off,
+.accept-cim__pill.is-unconfigured,
+.accept-cim__pill.is-loading,
+.accept-cim__pill.is-capabilities {
+  color: #a9cbe2;
+  border-color: rgba(169, 203, 226, 0.45);
+  background: rgba(30, 52, 66, 0.5);
+}
+.accept-cim__main {
+  margin: 2px 0;
+  font-size: 11.5px;
+  color: #d6f6ef;
+}
+.accept-cim__line {
+  margin: 1px 0;
+  font-size: 10px;
+  color: #9bc9c5;
+  word-break: break-word;
+}
+.accept-cim__line--wmts,
+.accept-cim__line--basemap {
+  color: #b9fff3;
+}
+.accept-cim__line--diag {
+  color: #9db8ca;
+}
+.accept-cim__line--pick {
+  color: #ffd67c;
+}
+.accept-cim__retry {
+  flex: none;
+  padding: 2px 8px;
+  font-family: inherit;
+  font-size: 10px;
+  color: #86fbe7;
+  background: #0c3632;
+  border: 1px solid #347d72;
+  cursor: pointer;
+}
+.accept-cim__retry:hover {
+  background: #1b7466;
+  border-color: #86fbe7;
+  color: #fff;
+}
+
+/* 图层开关（浮层内） */
+.accept-layers {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 10.5px;
+  color: #9bc9c5;
+}
+.accept-layers label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.accept-layers input[type='checkbox'] {
+  accent-color: #54d5bc;
+}
+
+/* 客户要求只保留三维：二维网格热力图例/图层开关样式已删除（对应 UI 段已移除） */
+
+.accept-legend__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.accept-legend__title {
+  color: #b9fff3;
+  font-family: 'YouSheBiaoTiHei', 'Bahnschrift', sans-serif;
+  letter-spacing: 1px;
+  font-size: 13px;
+}
+/* 辐射 / 方块 切换（验收对比用；默认辐射） */
+.accept-legend__mode {
+  margin-left: auto;
+  display: inline-flex;
+  border: 1px solid rgba(134, 251, 231, 0.35);
+}
+.accept-legend__mode button {
+  padding: 2px 10px;
+  font-family: inherit;
+  font-size: 10.5px;
+  color: #a8d8ce;
+  background: #0c3632;
+  border: 0;
+  border-left: 1px solid rgba(134, 251, 231, 0.22);
+  cursor: pointer;
+}
+.accept-legend__mode button:first-child {
+  border-left: 0;
+}
+.accept-legend__mode button:hover {
+  color: #eafffa;
+  background: #1b7466;
+}
+.accept-legend__mode button.is-active {
+  color: #041d1e;
+  background: linear-gradient(180deg, #86fbe7, #35b9a2);
+  font-weight: 600;
+}
+.accept-legend__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.accept-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.accept-legend__item i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+}
+.accept-legend__item em {
+  font-style: normal;
+  font-size: 9.5px;
+  color: #6f9c94;
+}
+.accept-legend__note {
+  margin: 5px 0 0;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #7fa9a0;
+}
+.accept-legend__note b {
+  color: #b9fff3;
+  font-weight: 600;
+}
+.accept-legend__item i.is-zero {
+  border: 1px dashed #7f8c8d;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* 地图与图层说明（浮层内） */
+.accept-mapmeta__hover {
+  display: block;
+  min-height: 14px;
+  color: #cfe9e2;
+}
+.accept-mapmeta__state {
+  display: block;
+  color: #7fa9a0;
+}
+.accept-mapmeta__state .accept-cim__retry {
+  margin-left: 6px;
+}
+
+/* 3D 小状态卡：左上角贴边，只留 3 行（已渲染 / 底图 / 小区点位） */
+.accept-3dmini {
+  position: absolute;
+  left: 23.4%;
+  top: 20%;
+  z-index: 6;
+  width: 430px;
+  padding: 7px 10px 8px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: #a8d8ce;
+  background: linear-gradient(100deg, rgba(5, 35, 33, 0.9), rgba(3, 24, 25, 0.82));
+  border: 1px solid rgba(83, 191, 173, 0.42);
+  box-shadow: inset 0 0 18px rgba(11, 73, 64, 0.28);
+}
+.accept-3dmini__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 3px;
+}
+.accept-3dmini__title {
+  font-family: 'YouSheBiaoTiHei', 'Bahnschrift', sans-serif;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: #b9fff3;
+}
+.accept-3dmini__head .accept-cim__retry {
+  margin-left: auto;
+}
+.accept-3dmini__main {
+  margin: 1px 0;
+  font-size: 11px;
+  color: #eafffa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.accept-3dmini__line {
+  margin: 1px 0;
+  color: #9bc9c5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 仅三维：二维影像叠色层已移除（三维画布自己就是深色地球） */
+
+/* ---------------------------------------------------------------- 底部 7 按钮条 */
+
+.accept-actions {
+  position: absolute;
+  bottom: 9%;
+  left: 35%;
+  right: 24%;
+  z-index: 6;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+.accept-actions button {
+  padding: 7px 13px;
+  font-family: inherit;
+  font-size: 13px;
+  color: #d5f8ef;
+  white-space: nowrap;
+  background: linear-gradient(180deg, #0c3632, #082624);
+  border: 1px solid #347d72;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.accept-actions button:hover {
+  background: #1b7466;
+  border-color: #86fbe7;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(134, 251, 231, 0.28);
+}
+
+/* ---------------------------------------------------------------- 底部 TOP3 跑马灯容器 */
+
+.accept-ticker-wrap {
+  position: absolute;
+  /* 底边与左右栏卡片底边（2%）对齐，避免跑马灯与卡片高度参差 */
+  bottom: 2%;
+  left: 25%;
+  right: 25%;
+  z-index: 6;
+}
+
+/* ---------------------------------------------------------------- Toast */
+
+.accept-toast {
+  position: absolute;
+  top: 21%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 950;
+  max-width: 560px;
+  padding: 8px 16px;
+  font-size: 12px;
+  text-align: center;
+  color: #ffe2a3;
+  background: rgba(40, 30, 8, 0.92);
+  border: 1px solid rgba(255, 209, 102, 0.5);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* -------------------------------------------------- 真实数据登录弹层 */
+.accept-login-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 18, 20, 0.72);
+  backdrop-filter: blur(2px);
+}
+.accept-login {
+  width: 360px;
+  padding: 22px 24px;
+  background: linear-gradient(120deg, rgba(5, 35, 33, 0.98), rgba(3, 24, 25, 0.96));
+  border: 1px solid rgba(51, 139, 124, 0.7);
+  box-shadow: inset 0 0 24px #0b494066, 0 8px 40px #0008;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.accept-login h2 {
+  margin: 0 0 4px;
+  font: 20px YouSheBiaoTiHei, sans-serif;
+  letter-spacing: 2px;
+  color: #e5fff8;
+}
+.accept-login__hint {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8fb3c9;
+}
+.accept-login label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #a9cbe2;
+}
+.accept-login input {
+  padding: 7px 9px;
+  font-size: 13px;
+  color: #d5f8ef;
+  background: #0c3632;
+  border: 1px solid #347d72;
+  border-radius: 3px;
+  outline: none;
+}
+.accept-login input:focus {
+  border-color: #86fbe7;
+}
+.accept-login__err {
+  margin: 0;
+  font-size: 12px;
+  color: #ff8f8f;
+}
+.accept-login__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.accept-login__actions button {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #d5f8ef;
+  background: #0c3632;
+  border: 1px solid #347d72;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.accept-login__actions button[type='submit'] {
+  color: #04121f;
+  background: linear-gradient(180deg, #6ff0ff, #1fb9d9);
+  border-color: #6ff0ff;
+  font-weight: 600;
+}
+.accept-login__actions button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+/* 三维懒加载占位（先出面板，再挂 Cesium） */
+.accept-3d-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: radial-gradient(circle at 50% 45%, #0b2230 0%, #04141c 70%);
+  color: #86fbe7;
+  font-size: 14px;
+  letter-spacing: 2px;
+  z-index: 1;
+}
+.accept-3d-loading i {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(134, 251, 231, 0.35);
+  border-top-color: #86fbe7;
+  border-radius: 50%;
+  animation: accept-3d-spin 0.9s linear infinite;
+}
+@keyframes accept-3d-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 诉求动态抽屉（标书 1.2.3 三块；复用右侧抽屉交互，不新造视觉体系） */
+.accept-activity {
+  position: absolute;
+  inset: 0;
+  z-index: 22;
+}
+.accept-activity__mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 12, 15, 0.66);
+}
+.accept-activity__panel {
+  position: absolute;
+  top: 4%;
+  right: 2%;
+  bottom: 4%;
+  width: min(760px, 46vw);
+  display: flex;
+  flex-direction: column;
+  background: #072827;
+  border: 1px solid rgba(89, 169, 152, 0.6);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.45);
+  padding: 14px;
+}
+.accept-activity__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(52, 139, 124, 0.35);
+}
+.accept-activity__head b {
+  font-family: 'YouSheBiaoTiHei', 'Bahnschrift', sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: 2px;
+  color: #e5fff8;
+}
+.accept-activity__head span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #97cbc0;
+}
+.accept-activity__head button {
+  flex: none;
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  color: #86fbe7;
+  background: transparent;
+  border: 1px solid rgba(52, 139, 124, 0.5);
+  cursor: pointer;
+}
+.accept-activity__head button:hover {
+  background: #1b7466;
+  color: #fff;
+}
+.accept-activity__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  overflow: auto;
+}
+.accept-activity__body > .acc-card {
+  flex: 1 1 0;
+  min-height: 200px;
+}

@@ -80,6 +80,8 @@ const { RangePicker } = DatePicker;
 interface Filters {
   sourceMajorCategory?: string;
   sourceMinorCategory?: string;
+  /** 案件公文号（complaint.source_id）精确筛选；undefined = 不传该参数 */
+  sourceId?: string;
   keyword?: string;
   businessType?: BusinessType;
   complaintType?: ComplaintType;
@@ -88,6 +90,8 @@ interface Filters {
   sourceEventStatus?: SourceEventStatus;
   /** 超期时效筛选；undefined = 全部（不传该参数） */
   overtime?: OvertimeFilter;
+  /** 满意度多值筛选（标书 1.2.3 明细核对）：satisfied/basically_satisfied/unsatisfied/no_reply */
+  satisfaction?: string[];
   isSensitive?: 0 | 1;
   correctionStatus?: CorrectionStatus;
   districtCode?: string;
@@ -96,6 +100,7 @@ interface Filters {
 
 /** 仅用于 Tag 配色；文案一律取服务端 *Name 字段。 */
 const BUSINESS_COLOR: Record<string, string> = { water: 'blue', gas: 'orange', lpg: 'purple' };
+const STATUS_COLOR: Record<string,string> = { pending: 'default', accepted: 'cyan', processing: 'blue', completed: 'green', closed: 'green', archived: 'default' };
 const URGENCY_COLOR: Record<string, string> = { normal: 'blue', urgent: 'orange', critical: 'red' };
 const CORRECTION_COLOR: Record<string, string> = {
   none: 'default',
@@ -218,6 +223,7 @@ const ComplaintList: React.FC = () => {
       page,
       size,
       keyword: filters.keyword,
+      sourceId: filters.sourceId,
       districtCode: filters.districtCode,
       sourceMajorCategory: filters.sourceMajorCategory,
       sourceMinorCategory: filters.sourceMinorCategory,
@@ -227,6 +233,7 @@ const ComplaintList: React.FC = () => {
       supervisionStatus: filters.supervisionStatus,
       sourceEventStatus: filters.sourceEventStatus,
       overtime: filters.overtime,
+      satisfaction: filters.satisfaction,
       isSensitive: filters.isSensitive,
       correctionStatus: filters.correctionStatus,
       startDate: filters.range?.[0] ? filters.range[0].format('YYYY-MM-DD') : undefined,
@@ -484,164 +491,150 @@ const ComplaintList: React.FC = () => {
     }
   }, [dispositionTarget, dispositionForm, reload]);
 
-  /* ---------- 列 ---------- */
+  /* ---------- 列（百分比宽度，禁止横向滚动） ---------- */
   const columns: ColumnsType<ComplaintListItem> = useMemo(
     () => [
       {
         title: '诉求编号',
         dataIndex: 'complaintNo',
-        width: 160,
-        fixed: 'left',
+        width: '8%',
         render: (v: string, r) => <a onClick={() => navigate('/complaints/' + r.id)}>{v}</a>,
+      },
+      {
+        // 案件公文号 = complaint.source_id（来源系统流水号），标书 1.1.1 要求的列表构成项
+        title: '案件公文号',
+        dataIndex: 'sourceId',
+        width: '7%',
+        ellipsis: true,
+        render: (v: string | null) =>
+          v ? <Tooltip title={v}>{v}</Tooltip> : DASH,
       },
       {
         title: '标题',
         dataIndex: 'title',
+        width: '13%',
         ellipsis: true,
         render: (t: string, r) => (
           <>
             {r.isSensitive && (
-              <Tag color="red" style={{ marginRight: 4 }}>
-                敏感
-              </Tag>
+              <Tag color="red" style={{ marginRight: 4 }}>敏感</Tag>
             )}
             <Tooltip title={t}>{t}</Tooltip>
           </>
         ),
       },
       {
-        title: '业务类型',
-        dataIndex: 'businessTypeCode',
-        width: 90,
+        title: '分类',
+        width: '12%',
         render: (_: unknown, r) => (
-          <Tag color={BUSINESS_COLOR[r.businessTypeCode] ?? 'default'}>{namedLabel(r.businessTypeCode,r.businessTypeName,'business_type')}</Tag>
+          <Space size={2} wrap>
+            <Tag color={BUSINESS_COLOR[r.businessTypeCode] ?? 'default'}>{namedLabel(r.businessTypeCode, r.businessTypeName, 'business_type')}</Tag>
+            <Tag>{namedLabel(r.complaintTypeCode, r.complaintTypeName, 'complaint_type')}</Tag>
+            <Tag color={URGENCY_COLOR[r.urgencyLevelCode] ?? 'default'}>{r.urgencyLevelName}</Tag>
+          </Space>
         ),
       },
       {
-        title: '诉求类型',
-        dataIndex: 'complaintTypeCode',
-        width: 90,
-        render: (_: unknown, r) => <Tag>{namedLabel(r.complaintTypeCode,r.complaintTypeName,'complaint_type')}</Tag>,
-      },
-      {
-        title: '紧急程度',
-        dataIndex: 'urgencyLevelCode',
-        width: 90,
+        title: '诉求状态',
+        dataIndex: 'statusCode',
+        width: '6%',
         render: (_: unknown, r) => (
-          <Tag color={URGENCY_COLOR[r.urgencyLevelCode] ?? 'default'}>{r.urgencyLevelName}</Tag>
-        ),
-      },
-      {
-        title: '来源系统',
-        dataIndex: 'sourceSystem',
-        width: 110,
-        render: (v: string | null) => (v ? <Tag color="blue">{sourceLabel(v,'system')}</Tag> : DASH),
-      },
-      {
-        title: '来源渠道',
-        dataIndex: 'sourceChannel',
-        width: 100,
-        render: (v: string | null) => sourceLabel(v,'channel'),
-      },
-      {
-        title: '督办状态',
-        dataIndex: 'supervisionStatusCode',
-        width: 130,
-        render: (_: unknown, r) => (
-          <Tag color={SUPERVISION_COLOR[r.supervisionStatusCode] ?? 'default'}>
-            {namedLabel(r.supervisionStatusCode,r.supervisionStatusName,'supervision_status')}
+          <Tag color={STATUS_COLOR[r.statusCode] ?? 'default'}>
+            {namedLabel(r.statusCode, r.statusName, 'status')}
           </Tag>
         ),
       },
       {
-        title: '来源状态',
-        dataIndex: 'sourceEventStatusCode',
-        width: 110,
-        render: (_: unknown, r) =>
-          r.sourceEventStatusCode === 'unknown' ? (
-            <Tooltip title="暂未获取来源处置状态">
-              <Tag color="default">{namedLabel(r.sourceEventStatusCode,r.sourceEventStatusName,'source_event_status')}</Tag>
-            </Tooltip>
-          ) : (
-            <Tag color="cyan">{namedLabel(r.sourceEventStatusCode,r.sourceEventStatusName,'source_event_status')}</Tag>
-          ),
+        title: '来源',
+        dataIndex: 'sourceChannel',
+        width: '6%',
+        ellipsis: true,
+        render: (v: string | null) => (
+          <Tooltip title={sourceLabel(v, 'channel')}>{sourceLabel(v, 'channel')}</Tooltip>
+        ),
       },
       {
-        title: '超期',
-        dataIndex: 'overtimeFlag',
-        width: 110,
+        // 满意度（标书 1.2.3）：来源满意度标准码的原文；未评价显示「未评价」而不是空白
+        title: '满意度',
+        width: '8%',
+        render: (_: unknown, r) => {
+          const code = r.satisfactionCode ?? null;
+          const text = r.satisfactionText ?? null;
+          if (!code && !text) return <span style={{ color: '#bfbfbf' }}>未评价</span>;
+          const color = code === 'unsatisfied' ? 'red' : code === 'satisfied' ? 'green' : code === 'basically_satisfied' ? 'blue' : 'default';
+          return <Tag color={color}>{text ?? code}</Tag>;
+        },
+      },
+      {
+        title: '办理',
+        width: '10%',
         render: (_: unknown, r) => {
           const key = r.overtimeFlag === 1 ? '1' : r.overtimeFlag === 0 ? '0' : 'none';
-          const tag = <Tag color={OVERTIME_COLOR[key]}>{r.overtimeFlagName}</Tag>;
-          return key === 'none' ? (
-            <Tooltip title="来源未给出时效信息（未同步 / 正常在办 / 状态认不出 / 历史未回填），不等于「未超期」">
-              {tag}
-            </Tooltip>
-          ) : (
-            tag
+          return (
+            <Space size={2} wrap>
+              <Tag color={SUPERVISION_COLOR[r.supervisionStatusCode] ?? 'default'}>
+                {namedLabel(r.supervisionStatusCode, r.supervisionStatusName, 'supervision_status')}
+              </Tag>
+              <Tooltip title="来源未给出时效信息（未同步 / 正常在办 / 状态认不出 / 历史未回填），不等于「未超期」">
+                <Tag color={OVERTIME_COLOR[key]}>{r.overtimeFlagName}</Tag>
+              </Tooltip>
+            </Space>
           );
         },
       },
       {
         title: '区域',
         dataIndex: 'districtName',
-        width: 90,
+        width: '5%',
         render: (v: string | null) => v ?? DASH,
       },
       {
         title: '责任企业',
         dataIndex: 'enterpriseName',
-        width: 180,
+        width: '8%',
         ellipsis: true,
         render: (v: string | null) =>
           v ? <Tooltip title={v}>{v}</Tooltip> : <span style={{ color: '#faad14' }}>未匹配</span>,
       },
       {
-        // 业务口径时间（与服务端 complaintRepo.BUSINESS_TIME 一致）：
-        // 来源给了受理时间就用它，否则回落接收时间。
-        // 与下面的「接收时间」并列展示——历史数据一次性回灌时，两列会明显分离，
-        // 让"这批件其实是 3~9 月受理、今天才入库"在台账里直接可见。
-        title: '受理时间',
-        dataIndex: 'sourceReportedAt',
-        width: 165,
-        render: (v: string | null) =>
-          v ? fmtDateTime(v) : <Tooltip title="来源未提供受理时间"><span style={{ color: '#bfbfbf' }}>—</span></Tooltip>,
+        // 来源案件主/二级类型**原值**（服务端 sourceMajorCategoryName / sourceMinorCategoryName）。
+        // 标书 1.1.1 要求列表依据「案件类型名」形成，这与平台字典的「分类」列是两套口径，故单列并存。
+        title: '来源类型',
+        width: '8%',
+        ellipsis: true,
+        render: (_: unknown, r) => {
+          const text = [r.sourceMajorCategoryName, r.sourceMinorCategoryName]
+            .filter((v): v is string => typeof v === 'string' && v !== '')
+            .join(' / ');
+          return text ? <Tooltip title={text}>{text}</Tooltip> : DASH;
+        },
       },
       {
-        title: '接收时间',
-        dataIndex: 'receivedAt',
-        width: 165,
-        render: (v: string | null) => fmtDateTime(v),
+        // 术语对齐标书 1.1.1：列名「录入时间」。口径 = 来源受理时间优先，缺失回退平台接收时间，
+        // 与后端 BUSINESS_TIME = coalesce(source_reported_at, received_at) 完全一致，底层口径未改。
+        title: (
+          <Tooltip title="录入时间：来源受理时间优先，来源未提供时回退平台接收时间">
+            <span>录入时间</span>
+          </Tooltip>
+        ),
+        dataIndex: 'sourceReportedAt',
+        width: '7%',
+        render: (v: string | null, r) => {
+          const at = v ?? r.receivedAt;
+          return at ? <Tooltip title={fmtDateTime(at)}>{fmtDateTime(at).slice(5, 16)}</Tooltip> : <span style={{ color: '#bfbfbf' }}>—</span>;
+        },
       },
       {
         title: '操作',
-        width: 300,
-        fixed: 'right',
-        render: (_: unknown, r) => (
+        width: '10%',
+        render: (_: unknown, r) => {
+          const closed = r.statusCode === 'completed' || r.statusCode === 'closed' || r.closedInSystem;
+          return (
           <Space size={0} wrap>
-            <Button
-              type="link"
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={() => navigate('/complaints/' + r.id)}
-            >
-              详情
-            </Button>
-            {/* 责任单位不再在这里改：2026-09-20 裁定「匹配责任单位」收敛进纠偏入口，
-                总账只留详情 / 交办 / 不交办处理——enterprise_code 与 enterprise_name 由纠偏成对写回。 */}
+            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate('/complaints/' + r.id)}>详情</Button>
             {r.activeDispatchId ? (
-              // 已有进行中交办：不再提供第二次交办，只能查看
-              <Button
-                type="link"
-                size="small"
-                icon={<SendOutlined />}
-                onClick={() =>
-                  navigate('/dispatch?assignmentId=' + encodeURIComponent(r.activeDispatchId ?? ''))
-                }
-              >
-                查看交办
-              </Button>
-            ) : (
+              <Button type="link" size="small" icon={<SendOutlined />} onClick={() => navigate('/dispatch?assignmentId=' + encodeURIComponent(r.activeDispatchId ?? ''))}>查看交办</Button>
+            ) : !closed ? (
               <Button
                 type="link"
                 size="small"
@@ -657,18 +650,11 @@ const ComplaintList: React.FC = () => {
                   void fetchEnterprises();
                   setDispatchTarget(r);
                 }}
-              >
-                交办
-              </Button>
-            )}
-            {r.activeDispatchId ? (
-              // 后端状态机要求：有进行中交办时不交办处理会被拒（409 INVALID_STATE_TRANSITION）
+              >交办</Button>
+            ) : null}
+            {!closed && (r.activeDispatchId ? (
               <Tooltip title="该诉求已有进行中交办，请先到「敏感交办」受控撤销后再不交办处理">
-                <span>
-                  <Button type="link" size="small" icon={<InboxOutlined />} disabled>
-                    不交办处理
-                  </Button>
-                </span>
+                <span><Button type="link" size="small" icon={<InboxOutlined />} disabled>不交办处理</Button></span>
               </Tooltip>
             ) : (
               <Dropdown
@@ -683,17 +669,17 @@ const ComplaintList: React.FC = () => {
                   },
                 }}
               >
-                <Button type="link" size="small" icon={<InboxOutlined />} disabled={!dispositionAccess.can}>
-                  不交办处理
-                </Button>
+                <Button type="link" size="small" icon={<InboxOutlined />} disabled={!dispositionAccess.can}>不交办处理</Button>
               </Dropdown>
-            )}
+            ))}
           </Space>
-        ),
+          );
+        },
       },
     ],
     [navigate, dispatchForm, dispositionForm, clearEnterpriseError, fetchEnterprises,createAccess.can,dispositionAccess.can]
   );
+
 
   return (
     <div>
@@ -748,6 +734,18 @@ const ComplaintList: React.FC = () => {
         <Space className="filter-bar" wrap>
           <Input.Search aria-label="来源案件主类型" placeholder="来源案件主类型（原值精确查询）" allowClear maxLength={128} style={{width:250}} onSearch={value=>applyFilter({sourceMajorCategory:value.trim()||undefined})} onChange={event=>{if(!event.target.value)applyFilter({sourceMajorCategory:undefined});}}/>
           <Input.Search aria-label="来源案件二级类型" placeholder="来源案件二级类型（原值精确查询）" allowClear maxLength={128} style={{width:250}} onSearch={value=>applyFilter({sourceMinorCategory:value.trim()||undefined})} onChange={event=>{if(!event.target.value)applyFilter({sourceMinorCategory:undefined});}}/>
+          {/* 案件公文号精确筛选（标书 1.1.1）：独立于关键词模糊搜索，服务端按 source_id 等值匹配 */}
+          <Input.Search
+            aria-label="案件公文号精确筛选"
+            placeholder="案件公文号（精确）"
+            allowClear
+            maxLength={128}
+            style={{ width: 220 }}
+            onSearch={(value) => applyFilter({ sourceId: value.trim() === '' ? undefined : value.trim() })}
+            onChange={(event) => {
+              if (!event.target.value) applyFilter({ sourceId: undefined });
+            }}
+          />
           <Input.Search
             placeholder="搜索编号/来源公文号/标题/内容/地址"
             prefix={<SearchOutlined />}
@@ -788,18 +786,26 @@ const ComplaintList: React.FC = () => {
             options={dictOptions('supervision_status')}
             onChange={(v: SupervisionStatus | undefined) => applyFilter({ supervisionStatus: v })}
           />
-          <Select
-            placeholder="来源状态"
-            allowClear
-            style={{ width: 120 }}
-            options={dictOptions('source_event_status')}
-            onChange={(v: SourceEventStatus | undefined) => applyFilter({ sourceEventStatus: v })}
-          />
           {/*
             超期是**时效**维度（M11 的 complaint.overtime_flag），与「来源状态」正交：
             同一批 completed 里可能既有超期也有未超期，所以两个下拉可以叠加使用。
             allowClear（不传 overtime）= 全部；三档标签与筛选口径一一对应，见 OvertimeFilter。
           */}
+          {/* 满意度筛选（标书 1.2.3）：值=来源满意度标准码，可多选 */}
+          <Select
+            mode="multiple"
+            placeholder="满意度"
+            allowClear
+            maxTagCount="responsive"
+            style={{ minWidth: 150 }}
+            options={[
+              { value: 'satisfied', label: '满意' },
+              { value: 'basically_satisfied', label: '基本满意' },
+              { value: 'unsatisfied', label: '不满意' },
+              { value: 'no_reply', label: '暂无回复结果' },
+            ]}
+            onChange={(v: string[]) => applyFilter({ satisfaction: v.length ? v : undefined })}
+          />
           <Select
             placeholder="超期时效"
             allowClear
@@ -835,8 +841,9 @@ const ComplaintList: React.FC = () => {
             options={dictOptions('district')}
             onChange={(v: string | undefined) => applyFilter({ districtCode: v })}
           />
+          {/* 术语对齐标书 1.1.1：录入时间（= 来源受理时间优先，缺失回退接收时间；后端 BUSINESS_TIME 口径未改） */}
           <RangePicker
-            placeholder={['受理时间起', '受理时间止']}
+            placeholder={['录入时间起', '录入时间止']}
             value={range}
             onChange={(v) => {
               const next = v as [Dayjs | null, Dayjs | null] | null;
@@ -847,9 +854,11 @@ const ComplaintList: React.FC = () => {
           <Tooltip title="导出当前页已加载的诉求，可用 Excel 打开">
             <Button icon={<ExportOutlined />} disabled={loading || !!error || !data?.content.length}
               onClick={() => downloadCsv([
-                ['诉求编号','诉求标题','业务类型','诉求类别','所属区县','交办单位','敏感诉求','纠偏状态','受理时间'],
-                ...(data?.content ?? []).map(row => [row.complaintNo,row.title,row.businessTypeName,row.complaintTypeName,
-                  row.districtName,row.enterpriseName,row.isSensitive?'是':'否',row.correctionStatusName,row.receivedAt])
+                ['诉求编号','案件公文号','诉求标题','业务类型','诉求类别','诉求状态','所属区县','交办单位','敏感诉求','纠偏状态','来源类型','录入时间'],
+                ...(data?.content ?? []).map(row => [row.complaintNo,row.sourceId,row.title,row.businessTypeName,row.complaintTypeName,row.statusName,
+                  row.districtName,row.enterpriseName,row.isSensitive?'是':'否',row.correctionStatusName,
+                  [row.sourceMajorCategoryName,row.sourceMinorCategoryName].filter(Boolean).join('/'),
+                  row.sourceReportedAt ?? row.receivedAt])
               ], '诉求列表-本页.csv')}>导出本页</Button>
           </Tooltip>
           <ComplaintImportDialog onImported={reload}/>
@@ -877,8 +886,8 @@ const ComplaintList: React.FC = () => {
             columns={columns}
             dataSource={data?.content ?? []}
             loading={loading}
-            size="middle"
-            scroll={{ x: 1810 }}
+            tableLayout="fixed"
+            size="small"
             locale={{ emptyText: <Empty description="暂无诉求数据" /> }}
             pagination={{
               current: page,

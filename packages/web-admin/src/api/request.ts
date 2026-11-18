@@ -3,6 +3,7 @@ import axios from 'axios';
 import { message } from 'antd';
 import type { ApiError, ApiErrorCode, FieldError } from '../types/api';
 import { FORBIDDEN_MESSAGE } from '../stores/roleAccess';
+import { qiankunWindow } from 'vite-plugin-qiankun/dist/helper';
 
 /**
  * Vite 注入的构建期环境变量。
@@ -33,8 +34,19 @@ declare global {
  */
 export const BASE_PATH: string = (import.meta.env.BASE_URL ?? '/').replace(/\/+$/, '');
 
+/**
+ * 作为 qiankun 子应用嵌入统一门户时，页面源是门户而不是本应用，
+ * 相对 '/api/v1' 会打到门户后端。此时改用与 vite base 同源的子路径
+ * （例如 '/gqxq/api/v1'），由门户按前缀反代回本应用后端；
+ * 独立运行时保持原有 '/api/v1'，行为不变。
+ */
+// 必须用 qiankun 助手提供的 window 代理读取标记：沙箱内直接读 window 可能拿不到该属性，
+// 会导致内嵌时仍走 '/api/v1' 打到门户后端，被 401 拦截器清掉令牌并显示"未登录"。
+const embeddedByQiankun = Boolean(qiankunWindow.__POWERED_BY_QIANKUN__);
+const defaultApiBase = embeddedByQiankun && BASE_PATH ? `${BASE_PATH}/api/v1` : '/api/v1';
+
 const request = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? defaultApiBase,
   timeout: 15000,
 });
 

@@ -477,11 +477,6 @@ const ComplaintDetail: React.FC = () => {
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/complaints')}>
         返回列表
       </Button>
-      <Tooltip title="查询宜接就办最新处置状态。来源对接未开通时暂不可用。">
-        <Button disabled={!sourceAccess.can} loading={sourceSyncing} onClick={() => void handleSyncSource()}>
-          同步来源状态
-        </Button>
-      </Tooltip>
       {documentAccess.can&&detail&&<Button loading={documentLoading} onClick={()=>void readDocument()}>查看来源原件</Button>}
       {correctionAccess.can&&detail&&<Button onClick={()=>navigate('/address-correction?complaintId='+encodeURIComponent(detail.complaintId))}>精确地址与位置纠偏</Button>}
       <Modal key={documentKey} title="来源原件" open={Boolean(sourceDocument)} footer={null} width={800} onCancel={closeDocument}>
@@ -598,17 +593,22 @@ const ComplaintDetail: React.FC = () => {
       {backButton}
       <h2 style={{ marginBottom: 16 }}>诉求详情 - {detail.complaintNo}</h2>
 
-      {sourceStatusPanel}
 
+      <h3 style={{ margin: '8px 0 12px' }}>一、诉求详情（对应标书 1.1.2）</h3>
       <Row gutter={[16, 16]}>
         <Col span={16}>
           <ComplaintSourceSummary detail={detail} canReadDocument={documentAccess.can} documentLoading={documentLoading} onReadDocument={()=>void readDocument()}/>
           <Card title="基本信息">
             <Descriptions bordered size="small" column={2}>
               <Descriptions.Item label="诉求编号">{detail.complaintNo}</Descriptions.Item>
-              <Descriptions.Item label="督办状态">
+              <Descriptions.Item label="平台交办状态">
                 <Tag color={SUPERVISION_COLOR[detail.supervisionStatusCode] ?? 'default'}>
                   {namedLabel(detail.supervisionStatusCode,detail.supervisionStatusName,'supervision_status')}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="诉求状态">
+                <Tag color={detail.statusCode === 'completed' || detail.statusCode === 'closed' ? 'green' : detail.statusCode === 'processing' ? 'blue' : 'default'}>
+                  {namedLabel(detail.statusCode, detail.statusName, 'status')}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="标题" span={2}>
@@ -630,7 +630,7 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="来源系统">{sourceLabel(detail.sourceSystem,'system')}</Descriptions.Item>
               <Descriptions.Item label="来源渠道">{sourceLabel(detail.sourceChannel,'channel')}</Descriptions.Item>
-              <Descriptions.Item label="来源案件编号">{detail.sourceId ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="案件公文号（来源）">{detail.sourceId ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="所属区域">{detail.districtName ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="责任企业">
                 {detail.enterpriseName ? (
@@ -668,15 +668,6 @@ const ComplaintDetail: React.FC = () => {
                   </Typography.Text>
                 )}
               </Descriptions.Item>
-              <Descriptions.Item label="来源状态">
-                {detail.sourceEventStatusCode === 'unknown' ? (
-                  <Tooltip title="暂未获取来源处置状态">
-                    <Tag color="default">{namedLabel(detail.sourceEventStatusCode,detail.sourceEventStatusName,'source_event_status')}</Tag>
-                  </Tooltip>
-                ) : (
-                  <Tag color="cyan">{namedLabel(detail.sourceEventStatusCode,detail.sourceEventStatusName,'source_event_status')}</Tag>
-                )}
-              </Descriptions.Item>
               <Descriptions.Item label="超期时效">
                 {detail.overtimeFlag === 1 ? (
                   <Tag color="red">{detail.overtimeFlagName}</Tag>
@@ -711,7 +702,6 @@ const ComplaintDetail: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="纠偏后地址">{detail.correctedAddress ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="诉求时间">{fmtDateTime(detail.createdAt)}</Descriptions.Item>
-              <Descriptions.Item label="系统接收时间">{fmtDateTime(detail.receivedAt)}</Descriptions.Item>
               <Descriptions.Item label="来源上报时间">{fmtDateTime(detail.sourceReportedAt)}</Descriptions.Item>
               <Descriptions.Item label="业务时间依据">{detail.businessTimeSource==='source_reported_at'?'来源上报业务时间':detail.businessTimeSource==='platform_received_at'?'来源时间缺失，业务时间回落系统接收时间':'业务时间不可确认'}</Descriptions.Item>
               <Descriptions.Item label="来源快照接收时间">{detail.sourceSnapshotAt?fmtDateTime(detail.sourceSnapshotAt):detail.sourceFieldReasons?.sourceSnapshotAt??'—'}</Descriptions.Item>
@@ -777,7 +767,7 @@ const ComplaintDetail: React.FC = () => {
             style={{ marginBottom: 16 }}
           >
             <Descriptions size="small" column={1} bordered>
-              <Descriptions.Item label="督办状态">
+              <Descriptions.Item label="平台交办状态">
                 <Tag color={SUPERVISION_COLOR[detail.supervisionStatusCode] ?? 'default'}>
                   {namedLabel(detail.supervisionStatusCode,detail.supervisionStatusName,'supervision_status')}
                 </Tag>
@@ -913,7 +903,7 @@ const ComplaintDetail: React.FC = () => {
                 description="无定位信息（该诉求未提供坐标，可在整体纠偏中补全）"
               />
             )}
-            <Typography.Paragraph type="secondary" style={{marginTop:8}}>坐标系：{detail.locationCoordinateSystem==='WGS84'?'全球大地坐标系（详见来源）':detail.locationCoordinateSystem==='CGCS2000'?'国家大地坐标系（天地图自动定位）':'未核实'}；来源：{detail.locationCoordinateSource??'未留存可核实来源'}。网格：{detail.adminGridCode??'—'}；小区：{detail.communityCode??'—'}。</Typography.Paragraph>
+            <Typography.Paragraph type="secondary" style={{marginTop:8}}>坐标系：{detail.locationCoordinateSystem==='WGS84'?'全球大地坐标系（详见来源）':detail.locationCoordinateSystem==='CGCS2000'?'国家大地坐标系（历史自动定位结果，来源见来源字段）':'未核实'}；来源：{detail.locationCoordinateSource??'未留存可核实来源'}。网格：{detail.adminGridCode??'—'}；小区：{detail.communityCode??'—'}。</Typography.Paragraph>
             {correctionAccess.can&&<Button onClick={()=>navigate('/address-correction?complaintId='+encodeURIComponent(detail.complaintId))}>前往位置组纠偏</Button>}
           </Card>
 

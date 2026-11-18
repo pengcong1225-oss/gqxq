@@ -60,14 +60,6 @@ const mapConfig = {
       enablePickFeatures: false,
       show: true,
     },
-    {
-      name: '天地图影像',
-      type: 'group',
-      layers: [
-        { name: '底图', type: 'tdt', layer: 'img_d' },
-        { name: '注记', type: 'tdt', layer: 'img_z' },
-      ],
-    },
   ],
 }
 

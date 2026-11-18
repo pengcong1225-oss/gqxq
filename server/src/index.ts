@@ -30,6 +30,15 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // 凭据统一：优先从数据服务中心拉取填报 HMAC 密钥，失败回退 env（不阻塞启动）
+  try {
+    const { hydratePuSecret } = await import('./clients/internalSecret');
+    const result = await hydratePuSecret();
+    if (!result.applied) console.info('[startup] 填报密钥来源: 环境变量（' + result.reason + '）');
+  } catch (err) {
+    console.error('[startup] 凭据拉取模块异常，继续使用环境变量：', err instanceof Error ? err.message : err);
+  }
+
   let reconciling=false;
   const reconcile=async()=>{if(reconciling)return;reconciling=true;try{await runAsTrustedSystem(async()=>{await reconcilePendingEvents();await reconcileOpenReporting();});}catch{console.error('[integration] pending event reconciliation failed; retained for retry');}finally{reconciling=false;}};
   const replayTimer=setInterval(()=>void reconcile(),Math.max(30_000,env.pu.reconciliationIntervalMs));replayTimer.unref();void reconcile();

@@ -68,6 +68,15 @@ const SOURCE_STATUS_MAP: Record<string, SourceStatusMapping> = {
   '正常在办': { code: 'processing', overtimeFlag: null },
   '正常结案': { code: 'completed', overtimeFlag: 0 },
   '超期结案': { code: 'completed', overtimeFlag: 1 },
+  // 2025-2026 新版 27 列导出的「事件状态」：只给状态、不带时效结论，overtimeFlag 一律 null，
+  // 不因“已办结”就断言未超期（新版导出没有督办时效列）。
+  '待派发': { code: 'accepted', overtimeFlag: null },
+  '办理中': { code: 'processing', overtimeFlag: null },
+  '已办结': { code: 'completed', overtimeFlag: null },
+  '首办办结待评价': { code: 'completed', overtimeFlag: null },
+  '首办评价不满意': { code: 'completed', overtimeFlag: null },
+  '重办办结待评价': { code: 'completed', overtimeFlag: null },
+  '重办评价不满意': { code: 'completed', overtimeFlag: null },
 };
 
 /**

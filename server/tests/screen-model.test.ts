@@ -70,3 +70,47 @@ test('模拟行业与指定企业筛选不泄漏其他企业候选',()=>{
  const r=buildScreen(q,{...access,rules:[{kind:'all'}]},[],[],simulatedSupportData('2026-11-10'));
  assert.ok(r.demonstration.enterpriseRates.length>0);assert.ok(r.demonstration.enterpriseRates.every((x:any)=>x.id==='SIM-gas-0'));
 });
+const priorFact=(overrides:any={})=>fact({source_id:'p1',complaint_id:'P1',source_reported_at:new Date('2025-11-03T00:00:00Z'),...overrides});
+test('往年同期Top3按小类聚合（缺失回退大类），顺序按count降序',()=>{
+ const q={mode:'real' as const,from:'2026-11-01',to:'2026-11-10'};
+ const minors=buildScreen(q,access,[
+  priorFact({source_id:'p1',complaint_id:'P1',minor_category_code:'w01',major_category_code:'water_service'}),
+  priorFact({source_id:'p2',complaint_id:'P2',minor_category_code:'w01',major_category_code:'water_service'}),
+  priorFact({source_id:'p3',complaint_id:'P3',minor_category_code:'w01',major_category_code:'water_service'}),
+  priorFact({source_id:'p4',complaint_id:'P4',minor_category_code:'g02',major_category_code:'gas_service'}),
+  priorFact({source_id:'p5',complaint_id:'P5',minor_category_code:'g02',major_category_code:'gas_service'}),
+  priorFact({source_id:'p6',complaint_id:'P6',minor_category_code:'w03',major_category_code:'water_service'}),
+  priorFact({source_id:'p7',complaint_id:'P7',minor_category_code:'w03',major_category_code:'water_service'})
+ ],[],null).priorTop3;
+ assert.equal(minors.from,'2025-11-01');assert.equal(minors.to,'2025-11-10');
+ assert.deepEqual(minors.items.map(x=>x.code),['w01','g02','w03']);
+ assert.deepEqual(minors.items.map(x=>x.count),[3,2,2]);
+ const fallback=buildScreen(q,access,[
+  priorFact({source_id:'f1',complaint_id:'F1',minor_category_code:'w01',major_category_code:'water_service'}),
+  priorFact({source_id:'f2',complaint_id:'F2',minor_category_code:null,major_category_code:'gas_service'}),
+  priorFact({source_id:'f3',complaint_id:'F3',minor_category_code:null,major_category_code:'gas_service'}),
+  priorFact({source_id:'f4',complaint_id:'F4',minor_category_code:'w03',major_category_code:'water_service'})
+ ],[],null).priorTop3;
+ // 缺失小类的记录回退大类编码参与同一小类榜；两条大类记录 count=2 排第一，w01/w03 并列按 code 排序
+ assert.deepEqual(fallback.items.map(x=>x.code),['gas_service','w01','w03']);
+});
+test('处理时长四档分别累计每档满意度构成与满意比率',()=>{
+ const start=new Date('2026-11-02T00:00:00Z');
+ const done=(hours:number)=>({source_completed_at:new Date(start.valueOf()+hours*3600000)});
+ const r=buildScreen({mode:'real',from:'2026-11-01',to:'2026-11-10'},{...access,rules:[{kind:'all'}]},[
+  fact({source_id:'d1',complaint_id:'D1',source_reported_at:start,satisfaction_code:'satisfied',...done(5)}),
+  fact({source_id:'d2',complaint_id:'D2',source_reported_at:start,satisfaction_code:'basically_satisfied',...done(24)}),
+  fact({source_id:'d3',complaint_id:'D3',source_reported_at:start,satisfaction_code:'unsatisfied',...done(30)}),
+  fact({source_id:'d4',complaint_id:'D4',source_reported_at:start,satisfaction_code:'satisfied',...done(40)}),
+  fact({source_id:'d5',complaint_id:'D5',source_reported_at:start,satisfaction_code:'no_reply',...done(72)}),
+  fact({source_id:'d6',complaint_id:'D6',source_reported_at:start,...done(96)})
+ ],[],null);
+ const chart=r.charts.duration;assert.ok(chart.value);
+ const buckets=chart.value.buckets;
+ assert.deepEqual(buckets.map(x=>x.count),[2,2,1,1]);
+ assert.deepEqual(buckets[0].evaluation,{evaluatedCount:2,satisfiedCount:2,unsatisfiedCount:0,unevaluatedCount:0,percent:1});
+ assert.deepEqual(buckets[1].evaluation,{evaluatedCount:2,satisfiedCount:1,unsatisfiedCount:1,unevaluatedCount:0,percent:0.5});
+ assert.deepEqual(buckets[2].evaluation,{evaluatedCount:0,satisfiedCount:0,unsatisfiedCount:0,unevaluatedCount:1,percent:null});
+ assert.deepEqual(buckets[3].evaluation,{evaluatedCount:0,satisfiedCount:0,unsatisfiedCount:0,unevaluatedCount:1,percent:null});
+ assert.equal(chart.value.covered,6);
+});

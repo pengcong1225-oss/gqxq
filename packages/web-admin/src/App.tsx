@@ -80,6 +80,8 @@ const App: React.FC = () => {
       <Route path="/" element={<RequireAuth><MainLayout /></RequireAuth>}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
+        {/* 对外规划的大屏地址是 /screen（服务商按域名后缀转发），这里做别名，不复制页面 */}
+        <Route path="screen" element={<Dashboard />} />
         <Route path="complaints" element={<ComplaintList />} />
         <Route path="complaints/:id" element={<ComplaintDetail />} />
         <Route path="address-correction" element={<AddressCorrection />} />

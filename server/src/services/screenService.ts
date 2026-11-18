@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool';
-import { readStatisticsRows } from '../repositories/statisticsRepo';
+import { readScreenStatisticsRows, readStatisticsRows } from '../repositories/statisticsRepo';
 import { normalizeShanghaiDay } from '../domain/statisticsQuery';
 import { normalizeScreenQuery } from './screenQuery';
 import {screenContexts as cache,screenScopeKey as scopeKey} from './screenContext';
@@ -12,6 +12,8 @@ import {attachScreenEvidence} from './screenEvidence';
 import {screenHeat} from './screenHeat';
 import { screenHouseholdEvidence } from './screenHouseholds';
 import type { HouseholdEvidence } from '../types/statistics';
+import type { SupportCommunity } from '../types/tenderSupport';
+import { readScreenCommunities } from './screenCommunities';
 import { loadUtility, utilityDetail } from './utilityService';
 import { AppError } from '../http/errors';
 import type { AccessContext } from '../auth/accessScope';
@@ -19,13 +21,15 @@ function permissions(p: readonly string[]) { if (!['statistics.read', 'dashboard
 export async function screenBootstrap(raw: Record<string, unknown>, access: AccessContext, p: readonly string[]) {
   permissions(p);
   const {mode,today,query,screen:sq}=normalizeScreenQuery(raw,access,p);
-  let records: Record<string, any>[] = []; let households: HouseholdEvidence[] = [];
+  let records: Record<string, any>[] = []; let households: HouseholdEvidence[] = []; let communityPoints: SupportCommunity[] = [];
   let utilityRevision: number | null = null, feedRevision: number | null = null, feedSyncedAt: string | null = null;
   let dataset = mode === 'simulation' ? scopeSupportDataset(simulatedSupportData(today), access) : null;
+  /** real 模式的首次计算结果（含 details/charts），避免二次全量重算 */
+  let capturedResult: any = null;
   let events: any[] = [];
   if (mode === 'real') {
     const conn = await pool.getConnection();
-    try { await conn.query('set transaction isolation level repeatable read'); await conn.query('start transaction with consistent snapshot, read only'); records = await readStatisticsRows(conn, query, access); const captured = buildScreen(sq, access, records, [], null); const counts = new Map<string, number>(); for (const d of captured.details) if (d.enterpriseCode !== '__missing__') counts.set(d.enterpriseCode, (counts.get(d.enterpriseCode) ?? 0) + 1); households = await screenHouseholdEvidence(conn, query, access, p, [...counts].map(([enterpriseCode, count]) => ({ enterpriseCode, count })), captured.quality.missingDate > 0, !!(sq.adminGridCode || sq.communityCode)); } finally { try { await conn.rollback(); } finally { conn.release(); } }
+    try { await conn.query('set transaction isolation level repeatable read'); await conn.query('start transaction with consistent snapshot, read only'); records = await readScreenStatisticsRows(conn, query, access); const captured = buildScreen(sq, access, records, [], null); capturedResult = captured; const counts = new Map<string, number>(); for (const d of captured.details) if (d.enterpriseCode !== '__missing__') counts.set(d.enterpriseCode, (counts.get(d.enterpriseCode) ?? 0) + 1); households = await screenHouseholdEvidence(conn, query, access, p, [...counts].map(([enterpriseCode, count]) => ({ enterpriseCode, count })), captured.quality.missingDate > 0, !!(sq.adminGridCode || sq.communityCode)); if (p.includes('grid.read') && p.includes('heatmap.read')) communityPoints = await readScreenCommunities(conn, access, { districtCode: sq.districtCode, adminGridCode: sq.adminGridCode, communityCode: sq.communityCode }); } finally { try { await conn.rollback(); } finally { conn.release(); } }
     const utility = await loadUtility(mode); utilityRevision = utility.revision; feedRevision = utility.feedRevision; feedSyncedAt = utility.feedSyncedAt;
     events = utility.state.events.filter(e => p.includes(e.kind === 'shutdown' ? 'shutdown.read' : 'pipeline.read'));
   } else if (dataset) {
@@ -42,13 +46,13 @@ export async function screenBootstrap(raw: Record<string, unknown>, access: Acce
 };
   }
   events = events.filter(e => (!sq.adminGridCode || e.gridIds?.includes(sq.adminGridCode)) && (!sq.districtCode || mode!=='simulation' || e.gridIds.every((id:string)=>dataset?.grids.some(g=>g.id===id))) && !sq.communityCode && !sq.categoryCode);
-  const result = buildScreen(sq, access, records, events, dataset); const { details, periodDetails, demonstration, researchEvidence, priorEvidence, ...data } = result;
-  if (!p.includes('grid.read') || !p.includes('heatmap.read')) { data.events = data.events.map(e => ({ ...e, gridIds: [] })); data.charts.adminGrid = []; data.charts.community = []; data.compare = { value: null, reason: '缺少网格或热力查询权限' }; }
-  const sections = normalizeScreen(result, dataset, p, households);
+  const result = (mode === 'real' && !dataset && capturedResult) ? { ...capturedResult, events } : buildScreen(sq, access, records, events, dataset); const { details, periodDetails, demonstration, researchEvidence, priorEvidence, ...data } = result;
+  if (!p.includes('grid.read') || !p.includes('heatmap.read')) { data.events = data.events.map((e: { gridIds?: string[] }) => ({ ...e, gridIds: [] })); data.charts.adminGrid = []; data.charts.community = []; data.compare = { value: null, reason: '缺少网格或热力查询权限' }; }
+  const sections = normalizeScreen(result, dataset, p, households, communityPoints);
   const evidence=attachScreenEvidence(sections,result);
-  const heat=screenHeat(result,dataset,p);
+  const heat=await screenHeat(result,dataset,p);
   const now = Date.now(); for (const [id, item] of cache) if (item.expires <= now) cache.delete(id); while (cache.size >= 100) cache.delete(cache.keys().next().value!);
-  const contextId = randomUUID(), expires = now + 120000; cache.set(contextId, { owner: access.userId, scope: scopeKey(access), expires, details, periodDetails, events: data.events, evidence, gridCodes: dataset?.grids.map(g => g.id) ?? details.map(d => d.adminGridCode).filter((x): x is string => !!x), mode });
+  const contextId = randomUUID(), expires = now + 120000; cache.set(contextId, { owner: access.userId, scope: scopeKey(access), expires, details, periodDetails, events: data.events, evidence, gridCodes: dataset?.grids.map(g => g.id) ?? details.map((d: { adminGridCode?: string | null }) => d.adminGridCode).filter((x: string | null | undefined): x is string => !!x), mode });
   return { ...data, ...sections, heat, contextId, generatedAt: new Date(now).toISOString(), expiresAt: new Date(expires).toISOString(), source: { complaints: mode === 'real' ? '宜接就办正式主账' : '独立模拟样本', events: mode==='simulation'?'独立专题模拟样本':'utility 来源读取；与主账并非同一数据库快照', topicHistory: '未映射，不参与合计', cutoffAt: null, utilityRevision, feedRevision, feedSyncedAt }, permissionScope: { scopeVersion: access.scopeVersion }, periodAnchor: '截至所选日期 ' + query.to, consistency: '诉求聚合与明细来自同一次捕获；事件另读并标明版本' };
 }
 export function screenDemands(id: unknown, page: unknown, size: unknown, access: AccessContext, p: readonly string[], filters: Record<string, unknown> = {}) {
@@ -85,3 +89,7 @@ export function screenEvidence(contextId:unknown,evidenceKey:unknown,page:unknow
  const items=evidence.items?.slice((n-1)*s,n*s).map(r=>hasSpatial?r:{...r,adminGridCode:null,communityCode:null})??[];
  return {contextId,evidenceKey,state:evidence.state,reason:evidence.reason,total:evidence.items?.length??null,items,window:evidence.window,ruleVersion:evidence.ruleVersion,page:n,size:s};
 }
+
+
+
+

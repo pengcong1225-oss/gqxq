@@ -7,6 +7,7 @@ import {parseFieldState} from '../domain/effectiveFieldPolicy';
 import type {Tx} from '../db/tx';
 import {loadEffectiveFieldState} from '../repositories/effectiveFieldRepo';
 import {insertAudit} from '../repositories/auditLogRepo';
+import {amapGeocode,amapRegeocode,amapConfigured} from '../clients/amapGeocoder';
 const fingerprint="sha2(concat_ws(char(0),coalesce(c.address,''),coalesce(c.title,''),coalesce(c.content,''),coalesce(c.district_code,''),coalesce(c.district_name,''),coalesce(a.candidate_text,''),coalesce(a.parent_match,''),coalesce(a.district_code,'')),256)";
 async function initializationState(db:Tx,row:Record<string,unknown>){
  const raw=parseFieldState(row.effective_field_state),states=await loadEffectiveFieldState(db,row);
@@ -18,17 +19,51 @@ async function initializationState(db:Tx,row:Record<string,unknown>){
  }
  return states;
 }
-let providerUnavailableUntil=0;
-async function provider(params:Record<string,string>,key:string){
- const url='https://api.tianditu.gov.cn/geocoder?'+new URLSearchParams({...params,tk:key});
- const response=await fetch(url,{headers:{Referer:'https://ai.mockr.com.cn/','User-Agent':'Mozilla/5.0'},signal:AbortSignal.timeout(12000)});
- if(!response.ok)throw new Error('地图服务请求未成功');
- const bytes=await response.arrayBuffer();let text=new TextDecoder('utf-8').decode(bytes);
- if(text.includes('\ufffd'))text=new TextDecoder('gb18030').decode(bytes);
- return JSON.parse(text);
+/**
+ * 地址解析（标书 1.2.12 指定高德；天地图已全部下线，不再作为兜底）。
+ * 返回 { point, state, reason }：point=null 表示未能定位（由调用方决定重试/人工核验）。
+ * 校验口径：宜昌市域 + 区县一致；不一致直接拒绝，不猜。
+ */
+async function resolveByAmap(row: Record<string, unknown>, query: string | null): Promise<{ point: InitialPoint | null; state: 'matched' | 'review' | 'retry'; reason: string }> {
+  if (!amapConfigured()) return { point: null, state: 'retry', reason: '未配置高德 Key' };
+  if (!query) return { point: null, state: 'review', reason: '缺少可解析的地址' };
+  const forward = await amapGeocode(query);
+  if (!forward.ok || forward.longitude === null || forward.latitude === null) {
+    return { point: null, state: 'retry', reason: forward.reason ?? '高德地理编码无结果' };
+  }
+  const reverse = await amapRegeocode(forward.longitude, forward.latitude);
+  if (!reverse.ok) return { point: null, state: 'retry', reason: reverse.reason ?? '高德逆地理编码无结果' };
+  // 区县一致性校验
+  const expectedCode = String(row.district_code ?? '').trim();
+  const expectedName = String(row.district_name ?? '').trim();
+  if (expectedCode && !String(reverse.adcode ?? '').startsWith(expectedCode.slice(0, 6))) {
+    return { point: null, state: 'review', reason: '高德匹配区县与诉求区划不一致，需人工核验' };
+  }
+  if (!expectedCode && expectedName && reverse.district !== expectedName) {
+    return { point: null, state: 'review', reason: '高德匹配区县名称与诉求区划不一致，需人工核验' };
+  }
+  const level = forward.level ?? '未知';
+  const precise = ['门牌号', '门址', '兴趣点', '建筑物', '道路', '道路交叉路口'].includes(level);
+  const point: InitialPoint = {
+    longitude: forward.longitude,
+    latitude: forward.latitude,
+    score: precise ? 100 : 60,
+    level: String(level),
+    coordinateSystem: 'WGS84',
+    source: precise
+      ? ''
+      : '待纠偏：高德近似地址定位（' + String(level) + '），已核对宜昌市及区县；坐标系GCJ02已转WGS84；非人工核验',
+  };
+  return {
+    point,
+    state: precise ? 'matched' : 'review',
+    reason: precise
+      ? '高德地址解析（' + String(level) + '），已核对宜昌市及区县；坐标系GCJ02→WGS84；非人工核验'
+      : '高德近似地址定位（' + String(level) + '），需人工核验',
+  };
 }
+
 export async function initializeLocations(limit=20){
- const key=process.env.GQXQ_TIANDITU_KEY?.trim();
  const conn=await pool.getConnection();let locked=false;
  const counts={processed:0,matched:0,review:0,retry:0,preserved:0};
  try{
@@ -43,16 +78,14 @@ export async function initializeLocations(limit=20){
  else {point=cachedLocation(candidate);if(point){state='review';reason=point.source;}
  const extracted=locationCandidates(candidate);
  const query=locationQuery(candidate)??(extracted[0]?'湖北省宜昌市'+(extracted[0].districtName??'')+extracted[0].name:null);
- if(!point&&query&&(!key||Date.now()<providerUnavailableUntil))retryProvider=true;
- if(!point&&query&&key&&Date.now()>=providerUnavailableUntil){try{
- const forward=await provider({ds:JSON.stringify({keyWord:query})},key);
- if(String(forward?.status)!=='0')throw new Error('地图服务未返回成功结果');
- const p=forward.location;
- if(p&&Number.isFinite(Number(p.lon))&&Number.isFinite(Number(p.lat))){const reverse=await provider({postStr:JSON.stringify({lon:Number(p.lon),lat:Number(p.lat),ver:1}),type:'geocode'},key);const exact=acceptGeocode(forward,reverse,row);point=exact?{...exact,coordinateSystem:'CGCS2000',source:''}:acceptApproximateGeocode(forward,reverse,row);}
- if(point){state=point.source?'review':'matched';reason=point.source||`天地图自动地址定位，匹配分数${point.score}，级别${point.level}，已核对宜昌市及区县；坐标系CGCS2000，非人工核验`;}
- else reason='地址匹配不够精确、匹配区县不一致或无详细点位，请人工核验';
- }catch{retryProvider=true;providerUnavailableUntil=Date.now()+10*60*1000;state='retry';reason=state==='retry'?'地图服务暂不可用，稍后自动重试':'地图服务连续失败，请人工核验地址';}}}
- if(state!=='preserved'&&!point){point=fallbackLocation(candidate);if(point){state='review';reason=point.source;}else if(!key&&locationQuery(candidate)){state='retry';reason='地图服务未配置，保留地址待自动重试';}else if(state==='review')reason='降级定位已检查：'+reason;}
+ // 标书 1.2.12 指定高德：地理编码只走高德（天地图已下线）。
+ if(!point&&query&&amapConfigured()){
+  const r=await resolveByAmap(row,query);point=r.point;reason=r.reason;
+  state=r.state==='matched'?(r.point&&r.point.source?'review':'matched'):r.state;
+  if(r.state==='retry')retryProvider=true;
+ }
+ if(!point&&query&&!amapConfigured()){retryProvider=true;state='retry';reason='未配置高德 Key，无法自动定位；已保留地址待配置后重试';}}
+ if(state!=='preserved'&&!point){point=fallbackLocation(candidate);if(point){state='review';reason=point.source;}else if(!amapConfigured()&&locationQuery(candidate)){state='retry';reason='未配置高德 Key，保留地址待配置后自动重试';}else if(state==='review')reason='降级定位已检查：'+reason;}
  if(retryProvider&&state!=='preserved'){state='retry';if(!point)reason='地图服务暂不可用，保留现有位置等待进一步定位';}
  await conn.beginTransaction();
  try{

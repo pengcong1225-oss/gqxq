@@ -4,13 +4,17 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     {
+      path: '/accept',
+      name: 'accept',
+      component: () => import('@/pages/accept/AcceptScreen.vue'),
+    },
+    {
       path: '/',
-      name: 'home',
-      component: () => import('@/pages/index/Index.vue'),
+      redirect: { name: 'accept' },
     },
     {
       path: '/:pathMatch(.*)*',
-      redirect: { name: 'home' },
+      redirect: { name: 'accept' },
     },
   ],
 })

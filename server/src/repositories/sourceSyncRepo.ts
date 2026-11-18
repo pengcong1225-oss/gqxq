@@ -89,8 +89,14 @@ export async function updateSourceEventStatus(
   syncedAt: Date
 ): Promise<number> {
   const [result] = await tx.execute(
-    'update complaint set source_event_status = ?, overtime_flag = ?, source_synced_at = ? where complaint_id = ?',
-    [code, overtimeFlag, syncedAt, complaintId]
+    'update complaint set source_event_status = ?, overtime_flag = ?, source_synced_at = ?,' +
+      " status = case when closed_in_system = 1 then 'closed'" +
+      " when ? in ('completed','closed') then 'completed'" +
+      " when ? = 'processing' then 'processing'" +
+      " when ? = 'accepted' then 'accepted'" +
+      ' else status end' +
+      ' where complaint_id = ?',
+    [code, overtimeFlag, syncedAt, code, code, code, complaintId]
   );
   return (result as { affectedRows?: number }).affectedRows ?? 0;
 }

@@ -25,6 +25,15 @@ function optRaw(name: string): string {
 
 export const env = {
   nodeEnv: opt('NODE_ENV', 'development'),
+  /**
+   * 平台统一身份（住新工作服务平台）。
+   * 启用后，诉求平台接受平台以 RS256 签发的令牌，按 platform_identity 绑定解析本地用户；
+   * 未绑定一律拒绝，绝不按用户名/姓名自动合并账号。
+   */
+  platformIdentityEnabled: opt('GQXQ_PLATFORM_IDENTITY_ENABLED', 'false') === 'true',
+  platformIdentityIssuer: opt('GQXQ_PLATFORM_IDENTITY_ISSUER', 'zhuxin-platform'),
+  platformIdentityJwksUrl: opt('GQXQ_PLATFORM_IDENTITY_JWKS_URL', ''),
+  platformIdentityAutoBindUsername: opt('GQXQ_PLATFORM_IDENTITY_AUTO_BIND_USERNAME', 'false') === 'true',
   port: Number(opt('PORT', '3100')),
   /**
    * M1（docs/2026-09-19-入站无鉴权端点防护方案.md §4.1）：监听地址显式可配置，**默认只绑回环**。
@@ -99,6 +108,34 @@ export const env = {
     /** NONE | BODY；BODY 时响应体必须逐字节等于 ackValue */
     ackMode: opt('GQXQ_CALLBACK_ACK_MODE', 'NONE').toUpperCase(),
     ackValue: optRaw('GQXQ_CALLBACK_ACK_VALUE'),
+  },
+  /**
+   * 数据服务中心 · 内部链路（可选）。
+   *   enabled=true 时：投递结果回报审计；启用 secretName 时启动后从服务中心拉取填报 HMAC 密钥，
+   *   拉取成功则覆盖 GQXQ_PU_SECRET，失败则回退 env（绝不因服务中心不可用而中断业务）。
+   */
+  dataCenter: {
+    enabled: opt('GQXQ_DC_ENABLED', 'false') === 'true',
+    baseUrl: opt('GQXQ_DC_BASE_URL', ''),
+    appId: opt('GQXQ_DC_APP_ID', ''),
+    apiKey: optRaw('GQXQ_DC_API_KEY'),
+    secretName: opt('GQXQ_DC_SECRET_NAME', 'gqxq.pu.secret'),
+    timeoutMs: Number(opt('GQXQ_DC_TIMEOUT_MS', '2000')),
+  },
+  /** 小区定位（高德 Web 服务地理编码）与坐标抖动（数据服务中心异步任务）。
+   * 抖动结果只用于地图展示，服务层绝不回写 location_*。 */
+  /** 高德地图 Web 服务 Key（标书 1.2.12 指定的地图服务商；优先于天地图）。 */
+  amapKey: optRaw('GQXQ_AMAP_KEY'),
+  amapBaseUrl: opt('GQXQ_AMAP_BASE_URL', 'https://restapi.amap.com'),
+  jitter: {
+    baseUrl: opt('GQXQ_JITTER_BASE_URL', ''),
+    appId: opt('GQXQ_JITTER_APP_ID', ''),
+    apiKey: optRaw('GQXQ_JITTER_API_KEY'),
+    insecureTls: opt('GQXQ_JITTER_INSECURE_TLS', 'false') === 'true',
+    batchSize: Number(opt('GQXQ_JITTER_BATCH_SIZE', '200')),
+    timeoutMs: Number(opt('GQXQ_JITTER_TIMEOUT_MS', '30000')),
+    pollMs: Number(opt('GQXQ_JITTER_POLL_MS', '2000')),
+    pollMax: Number(opt('GQXQ_JITTER_POLL_MAX', '120')),
   },
 } as const;
 

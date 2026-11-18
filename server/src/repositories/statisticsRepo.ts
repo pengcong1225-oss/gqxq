@@ -8,6 +8,17 @@ import {AppError} from '../http/errors';
 import {excludeIntegrationTestsSql} from '../domain/integrationTestPolicy';
 // Explicit scalars only. Original source/callback JSON never enters this relation.
 const columns=['id','complaint_id','complaint_no','title','business_type','complaint_type','major_category_code','minor_category_code','category_dictionary_version','district_code','district_name','enterprise_code','enterprise_name','location_lng','location_lat','admin_grid_code','community_code','location_coordinate_system','location_coordinate_source','source_reported_at','received_at','edit_version','source_system','source_id','source_channel','urgency_level','correction_status','correction_confidence','source_event_status','source_synced_at','overtime_flag','supervision_status','reporting_status','closed_in_system','is_sensitive','sensitive_keywords','status','created_at'];
+/**
+ * 大屏专用窄列读取：只取 screen 域真正用到的 16 列。
+ * 完整 38 列 × 2 万行 × 3 个行业请求 = 首屏 4s+；窄列后行解析成本降一个量级。
+ */
+const screenColumns = ['complaint_id','source_system','source_id','business_type','complaint_type','major_category_code','minor_category_code','district_code','enterprise_code','enterprise_name','admin_grid_code','community_code','location_lng','location_lat','source_reported_at','received_at','source_event_status','satisfaction_code','source_synced_at','source_completed_at','source_deadline_at','status'];
+export async function readScreenStatisticsRows(db:SqlExecutor,q:StatisticsQuery,access:AccessContext){
+ const scope=buildComplaintScopeSql(access,'c');
+ const rows=await rowsIn(db,'select '+screenColumns.map(c=>'c.'+c).join(',')+' from complaint c where '+scope.sql+' and '+excludeIntegrationTestsSql('c')+' order by c.received_at desc,c.id desc limit 100001',scope.params);
+ if(rows.length>100000)throw AppError.validation('授权数据集超过10万条，请联系管理员规划统计容量；未返回截断统计');
+ return rows;
+}
 export async function readStatisticsRows(db:SqlExecutor,q:StatisticsQuery,access:AccessContext){
  const scope=buildComplaintScopeSql(access,'c');
  const analysis=q.dataset==='analysis';const ar=analysis?',ar.analysis_id,ar.business_type as entry_business_type,ar.complaint_type as entry_complaint_type,ar.district_code as entry_district_code,ar.district_name as entry_district_name,ar.enterprise_code as entry_enterprise_code,ar.enterprise_name as entry_enterprise_name,ar.summary as entry_title,ar.confirmed_at,ar.statistics_snapshot_version,ar.statistics_snapshot':',null as analysis_id';
@@ -166,3 +177,7 @@ export async function readStatisticsCoverage(db: SqlExecutor, access: AccessCont
     }
     return result;
 }
+
+
+
+

@@ -1,5 +1,5 @@
 export interface SupportGrid {id:string;name:string;districtCode:string;districtName:string;longitude:number;latitude:number;ring:number[][]}
-export interface SupportCommunity {id:string;name:string;gridId:string;longitude:number;latitude:number;households:number}
+export interface SupportCommunity {id:string;name:string;gridId:string;longitude:number;latitude:number;households:number;coordinateSource?:'jitter'|'original'}
 export interface SupportEnterprise {id:string;name:string;businessType:'water'|'gas';households:number}
 export interface SupportComplaint {id:string;title:string;businessType:'water'|'gas';type:string;enterpriseId:string;districtCode:string;gridId:string;communityId:string;occurredAt:string;completedAt:string|null;evaluation:'satisfied'|'unsatisfied'|'unevaluated';longitude:number;latitude:number;scenario:'winter'|'summer'|'planned'|'installation'|'other'}
 export interface SupportEvent {id:string;kind:'planned-water'|'planned-gas'|'emergency-water'|'emergency-gas'|'water-project'|'gas-project';title:string;enterpriseId:string;gridIds:string[];startsAt:string;endsAt:string;households:number;workers:number;reason:string;area:string;plan:string;housing:string}

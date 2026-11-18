@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Card, Checkbox, Descriptions, Empty, Modal, Select, Space, Spin, Table, Tabs, Tag, Typography } from 'antd';
-import { loadSdk } from '../components/TiandituLocationPicker';
+import { loadAmapSdk, wgs84ToGcj02 } from '../components/amapSdk';
 import type { SupportComplaint, SupportEvent, SupportGrid, TenderDataset } from './types';
 import { buildGridComparison, complaintsForCommunity, complaintsForEvent, eventBusiness, eventsInRange, inLocalDateRange, supportTimestamp, type GridComparisonRow } from './layersModel';
 
 const KINDS:SupportEvent['kind'][]=['planned-water','planned-gas','emergency-water','emergency-gas','water-project','gas-project'];
 const LABELS:Record<SupportEvent['kind'],string>={'planned-water':'计划停水','planned-gas':'计划停气','emergency-water':'突发停水','emergency-gas':'突发停气','water-project':'供水施工','gas-project':'燃气施工'};
 const COLORS:Record<SupportEvent['kind'],string>={'planned-water':'#1677ff','planned-gas':'#d48806','emergency-water':'#722ed1','emergency-gas':'#cf1322','water-project':'#08979c','gas-project':'#d46b08'};
-type MapOverlay={addEventListener?:(name:string,fn:()=>void)=>void};
-type MapInstance={centerAndZoom:(point:unknown,zoom:number)=>void;addOverLay:(o:MapOverlay)=>void;removeOverLay:(o:MapOverlay)=>void;openInfoWindow?:(w:unknown,p:unknown)=>void;closeInfoWindow?:()=>void;destroy?:()=>void;setViewport?:(points:unknown[])=>void};
-type GisSdk={Map:new (el:HTMLElement)=>MapInstance;LngLat:new (lng:number,lat:number)=>unknown;Marker:new (point:unknown,options?:unknown)=>MapOverlay;Icon?:new (options:unknown)=>unknown;Point?:new(x:number,y:number)=>unknown;Polygon?:new(points:unknown[],options:unknown)=>MapOverlay;Polyline?:new(points:unknown[],options:unknown)=>MapOverlay;InfoWindow?:new(content:HTMLElement,options?:unknown)=>unknown};
+type AmapOverlay={on(event:string,handler:()=>void):void};
+type AmapMapLike={setCenter(center:[number,number]):void;setZoom(zoom:number):void;setFitView?(overlays?:unknown[]):void;add(overlays:unknown|unknown[]):void;remove(overlays:unknown[]):void;destroy():void};
+type AmapInfoWindowLike={open(map:unknown,position:[number,number]):void;close():void};
 type ListSource={kind:'event'|'community'|'grid'|'cell';id:string;type?:string};
 const validPoint=(p:number[])=>p.length>=2&&Number.isFinite(p[0])&&Number.isFinite(p[1])&&Math.abs(p[0])<=180&&Math.abs(p[1])<=90;
 const readableTime=(s:string)=>Number.isNaN(supportTimestamp(s))?s:new Date(supportTimestamp(s)).toLocaleString('zh-CN',{hour12:false,timeZone:'Asia/Shanghai'});
@@ -52,58 +52,66 @@ export default function SupportLayers({data,from,to,onComplaint}:{data:TenderDat
  const gridNames=(ids:string[])=>ids.map(id=>data.grids.find(g=>g.id===id)?.name||id).join('、');
 
  useEffect(()=>{
-  let active=true;let map:MapInstance|undefined;const overlays:MapOverlay[]=[];
+  let active=true;let map:AmapMapLike|undefined;let infoWindow:AmapInfoWindowLike|undefined;const overlays:unknown[]=[];
   setMapState('loading');setMapError('');
-  const key=import.meta.env.VITE_TIANDITU_TK?.trim();
-  if(!key){setMapState('error');setMapError('未配置天地图密钥，地图暂不可用；下方小区、事件和网格清单可继续操作。');return;}
+  const key=(import.meta.env.VITE_AMAP_KEY??'').trim();
+  if(!key){setMapState('error');setMapError('未配置高德 Key（VITE_AMAP_KEY），地图暂不可用；下方小区、事件和网格清单可继续操作。');return;}
   const highlight=new Set([...(selectedEvent?.gridIds??[]),...(selectedGridId?[selectedGridId]:[]),...validCompareIds]);
   const mappedGrids=data.grids.filter(g=>grids.some(x=>x.id===g.id)||highlight.has(g.id));
   const timeout=setTimeout(()=>{if(active){setMapState('error');setMapError('地图加载超时，可重试或使用下方清单。');}},15000);
-  loadSdk(key).then(base=>{clearTimeout(timeout);
+  loadAmapSdk().then(rawSdk=>{clearTimeout(timeout);
    if(!active||!mapElement.current)return;
-   const sdk=base as unknown as GisSdk;
-   map=new sdk.Map(mapElement.current);
-   const toPoint=(lng:number,lat:number)=>new sdk.LngLat(lng,lat);
-   const initial=mappedGrids[0];map.centerAndZoom(toPoint(initial?.longitude??111.286,initial?.latitude??30.692),12);
-   const add=(o:MapOverlay)=>{map?.addOverLay(o);overlays.push(o);return o;};
-   const popup=(point:unknown,heading:string,lines:string[],action:()=>void)=>{
+   const AMap=rawSdk as any;
+   // 库内坐标为 WGS84，高德地图使用 GCJ-02，绘制前统一转换。
+   const toPoint=(lng:number,lat:number):[number,number]=>wgs84ToGcj02(lng,lat);
+   const initial=mappedGrids[0];map=new AMap.Map(mapElement.current,{zoom:12,center:toPoint(initial?.longitude??111.286,initial?.latitude??30.692),viewMode:'2D'}) as AmapMapLike;
+   const add=(overlay:unknown)=>{map?.add(overlay);overlays.push(overlay);return overlay as AmapOverlay;};
+   const popup=(point:[number,number],heading:string,lines:string[],action:()=>void)=>{
     if(!active)return;
     const box=document.createElement('div');box.style.cssText='max-width:300px;line-height:1.7;padding:6px';
     const h=document.createElement('strong');h.textContent=heading;box.append(h);
     [provenance,...lines].forEach(line=>{const p=document.createElement('div');p.textContent=line;box.append(p);});
     const btn=document.createElement('button');btn.type='button';btn.textContent='查看详情及关联诉求';btn.onclick=()=>{if(active)action();};box.append(btn);
-    if(sdk.InfoWindow)map?.openInfoWindow?.(new sdk.InfoWindow(box),point);
+    try{infoWindow?.close();}catch{/* SDK may already be disposed */}
+    infoWindow=new AMap.InfoWindow({content:box,offset:new AMap.Pixel(0,-16)}) as AmapInfoWindowLike;
+    infoWindow.open(map,point);
     action();
    };
-   const marker=(lng:number,lat:number,color:string,shape:'circle'|'square'|'diamond',onClick:(p:unknown)=>void)=>{
-    if(!validPoint([lng,lat]))return;
-    const p=toPoint(lng,lat);
-    const geometry=shape==='circle'?`<circle cx="14" cy="14" r="10" fill="${color}" stroke="white" stroke-width="3"/>`:shape==='square'?`<rect x="4" y="4" width="20" height="20" rx="2" fill="${color}" stroke="white" stroke-width="3"/>`:`<path d="M14 1L27 14L14 27L1 14Z" fill="${color}" stroke="white" stroke-width="2"/>`;
-    const icon=sdk.Icon&&sdk.Point?new sdk.Icon({iconUrl:'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">${geometry}</svg>`),iconSize:new sdk.Point(28,28),iconAnchor:new sdk.Point(14,14)}):undefined;
-    const m=add(new sdk.Marker(p,icon?{icon}:undefined));m.addEventListener?.('click',()=>{if(active)onClick(p);});
+   const markerShape=(color:string,shape:'circle'|'square'|'diamond')=>shape==='circle'?`<circle cx="14" cy="14" r="10" fill="${color}" stroke="white" stroke-width="3"/>`:shape==='square'?`<rect x="4" y="4" width="20" height="20" rx="2" fill="${color}" stroke="white" stroke-width="3"/>`:`<path d="M14 1L27 14L14 27L1 14Z" fill="${color}" stroke="white" stroke-width="2"/>`;
+   const marker=(lng:number,lat:number,color:string,shape:'circle'|'square'|'diamond',onClick:(point:[number,number])=>void):AmapOverlay|undefined=>{
+    if(!validPoint([lng,lat]))return undefined;
+    const position=toPoint(lng,lat);
+    const content='<div style="width:28px;height:28px;line-height:0"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">'+markerShape(color,shape)+'</svg></div>';
+    const handle=add(new AMap.Marker({position,anchor:'center',content,zIndex:120}));
+    handle.on('click',()=>{if(active)onClick(position);});
+    return handle;
    };
+   const focusedOverlays:unknown[]=[];
    mappedGrids.forEach(g=>{
     const highlighted=highlight.has(g.id);
-    if((layers.includes('grids')||highlighted)&&sdk.Polygon&&g.ring.length>=3&&g.ring.every(validPoint)){
-     const poly=add(new sdk.Polygon(g.ring.map(p=>toPoint(p[0],p[1])),{color:highlighted?'#eb2f96':'#64748b',weight:highlighted?4:1,opacity:0.9,fillColor:highlighted?'#ffadd2':'#dbeafe',fillOpacity:highlighted?0.32:0.1}));
-     poly.addEventListener?.('click',()=>{if(active)selectGrid(g.id);});
+    if((layers.includes('grids')||highlighted)&&g.ring.length>=3&&g.ring.every(validPoint)){
+     const poly=add(new AMap.Polygon({path:g.ring.map(p=>toPoint(p[0],p[1])),strokeColor:highlighted?'#eb2f96':'#64748b',strokeWeight:highlighted?4:1,fillColor:highlighted?'#ffadd2':'#dbeafe',fillOpacity:highlighted?0.32:0.1}));
+     poly.on('click',()=>{if(active)selectGrid(g.id);});
     }
-    if(layers.includes('grids')||highlighted)marker(g.longitude,g.latitude,highlighted?'#eb2f96':'#64748b','square',p=>popup(p,g.name,[g.districtName,highlighted?'已高亮：选中事件影响范围 / 对比网格':'网格中心点'],()=>selectGrid(g.id)));
+    if(layers.includes('grids')||highlighted){
+     const handle=marker(g.longitude,g.latitude,highlighted?'#eb2f96':'#64748b','square',point=>popup(point,g.name,[g.districtName,highlighted?'已高亮：选中事件影响范围 / 对比网格':'网格中心点'],()=>selectGrid(g.id)));
+     if(highlighted&&handle)focusedOverlays.push(handle);
+    }
    });
-   if(layers.includes('communities'))communities.forEach(c=>marker(c.longitude,c.latitude,'#389e0d','circle',p=>popup(p,c.name,[`所属网格：${gridNames([c.gridId])}`,`覆盖用户：${c.households} 户`,`当前范围关联诉求：${communityRecords(c.id).length} 件`],()=>selectCommunity(c.id))));
+   if(layers.includes('communities'))communities.forEach(c=>marker(c.longitude,c.latitude,'#389e0d','circle',point=>popup(point,c.name,[`所属网格：${gridNames([c.gridId])}`,`覆盖用户：${c.households} 户`,`当前范围关联诉求：${communityRecords(c.id).length} 件`],()=>selectCommunity(c.id))));
    events.forEach(e=>e.gridIds.forEach(gridId=>{
     const g=data.grids.find(r=>r.id===gridId);if(!g)return;
-    marker(g.longitude,g.latitude,COLORS[e.kind],'diamond',p=>popup(p,e.title,[LABELS[e.kind],`${readableTime(e.startsAt)} 至 ${readableTime(e.endsAt)}`,`全部影响网格：${gridNames(e.gridIds)}`,`同业务、同网格、事件时间内诉求：${eventRecords(e).length} 件`],()=>selectEvent(e.id)));
+    marker(g.longitude,g.latitude,COLORS[e.kind],'diamond',point=>popup(point,e.title,[LABELS[e.kind],`${readableTime(e.startsAt)} 至 ${readableTime(e.endsAt)}`,`全部影响网格：${gridNames(e.gridIds)}`,`同业务、同网格、事件时间内诉求：${eventRecords(e).length} 件`],()=>selectEvent(e.id)));
    }));
    (data.pipelines??[]).filter(p=>layers.includes(p.businessType+'-pipe')&&(business==='all'||p.businessType===business)&&p.gridIds.some(id=>mappedGrids.some(g=>g.id===id))).forEach(p=>{
-    if(!sdk.Polyline||p.path.length<2||!p.path.every(validPoint))return;
-    const poly=add(new sdk.Polyline(p.path.map(x=>toPoint(x[0],x[1])),{color:p.businessType==='water'?'#1677ff':'#d48806',weight:5,opacity:0.8,lineStyle:simulation?'dashed':'solid'}));
-    poly.addEventListener?.('click',()=>{if(active)popup(toPoint(p.path[0][0],p.path[0][1]),p.name,[provenance,`企业：${enterpriseName(p.enterpriseId)}`,`网格：${gridNames(p.gridIds)}`],()=>selectGrid(p.gridIds[0]));});
+    if(p.path.length<2||!p.path.every(validPoint))return;
+    const poly=add(new AMap.Polyline({path:p.path.map(x=>toPoint(x[0],x[1])),strokeColor:p.businessType==='water'?'#1677ff':'#d48806',strokeWeight:5,strokeOpacity:0.8,strokeStyle:simulation?'dashed':'solid'}));
+    poly.on('click',()=>{if(active)popup(toPoint(p.path[0][0],p.path[0][1]),p.name,[provenance,`企业：${enterpriseName(p.enterpriseId)}`,`网格：${gridNames(p.gridIds)}`],()=>selectGrid(p.gridIds[0]));});
    });
-   const focused=mappedGrids.filter(g=>highlight.has(g.id));if(focused.length>0)map.setViewport?.(focused.map(g=>toPoint(g.longitude,g.latitude)));
+   if(focusedOverlays.length)map.setFitView?.(focusedOverlays);
    if(active)setMapState('ready');
-  }).catch(error=>{if(active){setMapState('error');setMapError(error instanceof Error?error.message:'地图加载失败');}});
-  return ()=>{active=false;clearTimeout(timeout);map?.closeInfoWindow?.();overlays.forEach(o=>{try{map?.removeOverLay(o);}catch{/* SDK may already be disposed */}});try{map?.destroy?.();}catch{/* detached map */}if(mapElement.current)mapElement.current.replaceChildren();};
+  }).catch((error:unknown)=>{if(active){setMapState('error');setMapError(error instanceof Error?error.message:'高德地图加载失败');}});
+  return ()=>{active=false;clearTimeout(timeout);try{infoWindow?.close();}catch{/* SDK may already be disposed */}try{map?.remove(overlays);}catch{/* overlays may already be disposed */}try{map?.destroy();}catch{/* detached map */}if(mapElement.current)mapElement.current.replaceChildren();};
  },[data,from,to,layers,business,district,selectedEventId,selectedGridId,compareIds,retry]);
 
  const listRows=useMemo(()=>{
@@ -126,12 +134,12 @@ export default function SupportLayers({data,from,to,onComplaint}:{data:TenderDat
 
  return <Space direction="vertical" size={16} style={{width:'100%'}}>
   <Alert type={simulation?'warning':'info'} showIcon message={`${provenance} · ${data.sourceLabel}`} description={`${simulation?'所有小区、网格、事件、管线和统计仅供功能演示，不代表实际业务。':'展示导入数据；缺少管线几何时仅展示项目影响网格。'} 当前统一统计日期：${from} 至 ${to}（本地日期，包含结束日）。`}/>
-  <Card size="small" title={title('天地图 · 小区、停供、施工与管线')}>
+  <Card size="small" title={title('高德地图 · 小区、停供、施工与管线')}>
    <Space wrap style={{marginBottom:12}}><span>行政区</span><Select aria-label="GIS行政区" value={district} onChange={value=>{setDistrict(value);setSelectedEventId(null);setSelectedCommunityId(null);}} style={{minWidth:150}} options={[{label:'全部行政区',value:'all'},...Array.from(new Map(data.grids.map(g=>[g.districtCode,{label:g.districtName,value:g.districtCode}])).values())]}/><span>业务</span><Select aria-label="GIS业务" value={business} onChange={setBusiness} style={{width:130}} options={[{value:'all',label:'供水及燃气'},{value:'water',label:'供水'},{value:'gas',label:'燃气'}]}/></Space>
    <Checkbox.Group value={layers} onChange={values=>setLayers(values.map(String))} options={[{label:'网格面 / 中心点',value:'grids'},{label:'小区',value:'communities'},...KINDS.map(k=>({label:LABELS[k],value:k})),{label:'供水管线',value:'water-pipe'},{label:'燃气管线',value:'gas-pipe'}]} style={{display:'flex',flexWrap:'wrap',gap:10,marginBottom:12}}/>
    <div style={{height:420,position:'relative',background:'#f0f5fa',border:'1px solid #d9e2ec',borderRadius:6,overflow:'hidden'}}>
-    <div ref={mapElement} aria-label="天地图业务图层" style={{height:'100%',width:'100%'}}/>
-    {mapState==='loading'&&<div style={{position:'absolute',inset:0,display:'grid',placeItems:'center',background:'#ffffffba'}}><Spin tip="正在加载天地图"><div style={{height:40,width:120}}/></Spin></div>}
+    <div ref={mapElement} aria-label="高德地图业务图层" style={{height:'100%',width:'100%'}}/>
+    {mapState==='loading'&&<div style={{position:'absolute',inset:0,display:'grid',placeItems:'center',background:'#ffffffba'}}><Spin tip="正在加载高德地图"><div style={{height:40,width:120}}/></Spin></div>}
     {mapState==='error'&&<div style={{position:'absolute',inset:0,display:'grid',placeItems:'center',padding:24}}><Alert type="info" showIcon message="地图暂不可用" description={<>{mapError}<br/>所有关联查询及对比可在下方清单完成。<br/><Button onClick={()=>setRetry(r=>r+1)}>重试地图</Button></>}/></div>}
    </div>
    <Space wrap style={{marginTop:12}}><Tag color="green">● 小区</Tag><Tag>■ 网格中心 / 边界</Tag><Tag color="magenta">■ 选中影响网格 / 对比网格</Tag>{KINDS.map(k=><Tag key={k} color={COLORS[k]}>◆ {LABELS[k]}</Tag>)}<Tag color="blue">━ 供水管线</Tag><Tag color="gold">━ 燃气管线</Tag></Space>

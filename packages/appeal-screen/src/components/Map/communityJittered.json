@@ -1,0 +1,208 @@
+{
+  "generatedAt": "2026-11-12T09:19:45.059Z",
+  "source": "住新数据服务中心 /api/v1/jitter/jobs",
+  "crs": "EPSG:4326",
+  "jobId": "e80846b424a249e38c64fcdc30b76639",
+  "jobStatus": "succeeded",
+  "note": "三维点位为平台脱敏偏移坐标（抖动，几十米内），非实测位置；二维仍使用 real 真实坐标。抖动失败的小区 jitter=null，不显示三维点。",
+  "stats": {
+    "total": 10,
+    "succeeded": 10,
+    "failed": 0,
+    "offsetMetersMin": 14.3,
+    "offsetMetersMax": 22.3,
+    "offsetMetersAvg": 18
+  },
+  "communities": [
+    {
+      "communityId": "420502001001",
+      "name": "船柴社区",
+      "gridCode": "420502001001",
+      "gridName": "西陵一号网格",
+      "districtCode": "420502",
+      "real": {
+        "longitude": 111.2765,
+        "latitude": 30.696
+      },
+      "jitter": {
+        "longitude": 111.27665123,
+        "latitude": 30.69601203
+      },
+      "offsetMeters": 14.5,
+      "status": "succeeded",
+      "jobId": "e80846b424a249e38c64fcdc30b76639",
+      "error": null
+    },
+    {
+      "communityId": "420502001002",
+      "name": "东湖社区",
+      "gridCode": "420502001002",
+      "gridName": "西陵二号网格",
+      "districtCode": "420502",
+      "real": {
+        "longitude": 111.29050000000001,
+        "latitude": 30.696
+      },
+      "jitter": {
+        "longitude": 111.2906494,
+        "latitude": 30.696012
+      },
+      "offsetMeters": 14.3,
+      "status": "succeeded",
+      "jobId": "e80846b424a249e38c64fcdc30b76639",
+      "error": null
+    },
+    {
+      "communityId": "420502001003",
+      "name": "铁路坝社区",
+      "gridCode": "420502001003",
+      "gridName": "西陵三号网格",
+      "districtCode": "420502",
+      "real": {
+        "longitude": 111.29050000000001,
+        "latitude": 30.71
+      },
+      "jitter": {
+        "longitude": 111.2906738,
+        "latitude": 30.709998
+      },
+      "offsetMeters": 16.6,
+      "status": "succeeded",
+      "jobId": "e80846b424a249e38c64fcdc30b76639",
+      "error": null
+    },
+    {
+      "communityId": "420503002001",
+      "name": "沈家店社区",
+      "gridCode": "420503002001",
+      "gridName": "伍家一号网格",
+      "districtCode": "420503",
+      "real": {
+        "longitude": 111.33250000000001,
+        "latitude": 30.666
+      },
+      "jitter": {
+        "longitude": 111.33267509,
+        "latitude": 30.6660254
+      },
+      "offsetMeters": 17,
+      "status": "succeeded",
+      "jobId": "e80846b424a249e38c64fcdc30b76639",
+      "error": null
+    },
+    {
+      "communityId": "420503002002",
+      "name": "万寿桥社区",
+      "gridCode": "420503002002",
+      "gridName": "伍家二号网格",
+      "districtCode": "420503",
+      "real": {
+        "longitude": 111.3495,
+        "latitude": 30.666
+      },
+      "jitter": {
+        "longitude": 111.34968533,
+        "latitude": 30.66602464
+      },
+      "offsetMeters": 17.9,
+      "status": "succeeded",
+      "jobId": "e80846b424a249e38c64fcdc30b76639",
+      "error": null
+    },
+    {
+      "communityId": "420504001001",
+      "name": "点军新城社区",
+      "gridCode": "420504001001",
+      "gridName": "点军一号网格",
+      "districtCode": "420504",
+      "real": {
+        "longitude": 111.25049999999999,
+        "latitude": 30.6565
+      },
+      "jitter": {
+        "longitude": 111.2507304575,
+        "latitude": 30.6565288
+      },
+      "offsetMeters": 22.3,
+      "status": "succeeded",
+      "jobId": "e80846b424a249e38c64fcdc30b76639",
+      "error": null
+    },
+    {
+      "communityId": "420505001001",
+      "name": "古老背社区",
+      "gridCode": "420505001001",
+      "gridName": "猇亭一号网格",
+      "districtCode": "420505",
+      "real": {
+        "longitude": 111.42,
+        "latitude": 30.5985
+      },
+      "jitter": {
+        "longitude": 111.42021872,
+        "latitude": 30.5985278
+      },
+      "offsetMeters": 21.2,
+      "status": "succeeded",
+      "jobId": "e80846b424a249e38c64fcdc30b76639",
+      "error": null
+    },
+    {
+      "communityId": "420506001001",
+      "name": "小溪塔社区",
+      "gridCode": "420506001001",
+      "gridName": "夷陵一号网格",
+      "districtCode": "420506",
+      "real": {
+        "longitude": 111.3125,
+        "latitude": 30.776
+      },
+      "jitter": {
+        "longitude": 111.31271026,
+        "latitude": 30.77594946
+      },
+      "offsetMeters": 20.9,
+      "status": "succeeded",
+      "jobId": "e80846b424a249e38c64fcdc30b76639",
+      "error": null
+    },
+    {
+      "communityId": "420506001002",
+      "name": "丁家坝社区",
+      "gridCode": "420506001002",
+      "gridName": "夷陵二号网格",
+      "districtCode": "420506",
+      "real": {
+        "longitude": 111.3295,
+        "latitude": 30.776
+      },
+      "jitter": {
+        "longitude": 111.3296934,
+        "latitude": 30.7759494
+      },
+      "offsetMeters": 19.3,
+      "status": "succeeded",
+      "jobId": "e80846b424a249e38c64fcdc30b76639",
+      "error": null
+    },
+    {
+      "communityId": "420571001001",
+      "name": "东山花园社区",
+      "gridCode": "420571001001",
+      "gridName": "高新一号网格",
+      "districtCode": "420571",
+      "real": {
+        "longitude": 111.3595,
+        "latitude": 30.716
+      },
+      "jitter": {
+        "longitude": 111.35966785,
+        "latitude": 30.7159932
+      },
+      "offsetMeters": 16.1,
+      "status": "succeeded",
+      "jobId": "e80846b424a249e38c64fcdc30b76639",
+      "error": null
+    }
+  ]
+}

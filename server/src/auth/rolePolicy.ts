@@ -105,6 +105,7 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   {method:'GET',path:/^\/permissions$/,roles:A,permissionCode:'system.roles.manage',desc:'权限目录'},
   {method:'GET',path:/^\/business-rules$/,roles:A,permissionCode:'business.rules.manage',desc:'真实主账规则列表（全域）'},
   {method:'POST',path:/^\/business-rules(?:\/[^/]+\/publish)?$/,roles:A,permissionCode:'business.rules.manage',desc:'真实主账规则草稿及发布（全域）'},
+  {method:'POST',path:/^\/business-rules\/baseline$/,roles:A,permissionCode:'business.rules.manage',desc:'预警阈值基线只读预览（全域）'},
   {method:'GET',path:/^\/assessment\/(?:admin-grids|grid-comparison|historical|seasonal)$/,roles:R,permissionCode:'assessment.read',desc:'真实主账授权范围研判'},
   {method:'GET',path:/^\/business-alerts(?:\/[^/]+\/history)?$/,roles:R,permissionCode:'alert.read',desc:'持久预警及处理记录'},
   {method:'POST',path:/^\/business-alerts(?:\/evaluate|\/[^/]+\/actions)$/,roles:W,permissionCode:'alert.handle',desc:'核算及处理预警'},

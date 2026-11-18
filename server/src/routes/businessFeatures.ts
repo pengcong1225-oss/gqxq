@@ -2,7 +2,7 @@ import {Router,type Request} from 'express';
 import {pool} from '../db/pool';
 import {ok} from '../http/respond';
 import {currentAccessContext} from '../auth/accessScope';
-import {listBusinessRules,saveBusinessRule,publishBusinessRule} from '../services/businessRuleService';
+import {listBusinessRules,saveBusinessRule,publishBusinessRule,previewAlertBaseline} from '../services/businessRuleService';
 import {compareGrids,historicalAssessment,seasonalAssessment,assessmentAdminGrids} from '../services/businessAssessmentService';
 import {listBusinessAlerts,evaluateBusinessAlerts,actOnBusinessAlert,alertHistory} from '../services/businessAlertService';
 import type {BusinessEventContext} from '../types/businessEvents';
@@ -10,6 +10,7 @@ const context=(req:Request):BusinessEventContext=>({userId:req.user!.id,userName
 export const businessFeaturesRouter=Router();
 businessFeaturesRouter.get('/business-rules',async(req,res,next)=>{try{ok(res,await listBusinessRules(context(req)));}catch(e){next(e);}});
 businessFeaturesRouter.post('/business-rules',async(req,res,next)=>{try{ok(res,await saveBusinessRule(req.body,context(req)));}catch(e){next(e);}});
+businessFeaturesRouter.post('/business-rules/baseline',async(req,res,next)=>{try{ok(res,await previewAlertBaseline(req.body,context(req)));}catch(e){next(e);}});
 businessFeaturesRouter.post('/business-rules/:id/publish',async(req,res,next)=>{try{ok(res,await publishBusinessRule(req.params.id,req.body?.expectedVersion,context(req)));}catch(e){next(e);}});
 businessFeaturesRouter.get('/assessment/admin-grids',async(req,res,next)=>{try{ok(res,(await assessmentAdminGrids(pool,context(req))).map(r=>({code:r.code,name:r.name,version:r.version,hasGeometry:!!r.geometry})));}catch(e){next(e);}});
 businessFeaturesRouter.get('/assessment/grid-comparison',async(req,res,next)=>{try{ok(res,await compareGrids(req.query,context(req)));}catch(e){next(e);}});

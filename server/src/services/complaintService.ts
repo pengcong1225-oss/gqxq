@@ -21,6 +21,7 @@ import { findLocationClues } from '../repositories/locationClueRepo';
 import { hasLocationConflict } from './rules/locationExtract';
 import { getTownshipSnapshot } from './rules/townshipGazetteer';
 import { pool } from '../db/pool';
+import { decryptPii } from './piiCrypto';
 import { insertAudit } from '../repositories/auditLogRepo';
 import { parseJsonColumn } from '../repositories/complaintMapper';
 import {
@@ -34,6 +35,8 @@ import {
 } from '../repositories/complaintRepo';
 
 const MAX_KEYWORD_LENGTH = 100;
+/** complaint.source_id 列是 varchar(128)；案件公文号精确筛选按同长度校验 */
+const MAX_SOURCE_ID_LENGTH = 128;
 const DEFAULT_SIZE = 20;
 const MAX_SIZE = 100;
 
@@ -172,6 +175,32 @@ export function parseListQuery(query: Record<string, unknown>): ParsedListQuery 
     ]);
   }
 
+  // 案件公文号精确筛选（标书 1.1.1）：独立于 keyword 模糊搜索；空值不传 = 不筛。
+  const sourceId = firstString(query.sourceId);
+  if (sourceId !== undefined && sourceId.length > MAX_SOURCE_ID_LENGTH) {
+    throw AppError.validation('参数 sourceId 长度不能超过 ' + MAX_SOURCE_ID_LENGTH, [
+      { field: 'sourceId', message: '最长 ' + MAX_SOURCE_ID_LENGTH + ' 字符' },
+    ]);
+  }
+
+  // 满意度筛选（标书 1.2.3 明细核对用）：多值、白名单；空值不传 = 不筛。
+  const SATISFACTION_VALUES = ['satisfied', 'basically_satisfied', 'unsatisfied', 'no_reply'] as const;
+  const satisfactionRaw = stringList(query.satisfaction);
+  const satisfaction = satisfactionRaw === undefined ? undefined : satisfactionRaw;
+  if (satisfaction !== undefined) {
+    if (!satisfaction.length || satisfaction.length > SATISFACTION_VALUES.length) {
+      throw AppError.validation('参数 satisfaction 需要 1–4 个取值', [
+        { field: 'satisfaction', message: '需要 1–4 个取值' },
+      ]);
+    }
+    const illegal = satisfaction.filter((v) => !(SATISFACTION_VALUES as readonly string[]).includes(v));
+    if (illegal.length) {
+      throw AppError.validation('参数 satisfaction 取值不合法：' + illegal.join(','), [
+        { field: 'satisfaction', message: '可选值 ' + SATISFACTION_VALUES.join('/') },
+      ]);
+    }
+  }
+
   let isSensitive: boolean | undefined;
   const sensitiveRaw = firstString(query.isSensitive);
   if (sensitiveRaw !== undefined) {
@@ -189,6 +218,7 @@ export function parseListQuery(query: Record<string, unknown>): ParsedListQuery 
   const filter: ComplaintFilter = {
     sourceMajorCategory: firstString(query.sourceMajorCategory),
     sourceMinorCategory: firstString(query.sourceMinorCategory),
+    sourceId,
     keyword,
     businessType: stringList(query.businessType),
     complaintType: stringList(query.complaintType),
@@ -200,6 +230,7 @@ export function parseListQuery(query: Record<string, unknown>): ParsedListQuery 
     correctionStatus: firstString(query.correctionStatus),
     districtCode: firstString(query.districtCode),
     enterpriseCode: firstString(query.enterpriseCode),
+    satisfaction,
     isSensitive,
     startDate: startRaw === undefined ? undefined : parseShanghaiBoundary(startRaw, 'startDate', 'start'),
     endDate: endRaw === undefined ? undefined : parseShanghaiBoundary(endRaw, 'endDate', 'end'),
@@ -210,6 +241,13 @@ export function parseListQuery(query: Record<string, unknown>): ParsedListQuery 
   return { filter, page, size, orderBy: parseSort(query.sort) };
 }
 
+/** 来源类型原值：空白串与 NULL 一律 null，避免前端把空串画成"有值"。 */
+function rawCategoryName(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  const text = String(v).trim();
+  return text === '' ? null : text;
+}
+
 /* ---------------- 对外方法 ---------------- */
 
 export async function listComplaints(query: Record<string, unknown>): Promise<ComplaintListResult> {
@@ -218,7 +256,16 @@ export async function listComplaints(query: Record<string, unknown>): Promise<Co
     findPage(filter, page, size, orderBy),
     findStats(filter),
   ]);
-  const content: ComplaintListItem[] = pageResult.rows.map(rowToListItem);
+  // 列表「来源类型」列：findPage 已选出 source_*_category_raw（列值优先，回退来源快照 v1/v2 键）。
+  // 映射放在 service 层而不是共享 mapper：mapper 被接收/统计/详情多路复用，不能假设每条查询都选了这两列。
+  const content: ComplaintListItem[] = pageResult.rows.map((row) => ({
+    ...rowToListItem(row),
+    sourceMajorCategoryName: rawCategoryName(row.source_major_category_raw),
+    sourceMinorCategoryName: rawCategoryName(row.source_minor_category_raw),
+    // 满意度：列表「满意度」列与筛选用（complaint.satisfaction_code/text，全库 21,110 条非空）
+    satisfactionCode: rawCategoryName(row.satisfaction_code),
+    satisfactionText: rawCategoryName(row.satisfaction_text),
+  }));
   return {
     content,
     total: pageResult.total,
@@ -238,6 +285,8 @@ export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetai
     findAddressCandidate(pool, complaintId),
     findLocationClues(pool, complaintId),
   ]);
+  const [citizenRows] = await pool.query('select name_raw,phone_raw,name_enc,phone_enc from complaint_citizen where complaint_id=? limit 1', [complaintId]) as unknown as [Array<{name_raw:string|null;phone_raw:string|null;name_enc:string|null;phone_enc:string|null}>,unknown];
+  const citizen = citizenRows[0] ?? null;
   const snapshot = getTownshipSnapshot();
   const districtNames = new Map(snapshot.counties.map((county) => [county.code, county.name]));
   const locationClues: LocationClueView[] = storedClues.map((clue) => ({
@@ -254,6 +303,8 @@ export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetai
   }));
   return {
     ...projectComplaintDetail(row,currentAccessContext()),
+    citizenName: citizen?.name_raw ?? decryptPii(citizen?.name_enc ?? null),
+    citizenPhone: citizen?.phone_raw ?? decryptPii(citizen?.phone_enc ?? null),
     addressCandidate: candidate ? {
       value: candidate.value,
       evidence: candidate.evidence,

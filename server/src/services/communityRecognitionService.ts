@@ -19,7 +19,7 @@ export async function recognizeCommunityIn(tx:Tx,id:string):Promise<boolean>{
  if(items.some(i=>i.status!=='pending'||i.confirmer_id||i.confirmed_at||i.basis))return false;
  const districtCode=row.district_code||point.districtCode,districtName=row.district_name||regions.counties.find(c=>c.code===districtCode)?.name;
  if(!districtName)return false;
- const reason=`系统自动认可：明确小区${point.name}，天地图兴趣点匹配${point.score}分且区县一致；小区级定位，非楼栋门牌，不需重复人工确认`;
+ const reason=`系统自动认可：明确小区${point.name}，高德兴趣点匹配${point.score}分且区县一致；小区级定位，非楼栋门牌，不需重复人工确认`;
  const address=row.address||point.name,states=parseFieldState(row.effective_field_state),version=Number(row.edit_version)+1;
  for(const [field,value] of Object.entries({address,district_name:districtName,district_code:districtCode,location_lng:Number(row.location_lng),location_lat:Number(row.location_lat),location_coordinate_system:row.location_coordinate_system,location_coordinate_source:reason}))states[field]={resolution:'no_correction',value,version,reason};
  await tx.query('update complaint set address=?,district_code=?,district_name=?,location_coordinate_source=?,effective_field_state=?,edit_version=? where complaint_id=?',[address,districtCode,districtName,reason,JSON.stringify(states),version,id]);

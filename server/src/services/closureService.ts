@@ -98,7 +98,7 @@ export async function closeComplaint(
     }
 
     await tx.execute(
-      'update complaint set closed_in_system = 1, closed_at = ?, closed_by = ?, closed_by_name = ?,' +
+      "update complaint set closed_in_system = 1, status = 'closed', closed_at = ?, closed_by = ?, closed_by_name = ?," +
         ' closed_basis = ?, updated_at = ? where complaint_id = ?',
       [now, ctx.userId, ctx.userName, basis, now, complaintId]
     );

@@ -34,7 +34,7 @@ export function acceptApproximateGeocode(f:any,r:any,row:Record<string,unknown>)
  if(row.district_code&&!String(c.county_code??'').endsWith(String(row.district_code))||row.district_name&&c.county!==row.district_name)return null;
  const longitude=Number(p?.lon),latitude=Number(p?.lat),score=Number(p?.score);
  if(p?.lon==null||p?.lat==null||!Number.isFinite(longitude)||!Number.isFinite(latitude)||longitude<110||longitude>112.3||latitude<29.5||latitude>31.8||!Number.isFinite(score)||score<0||score>100)return null;
- return {longitude,latitude,score,level:String(p.level??'近似地址'),coordinateSystem:'CGCS2000',source:`待纠偏：天地图近似地址定位，分数${score}，级别${String(p.level??'未知')}，已核对宜昌市及区县；非人工核验`};
+ return {longitude,latitude,score,level:String(p.level??'近似地址'),coordinateSystem:'WGS84',source:`待纠偏：高德近似地址定位，分数${score}，级别${String(p.level??'未知')}，已核对宜昌市及区县；非人工核验`};
 }
 export function confirmedCoordinateSource(source:string|null):string|null {
  return source?.replace(/待纠偏/g,'已人工核验（原近似来源）').slice(0,500)??null;

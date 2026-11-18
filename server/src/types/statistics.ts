@@ -19,7 +19,7 @@ export interface StatisticsComplaint extends StatisticsFacts {
  id:number;analysisId:string|null;businessAt:string|null;businessDay:string|null;timeSource:'source_reported_at'|'received_fallback'|'unavailable';timeReason:string|null;
  grids:string[];locationReason:string|null;snapshotReason:string|null;
 }
-export interface HouseholdEvidence {enterpriseCode:string;at:string;households:number|null;validFrom:string|null;validTo:string|null;version:string|null;value:number|null;reason:string|null;label:string}
+export interface HouseholdEvidence {enterpriseCode:string;at:string;households:number|null;validFrom:string|null;validTo:string|null;version:string|null;value:number|null;reason:string|null;label:string;/** 企业主数据的大屏显示名（enterprise.display_on_screen=1 时取 screen_name→enterprise_name；未配置为 null，调用方不得自行编造） */displayName?:string|null}
 export interface StatisticsResult {
  query:StatisticsQuery;policy:{id:string;version:number;status:'candidate'|'procurement';label:string};timezone:'Asia/Shanghai';timeBasis:string;
  total:number;partial:boolean;dateFilterUnavailableCount:number;sourceTimeFallbackCount:number;unlocatedCount:number;multiGridCount:number;

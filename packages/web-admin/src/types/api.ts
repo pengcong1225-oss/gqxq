@@ -131,8 +131,15 @@ export interface ComplaintListItem {
 
   /** 来源系统原值（界面通过中文映射展示，保留接口和数据库原值） */
   sourceSystem: string | null;
+  /** 案件公文号（来源系统流水号，complaint.source_id） */
   sourceId: string | null;
   sourceChannel: string | null;
+  /**
+   * 来源案件主类型 / 二级类型**原值**（服务端从 source_*_category_code 或来源快照 metadata 取）。
+   * 仅列表接口保证提供；详情等其它接口可能缺省，展示时按 null 处理。
+   */
+  sourceMajorCategoryName?: string | null;
+  sourceMinorCategoryName?: string | null;
 
   businessTypeCode: BusinessType;
   businessTypeName: string;
@@ -180,6 +187,21 @@ export interface ComplaintListItem {
   activeDispatchStatusName: string | null;
   /** 兼容列：平台侧仍在读写 complaint.status，G1 起由 gqxq 服务按派生规则维护 */
   legacyStatus: string;
+  satisfactionText: string | null;
+  satisfactionCode: string | null;
+  citizenFeedbackResolution: string | null;
+  thirdPartyEvaluation: string | null;
+  thirdPartyResolution: string | null;
+  industryDepartment: string | null;
+  isConfidential: string | null;
+  selfHandled: string | null;
+  itemCategory: string | null;
+  sourceSubCategory: string | null;
+  sourceDepartmentName: string | null;
+  handlingResult: string | null;
+  replyToCitizen: string | null;
+  statusCode: string;
+  statusName: string;
 
   sourceReportedAt: string | null;
   receivedAt: string | null;
@@ -211,7 +233,9 @@ export interface LocationClueView {
 }
 
 export interface ComplaintDetail extends ComplaintListItem {
-  sourceSummary?: {caseType:string|null;majorCategory:string|null;minorCategory:string|null;department:string|null;secondaryDepartment:string|null;district:string|null;street:string|null;community:string|null;grid:string|null;supervisionStatus:string|null;deadlineRaw:string|null;completedRaw:string|null;result:string|null};
+  citizenName?: string | null;
+  citizenPhone?: string | null;
+  sourceSummary?: {caseType:string|null;majorCategory:string|null;minorCategory:string|null;department:string|null;secondaryDepartment:string|null;district:string|null;street:string|null;community:string|null;grid:string|null;supervisionStatus:string|null;deadlineRaw:string|null;completedRaw:string|null;result:string|null;satisfaction:string|null;satisfactionCode:string|null};
   category?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
   sourceCategory?: {majorCode:string;minorCode:string|null;dictionaryVersion:string}|null;
   sourceAddress: string | null;
@@ -283,6 +307,8 @@ export interface ComplaintListParams {
   /** 来源原始大小类名称或来源分类编码，精确匹配。 */
   sourceMajorCategory?: string;
   sourceMinorCategory?: string;
+  /** 案件公文号（complaint.source_id）精确匹配（服务端 = 等值，非模糊），最长 128 字符 */
+  sourceId?: string;
   /** 页码，默认 1 */
   page?: number;
   /** 每页条数 1–100，默认 20；超出服务端报 400 */
@@ -297,6 +323,8 @@ export interface ComplaintListParams {
   reportingStatus?: Csv<ReportingStatus>;
   /** 超期时效筛选；不传 = 全部。取值语义见 OvertimeFilter */
   overtime?: OvertimeFilter;
+  /** 满意度多值筛选（satisfied/basically_satisfied/unsatisfied/no_reply） */
+  satisfaction?: string[];
   /** 协议值 0/1；为方便调用方也接受 boolean */
   isSensitive?: 0 | 1 | boolean;
   correctionStatus?: CorrectionStatus;

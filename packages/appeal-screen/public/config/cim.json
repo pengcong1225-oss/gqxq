@@ -1,5 +1,60 @@
 {
-  "wmts": null,
-  "s3m": null,
-  "note": "正式资源须通过固定受控代理及资源方核验后配置；禁止在此放置凭据。WMTS 配置需指定 url、layer、style、format、tileMatrixSetID、tileMatrixLabels、minimumLevel、maximumLevel；S3M 配置需指定 url。"
+  "version": 2,
+  "checkedAt": "2026-11-11",
+  "status": "partial_ok",
+  "reason": "CIM 影像 WMTS 经 vite /cim 代理（X-ACCESS-TOKEN + KVP GetTile）可正常加载；白模场景可枚举，但 SuperMap3D/Cesium 三维引擎待接入。",
+  "note": "本文件只放服务地址/图层名/CRS/矩阵/状态等非敏感参数，禁止放置 AccessKey/SecretKey 等凭据；凭据只由后端或受控代理注入（dev 走 vite /cim 代理）。",
+  "wmts": {
+    "name": "宜昌市2026年0.5米影像",
+    "provider": "OGC:WMTS（SuperMap iServer MapServer 代理）",
+    "status": "capabilities_ok",
+    "url": "https://drs.sc.yichang.gov.cn/api/restapi/prod/IC42050020261004000001/tip-gateway/proxy/74d67b414b5b77f8b72ceb8af1047500/server/rest/services/yichang20260922_0d5/MapServer/WMTS",
+    "proxyBase": "/cim",
+    "capabilitiesUrl": "https://drs.sc.yichang.gov.cn/api/restapi/prod/IC42050020261004000001/tip-gateway/proxy/74d67b414b5b77f8b72ceb8af1047500/server/rest/services/yichang20260922_0d5/MapServer/WMTS?service=WMTS&request=GetCapabilities",
+    "layer": "yichang20260922_0d5",
+    "style": "default",
+    "matrixSet": "default",
+    "format": "image/jpgpng",
+    "crs": "urn:ogc:def:crs:EPSG::4490",
+    "epsg": 4490,
+    "tileWidth": 256,
+    "tileHeight": 256,
+    "topLeftCorner": [90.0, -180.0],
+    "matrixIds": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"],
+    "resolutions": [1.4078260157, 0.7039130079, 0.3519565039, 0.175978252, 0.087989126, 0.043994563, 0.0219972815, 0.0109986407, 0.0054993204, 0.0027496602, 0.0013748301, 0.000687415, 0.0003437075, 0.0001718538, 0.0000859269, 0.0000429634, 0.0000214817, 0.0000107409, 0.0000053704, 0.0000026852, 0.0000013426],
+    "resolutionsNote": "由 GetCapabilities 的 ScaleDenominator × 0.00028 / 111319.49 换算；level0≈1.407826°（标准 WMTS 网格），逐级 /2，EPSG:4490 轴序为 纬/经。",
+    "bbox": [108.27336142, 28.96832129, 116.22278768, 33.37884143],
+    "bboxNote": "lower 28.9683 108.2734 / upper 33.3788 116.2228（纬经序）→ 前端换算为 [minLon,minLat,maxLon,maxLat]。",
+    "capabilitiesStatus": "ok",
+    "tiles": {
+      "status": "ok_kvp",
+      "observedAt": "2026-11-11",
+      "evidence": "经 /cim 代理（注入 X-ACCESS-TOKEN）请求 KVP GetTile：GET /WMTS?Service=WMTS&Request=GetTile&Version=1.0.0&Layer=yichang20260922_0d5&Style=default&TileMatrixSet=default&Format=image/jpgpng&TileMatrix=12&TileRow=674&TileCol=3310 → HTTP 200 image/jpeg（约 11KB），影像瓦片真实加载。",
+      "restNote": "REST 形态 /WMTS/tile/1.0.0/.../default/default/12/1349/6628 带同一 token 返回 HTTP 200 + JSON code=401（网关 tip-token 前缀凭证），因此前端统一用 KVP GetTile，不走 REST tile 路径。",
+      "note": "GetCapabilities 与 KVP GetTile 用 X-ACCESS-TOKEN；REST tile 是另一套 tip-token。前端不伪造影像；若 KVP 瓦片失败会自动隐藏图层并回退深色网格。"
+    }
+  },
+  "s3m": {
+    "name": "全市抖动白模三维服务",
+    "provider": "SuperMap iServer 3D（Cesium 支持 s3m cache）",
+    "status": "scenes_ok",
+    "url": "https://drs.sc.yichang.gov.cn/api/restapi/prod/IC42050020260922000001/iserver/services/3D-qsbm-new-jitter-qx/",
+    "proxyBase": "/cim",
+    "scenesUrl": "https://drs.sc.yichang.gov.cn/api/restapi/prod/IC42050020260922000001/iserver/services/3D-qsbm-new-jitter-qx/rest/realspace/scenes",
+    "scenes": [
+      "yilingqu_jitter",
+      "chengqu_jitter",
+      "zhijiang_jitter",
+      "zigui_jitter",
+      "yuanan_jitter",
+      "changyang_jitter",
+      "dangyang_jitter",
+      "wufeng_jitter",
+      "xingshan_jitter",
+      "yidu_jitter"
+    ],
+    "scenesStatus": "ok",
+    "engineStatus": "pending",
+    "note": "白模场景可枚举（10 个区县），但真正渲染需要 SuperMap3D/Cesium 客户端 + 同一套 token，前半不接入、不伪造三维白模。"
+  }
 }

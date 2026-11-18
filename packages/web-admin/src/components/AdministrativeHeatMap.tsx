@@ -1,34 +1,51 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Button,Space,Typography} from 'antd';
-import {loadSdk} from './TiandituLocationPicker';
+import {loadAmapSdk,ringToGcj02,wgs84ToGcj02} from './amapSdk';
 import type {AdministrativeHeatData} from '../api/administrativeHeat';
 export const heatColors={green:'#52c41a',blue:'#1677ff',yellow:'#fadb14',orange:'#fa8c16',red:'#f5222d'};
 type Grid=AdministrativeHeatData['grids'][number];
+
+/**
+ * 行政网格五色热力地图（高德 JS API）。
+ *
+ * 数据是 WGS84（后端契约），高德地图使用 GCJ-02，因此绘制前统一 wgs84ToGcj02；
+ * 天地图已下线，不再有"未配天地图 Key"的降级文案，改为"未配置高德 Key"。
+ * 交互：悬停显示网格名/数量/覆盖率，点击回调 onGrid；点位按 needsCorrection 区分。
+ */
 export default function AdministrativeHeatMap({data,showPoints,onGrid}:{data:AdministrativeHeatData;showPoints:boolean;onGrid:(g:Grid)=>void}){
  const host=useRef<HTMLDivElement>(null),callback=useRef(onGrid);callback.current=onGrid;
  const [error,setError]=useState(''),[hover,setHover]=useState<Grid|null>(null),[reload,setReload]=useState(0),[loading,setLoading]=useState(true);
  useEffect(()=>{let active=true;let map:any;let timer:ReturnType<typeof setTimeout>;setError('');setHover(null);setLoading(true);
- const key=import.meta.env.VITE_TIANDITU_TK?.trim();
- if(!key){setError('地图底图尚未配置。可在下方网格列表查看数量和明细。');setLoading(false);return;}
- timer=setTimeout(()=>{if(active){setError('地图加载超时，请重试；下方网格统计和明细仍可查看。');setLoading(false);}},15000);
- void loadSdk(key).then(raw=>{if(!active||!host.current)return;const T=raw as any;
-  map=new T.Map(host.current);map.centerAndZoom(new T.LngLat(111.29,30.7),11);map.enableScrollWheelZoom?.();
-  const bounds:any[]=[];
+ timer=setTimeout(()=>{if(active){setError('高德地图加载超时，请重试；下方网格统计和明细仍可查看。');setLoading(false);}},15000);
+ void loadAmapSdk().then(rawSdk=>{if(!active||!host.current)return;const AMap:any=rawSdk as any;
+  map=new AMap.Map(host.current,{zoom:11,center:wgs84ToGcj02(111.29,30.7),viewMode:'2D'});
+  const overlays:any[]=[];
   for(const g of data.grids)for(const c of g.coverages){if(c.coordinateSystem!=='WGS84')continue;for(const f of c.geometry?.features??[]){
-   const polys=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates;
-   for(const rings of polys){const points=rings[0].map(([lng,lat])=>new T.LngLat(lng,lat));bounds.push(...points);
-    // SDK supports polygon rings; holes remain excluded from membership counts server-side.
-    const shape=new T.Polygon(rings.length===1?points:rings.map(r=>r.map(([lng,lat])=>new T.LngLat(lng,lat))),{color:g.level?heatColors[g.level]:'#8c8c8c',weight:2,opacity:1,fillColor:g.level?heatColors[g.level]:'#bfbfbf',fillOpacity:g.level?.45:.18});
-    map.addOverLay(shape);shape.addEventListener('mouseover',()=>{if(active)setHover(g);});shape.addEventListener('click',()=>callback.current(g));
+   const polys:any=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates;
+   for(const rings of polys){
+    // 环 0 为外环，其余为洞：高德 Polygon 用 path 数组表达多环（洞按顺时针约定，后端已保证）
+    const path=rings.map((ring:number[][])=>ringToGcj02(ring));
+    const shape=new AMap.Polygon({path:path.length===1?path[0]:path,strokeColor:g.level?heatColors[g.level]:'#8c8c8c',strokeWeight:2,fillColor:g.level?heatColors[g.level]:'#8c8c8c',fillOpacity:0.35});
+    overlays.push(shape);
+    shape.on('mouseover',()=>{if(active)setHover(g);});
+    shape.on('click',()=>callback.current(g));
    }
   }}
-  if(showPoints)for(const p of data.points){const point=new T.LngLat(p.longitude,p.latitude);bounds.push(point);const circle=new T.Circle(point,35,{color:p.needsCorrection?'#8c8c8c':'#262626',weight:1,fillColor:p.needsCorrection?'#8c8c8c':'#262626',fillOpacity:.5});map.addOverLay(circle);}
-  if(bounds.length)map.setViewport?.(bounds);
+  if(showPoints)for(const p of data.points){
+   const circle=new AMap.Circle({center:wgs84ToGcj02(p.longitude,p.latitude),radius:35,strokeColor:p.needsCorrection?'#8c8c8c':'#262626',strokeWeight:1,fillColor:p.needsCorrection?'#8c8c8c':'#262626',fillOpacity:0.6});
+   overlays.push(circle);
+  }
+  if(overlays.length){map.add(overlays);map.setFitView(overlays);}
   clearTimeout(timer);setLoading(false);
- }).catch(()=>{if(active){setError('地图底图加载失败，请重试；可使用下方网格列表查看统计和明细。');setLoading(false);clearTimeout(timer);}});
- return()=>{active=false;clearTimeout(timer);map?.clearOverLays?.();map?.destroy?.();if(host.current)host.current.innerHTML='';};
+ }).catch((e:unknown)=>{if(active){setError('高德地图加载失败（'+(e instanceof Error?e.message:'未知原因')+'），请重试；可使用下方网格列表查看统计和明细。');setLoading(false);clearTimeout(timer);}});
+ return()=>{active=false;clearTimeout(timer);try{map?.clearMap?.();map?.destroy?.();}catch{}if(host.current)host.current.innerHTML='';};
  },[data,showPoints,reload]);
- return <div style={{position:'relative'}}>{error&&<Alert type="warning" message={error} action={<Button onClick={()=>setReload(n=>n+1)}>重试地图</Button>}/>}<div ref={host} aria-label="行政网格五色热力地图" style={{height:480,width:'100%',background:'#f3f6f8'}}/>
- <div style={{position:'absolute',left:12,top:error?65:12,zIndex:450,background:'white',padding:'10px 14px',borderRadius:6,maxWidth:380,boxShadow:'0 2px 8px #0002'}}>{hover?<><strong>{hover.name}</strong><div>社区 / 小区：{hover.communities.join('、')||'未登记'}</div><div>当前类别诉求 {hover.count} 件</div><Button size="small" onClick={()=>onGrid(hover)}>查看网格诉求</Button></>:<Typography.Text>{loading?'正在加载地图…':'将鼠标移到网格查看名称和数量，点击查看诉求明细。'}</Typography.Text>}</div>
+ return <div style={{position:'relative'}}>
+  {error&&<Alert type="warning" message={error} action={<Button onClick={()=>setReload(n=>n+1)}>重试地图</Button>}/>}
+  <div ref={host} aria-label="行政网格五色热力地图（高德）" style={{width:'100%',height:420,border:'1px solid #f0f0f0',borderRadius:8,overflow:'hidden'}}/>
+  {loading&&!error&&<div style={{position:'absolute',inset:0,display:'grid',placeItems:'center',color:'#8c8c8c'}}>高德地图加载中…</div>}
+  <div style={{position:'absolute',left:12,top:error?65:12,zIndex:450,background:'white',padding:'10px 14px',borderRadius:6,maxWidth:380,boxShadow:'0 2px 8px #0002'}}>
+   {hover?<><strong>{hover.name}</strong><br/><Space direction="vertical" size={0}><span>诉求 {hover.count} 件 · 等级 {hover.level ?? '未分级'}</span><span>规则版本 {hover.ruleVersion ?? '未发布'}</span>{hover.reason&&<Typography.Text type="secondary">{hover.reason}</Typography.Text>}</Space></>:<Typography.Text type="secondary">悬停网格查看名称、诉求量与覆盖率；点击可查看明细</Typography.Text>}
+  </div>
  </div>;
 }

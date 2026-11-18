@@ -17,6 +17,14 @@ export const DICT = {
     praise: '表扬',
   },
   urgency_level: { normal: '一般', urgent: '紧急', critical: '特急' },
+  status: {
+    pending: '待处理',
+    accepted: '已受理',
+    processing: '办理中',
+    completed: '已办结',
+    closed: '已办结',
+    archived: '已归档',
+  },
   correction_status: {
     none: '无需纠偏',
     pending: '待纠偏',

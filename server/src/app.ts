@@ -1,4 +1,5 @@
 import express from 'express';
+import { gzipSync } from 'node:zlib';
 import cors from 'cors';
 import morgan from 'morgan';
 import { env } from './config/env';
@@ -65,6 +66,26 @@ export function createApp(): express.Express {
   app.disable('x-powered-by');
   // M3：必须在任何读取 req.ip 的中间件之前设定（本行只写 setting，不参与路由顺序）
   applyTrustProxy(app);
+  // JSON 响应 gzip 压缩（无第三方依赖）：screen bootstrap 未压缩约 180KB，压缩后 ~25KB
+  app.use((req, res, next) => {
+    const origJson = res.json.bind(res);
+    (res as any).json = (body: unknown) => {
+      try {
+        const accept = String(req.headers['accept-encoding'] ?? '');
+        if (!accept.includes('gzip')) return origJson(body);
+        const raw = Buffer.from(JSON.stringify(body));
+        if (raw.length < 4096) return origJson(body);
+        const gz = gzipSync(raw);
+        res.setHeader('Content-Encoding', 'gzip');
+        res.setHeader('Vary', 'Accept-Encoding');
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        return res.end(gz);
+      } catch {
+        return origJson(body);
+      }
+    };
+    next();
+  });
   app.use(cors());
   app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
   app.use('/api/v1/utility/import', express.json({limit:'6mb'}));
@@ -87,3 +108,4 @@ export function createApp(): express.Express {
   app.use(errorHandler);
   return app;
 }
+

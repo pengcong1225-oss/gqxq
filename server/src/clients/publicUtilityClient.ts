@@ -159,8 +159,46 @@ export type PuTransportOutcome =
   | { kind: 'timeout'; message: string }
   | { kind: 'network_error'; message: string };
 
+/** 把一次点对点调用的结果回报给数据服务中心，做统一审计；失败只记日志，绝不影响业务。 */
+function reportLinkAudit(attempt: SignedAttempt, outcome: PuTransportOutcome, elapsedMs: number): void {
+  const cfg = env.dataCenter;
+  if (!cfg || !cfg.enabled) return;
+  const ok = outcome.kind === 'response' && outcome.httpStatus >= 200 && outcome.httpStatus < 300;
+  const body = {
+    source: 'gqxq',
+    target: 'utility',
+    action: attempt.path.includes('/preflight') ? 'task.preflight' : 'task.create',
+    status: outcome.kind === 'response' ? outcome.httpStatus : 599,
+    elapsed_ms: Math.min(Math.max(Math.round(elapsedMs), 0), 600000),
+    request_id: attempt.nonce.slice(0, 32),
+    error_code: ok ? '' : (outcome.kind === 'response' ? 'http_' + outcome.httpStatus : outcome.kind),
+  };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), cfg.timeoutMs ?? 2000);
+  void fetch(new URL('/api/v1/internal/audit', cfg.baseUrl).href, {
+    method: 'POST',
+    redirect: 'error',
+    signal: controller.signal,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-App-Id': cfg.appId,
+      'X-API-Key': cfg.apiKey,
+    },
+    body: JSON.stringify(body),
+  })
+    .catch((error) => console.error('[link-audit] 上报失败：', error instanceof Error ? error.message : error))
+    .finally(() => clearTimeout(timer));
+}
+
 export async function postIntegrationTask(attempt: SignedAttempt, maxResponseBytes=MAX_PAYLOAD_BYTES): Promise<PuTransportOutcome> {
   if(!Number.isInteger(maxResponseBytes)||maxResponseBytes<1||maxResponseBytes>2*1024*1024)throw new Error('invalid integration response bound');
+  const startedAt = Date.now();
+  const outcome = await postIntegrationTaskInner(attempt, maxResponseBytes);
+  reportLinkAudit(attempt, outcome, Date.now() - startedAt);
+  return outcome;
+}
+
+async function postIntegrationTaskInner(attempt: SignedAttempt, maxResponseBytes: number): Promise<PuTransportOutcome> {
   const url = new URL(env.pu.baseUrl).origin + attempt.path;
   const controller = new AbortController();
   let timedOut = false;

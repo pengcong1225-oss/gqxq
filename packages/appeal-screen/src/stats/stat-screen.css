@@ -1,0 +1,300 @@
+/* 统计大屏全局样式（只在 #/stats 视图内生效，类名统一 st- 前缀） */
+
+.stat-root {
+  --st-bg0: #040b16;
+  --st-bg1: #071528;
+  --st-panel: rgba(8, 26, 46, 0.88);
+  --st-border: rgba(52, 152, 219, 0.35);
+  --st-border-strong: rgba(53, 224, 255, 0.55);
+  --st-cyan: #35e0ff;
+  --st-cyan-deep: #19b8d8;
+  --st-text: #dceeff;
+  --st-sub: #8fb6d3;
+  --st-muted: #5d7f9b;
+  --st-water: #19d3f0;
+  --st-gas: #f5a623;
+  --st-red: #ff5b5b;
+  --st-orange: #ff9f43;
+  --st-yellow: #ffd166;
+  --st-green: #2ecc71;
+
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  color: var(--st-text);
+  font-family: 'Bahnschrift', 'DIN Alternate', system-ui, 'Microsoft YaHei', sans-serif;
+  background:
+    radial-gradient(1200px 620px at 50% -10%, rgba(24, 120, 165, 0.28), transparent 62%),
+    radial-gradient(900px 480px at 12% 108%, rgba(20, 90, 140, 0.22), transparent 60%),
+    radial-gradient(900px 480px at 92% 104%, rgba(20, 90, 140, 0.18), transparent 60%),
+    linear-gradient(180deg, #061323 0%, #040b16 55%, #03080f 100%);
+}
+
+.stat-root *,
+.stat-root *::before,
+.stat-root *::after {
+  box-sizing: border-box;
+}
+
+.stat-root ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.stat-root ::-webkit-scrollbar-thumb {
+  background: rgba(53, 224, 255, 0.35);
+  border-radius: 3px;
+}
+.stat-root ::-webkit-scrollbar-track {
+  background: rgba(53, 224, 255, 0.05);
+}
+
+/* 设计稿 1920×1080，用 transform: scale(min(w/1920, h/1080)) 适配 */
+.stat-viewport {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #03080f;
+}
+.stat-canvas {
+  flex: none;
+  transform-origin: center center;
+}
+
+/* ---------------------------------------------------------------- 面板壳 */
+
+.st-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: linear-gradient(180deg, rgba(10, 32, 56, 0.92), rgba(6, 19, 35, 0.9));
+  border: 1px solid var(--st-border);
+  box-shadow: inset 0 0 26px rgba(20, 90, 130, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.st-panel::before,
+.st-panel::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--st-cyan);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.st-panel::before {
+  left: -1px;
+  top: -1px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.st-panel::after {
+  right: -1px;
+  bottom: -1px;
+  border-left: 0;
+  border-top: 0;
+}
+
+.st-panel__head {
+  flex: none;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(53, 224, 255, 0.12);
+  background: linear-gradient(90deg, rgba(24, 92, 134, 0.34), rgba(24, 92, 134, 0.04) 60%, transparent);
+}
+
+.st-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: #ecf8ff;
+  white-space: nowrap;
+}
+
+.st-panel__title::before {
+  content: '';
+  width: 4px;
+  height: 15px;
+  background: var(--st-cyan);
+  box-shadow: 0 0 9px var(--st-cyan);
+}
+
+.st-panel__caption {
+  font-size: 12px;
+  color: var(--st-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.st-panel__extra {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--st-sub);
+  white-space: nowrap;
+}
+
+.st-panel__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 8px 12px 10px;
+}
+
+/* 骨架屏 / 空态 / 错误态 */
+.st-state {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--st-muted);
+  font-size: 15px;
+  text-align: center;
+  padding: 8px;
+}
+.st-state__icon {
+  font-size: 26px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.st-state__title {
+  color: var(--st-sub);
+  font-size: 16px;
+}
+.st-state__text {
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 88%;
+  color: var(--st-muted);
+}
+.st-state__trace {
+  font-size: 12px;
+  color: #6b93b1;
+  letter-spacing: 0.3px;
+}
+.st-state__retry {
+  margin-top: 2px;
+  padding: 3px 14px;
+  font-size: 13px;
+  color: var(--st-cyan);
+  background: rgba(53, 224, 255, 0.08);
+  border: 1px solid rgba(53, 224, 255, 0.45);
+  cursor: pointer;
+}
+.st-state__retry:hover {
+  background: rgba(53, 224, 255, 0.18);
+}
+
+.st-skeleton {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+.st-skeleton__bar {
+  height: 16px;
+  background: linear-gradient(90deg, rgba(53, 224, 255, 0.08) 0%, rgba(53, 224, 255, 0.22) 45%, rgba(53, 224, 255, 0.08) 100%);
+  background-size: 220% 100%;
+  animation: st-shimmer 1.25s ease-in-out infinite;
+}
+.st-skeleton__bar:nth-child(2n) {
+  width: 86%;
+}
+.st-skeleton__bar:nth-child(3n) {
+  width: 68%;
+}
+.st-skeleton__block {
+  flex: 1;
+  min-height: 30px;
+  background: linear-gradient(90deg, rgba(53, 224, 255, 0.06) 0%, rgba(53, 224, 255, 0.16) 45%, rgba(53, 224, 255, 0.06) 100%);
+  background-size: 220% 100%;
+  animation: st-shimmer 1.25s ease-in-out infinite;
+}
+
+@keyframes st-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+/* 不可计算文本（统一视觉：虚线框 + 冷灰，绝不显示 0） */
+.st-uncomputable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  font-size: 13px;
+  color: #9db8ca;
+  border: 1px dashed rgba(157, 184, 202, 0.55);
+  border-radius: 2px;
+  background: rgba(157, 184, 202, 0.06);
+  white-space: nowrap;
+}
+
+/* 通用小标签 */
+.st-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  font-size: 12px;
+  color: var(--st-sub);
+  border: 1px solid rgba(53, 224, 255, 0.22);
+  background: rgba(53, 224, 255, 0.06);
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.st-chip--warn {
+  color: var(--st-yellow);
+  border-color: rgba(255, 209, 102, 0.4);
+  background: rgba(255, 209, 102, 0.08);
+}
+.st-chip--red {
+  color: #ff8f8f;
+  border-color: rgba(255, 91, 91, 0.45);
+  background: rgba(255, 91, 91, 0.1);
+}
+
+.st-link {
+  color: var(--st-cyan);
+  cursor: pointer;
+}
+.st-link:hover {
+  text-decoration: underline;
+}
+
+/* 截图/演示用：禁用动画，保证 headless 截图稳定（?noanim=1） */
+.stat-root.no-motion *,
+.stat-root.no-motion *::before,
+.stat-root.no-motion *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stat-root * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

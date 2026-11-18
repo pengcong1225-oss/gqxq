@@ -35,6 +35,8 @@ export async function listComplaints(
     keyword: params.keyword,
     sourceMajorCategory: params.sourceMajorCategory,
     sourceMinorCategory: params.sourceMinorCategory,
+    // 案件公文号精确筛选（标书 1.1.1）：空值不传，避免服务端把空串当筛选条件
+    sourceId: params.sourceId && params.sourceId.trim() !== '' ? params.sourceId.trim() : undefined,
     businessType: toCsv(params.businessType),
     complaintType: toCsv(params.complaintType),
     urgencyLevel: toCsv(params.urgencyLevel),
@@ -43,6 +45,7 @@ export async function listComplaints(
     reportingStatus: toCsv(params.reportingStatus),
     // 单值参数（'1' / '0' / 'none'），原样透传；非法值由服务端 zod 拦成 400
     overtime: params.overtime,
+    satisfaction: params.satisfaction?.length ? params.satisfaction.join(',') : undefined,
     isSensitive: toFlag(params.isSensitive),
     correctionStatus: params.correctionStatus,
     districtCode: params.districtCode,
