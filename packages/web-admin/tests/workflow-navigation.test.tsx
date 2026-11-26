@@ -446,7 +446,7 @@ test('真实诉求核验抽屉保留冲突原文且不自动采用候选', async
   };
   const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
   const originalUser = useAppStore.getState().userInfo;
-  useAppStore.setState({ userInfo: { id: 1, userId: 'tester', username: 'tester', realName: '测试经办', roles: ['handler'], permissions: ['complaint.correct', 'dispatch.create'] } });
+  useAppStore.setState({ userInfo: { id: 1, userId: 'tester', username: 'tester', realName: '测试经办', roles: ['handler'], permissions: ['complaint.correct', 'dispatch.create', 'assessment.read'] } });
   const { default: AddressCorrectionPage } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
   const { render, within, fireEvent, cleanup, waitFor } = await import('@testing-library/react');
   const ui = render(<MemoryRouter initialEntries={['/address-correction?complaintId=CPL-TEST']}>
@@ -457,6 +457,11 @@ test('真实诉求核验抽屉保留冲突原文且不自动采用候选', async
     await waitFor(() => assert.match(document.body.textContent ?? '', /原文区划或候选存在冲突/));
     assert.match(document.body.textContent ?? '', /联棚乡示例家园18号1301，样例社区20号1301/);
     assert.match(document.body.textContent ?? '', /位置核验/);
+    const reference = page.getByRole('link', { name: '查看 CIM 行政边界' });
+    assert.equal(reference.getAttribute('href'), '/screen/#/accept?cimLevel=sqjcglqy');
+    assert.equal(reference.getAttribute('target'), '_blank');
+    assert.equal(reference.getAttribute('rel'), 'noopener noreferrer');
+    assert.match(document.body.textContent ?? '', /仅显示边界概览/);
     await waitFor(() => assert.equal((page.getByRole('button', { name: '调整位置' }) as HTMLButtonElement).disabled, false));
     fireEvent.click(page.getByRole('button', { name: '调整位置' }));
     assert.equal(page.queryByRole('button', { name: '填入待核实地址' }), null);
@@ -464,9 +469,38 @@ test('真实诉求核验抽屉保留冲突原文且不自动采用候选', async
     fireEvent.click(page.getByRole('button', { name: '确认位置', exact: true }));
     await waitFor(() => assert.match(document.body.textContent ?? '', /调整或存在冲突时，请填写核对依据/));
     assert.equal((page.getByRole('textbox', { name: '核实后的地址' }) as HTMLInputElement).value, '来源地址原值');
+    useAppStore.setState({ userInfo: { ...useAppStore.getState().userInfo, permissions: ['complaint.correct'] } });
+    await page.findByText('当前账号未获 CIM 参考边界查看授权。');
+    await waitFor(() => assert.equal(page.queryByRole('link', { name: '查看 CIM 行政边界' }), null));
   } finally {
     ui.unmount(); cleanup(); axiosRequest.defaults.adapter = originalAdapter;
     useAppStore.setState({ userInfo: originalUser });
+  }
+});
+
+test('CIM 地址参考仅使用有效的有来源 WGS84 位置，并排除区县代表点', async () => {
+  const { cimAddressReference } = await vite.ssrLoadModule('/src/utils/cimAddressReference.ts');
+  const saved = {
+    ...locationDetailFixture, locationLng: 111.30042, locationLat: 30.70052,
+    locationCoordinateSystem: 'WGS84', locationCoordinateSource: '高德地址解析（门牌号）',
+    citizenName: '测试人名', citizenPhone: '测试号码',
+  };
+  const { href, hasPoint } = cimAddressReference('/gqxq', saved);
+  assert.equal(href, '/gqxq/screen/#/accept?cimLevel=sqjcglqy&lon=111.30042&lat=30.70052');
+  assert.equal(hasPoint, true);
+  const url = new URL(href, 'https://platform.example.test');
+  assert.equal(url.search, '');
+  for (const change of [
+    { locationLng: null }, { locationLat: null }, { locationLng: 0 },
+    { locationLng: Infinity }, { locationLat: 33 },
+    { locationCoordinateSystem: 'CGCS2000' }, { locationCoordinateSystem: 'unknown' },
+    { locationCoordinateSource: '' }, { locationCoordinateSource: null },
+    { locationCoordinateSource: '待纠偏：西陵区区县代表点，非诉求实际发生位置' },
+    { locationCoordinateSource: '已人工核验（原近似来源）：DataV行政区中心' },
+  ]) {
+    assert.deepEqual(cimAddressReference('/gqxq', { ...saved, ...change }), {
+      href: '/gqxq/screen/#/accept?cimLevel=sqjcglqy', hasPoint: false,
+    });
   }
 });
 

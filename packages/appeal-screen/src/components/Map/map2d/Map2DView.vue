@@ -17,6 +17,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import OlMap from 'ol/Map';
+import Overlay from 'ol/Overlay';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
 import VectorLayer from 'ol/layer/Vector';
@@ -28,8 +29,6 @@ import Point from 'ol/geom/Point';
 import Polygon from 'ol/geom/Polygon';
 import MultiPolygon from 'ol/geom/MultiPolygon';
 import LineString from 'ol/geom/LineString';
-import ImageLayer from 'ol/layer/Image';
-import ImageStatic from 'ol/source/ImageStatic';
 import { fromLonLat, toLonLat, transformExtent } from 'ol/proj';
 import { Style, Fill, Stroke, Circle as CircleStyle, Text as TextStyle } from 'ol/style';
 import { defaults as defaultControls, ScaleLine } from 'ol/control';
@@ -50,6 +49,8 @@ import {
 } from './cimTileSource';
 import { fetchGridBoundaries, boundarySourceLabel, type GridBoundary, type BoundaryPackInfo } from './gridLayer';
 import { API_BASE } from '../../../stats/apiBase';
+import { hashQuery } from '../../../stats/useDesignScale';
+import { CIM_BOUNDARY_LEVELS, parseCimBoundaryLink, useCimBoundaryOverlay } from './cimBoundaryOverlay';
 import { formalHeatColor, HEAT_COLORS, type AdministrativeHeat } from './administrativeHeat';
 import {
   fetchPipelineLayers,
@@ -188,6 +189,14 @@ const emit = defineEmits<{
 
 const hostRef = ref<HTMLDivElement | null>(null);
 const mapRef = shallowRef<OlMap | null>(null);
+const cimBoundaryLink = parseCimBoundaryLink(hashQuery());
+const {
+  level: cimBoundaryLevel,
+  status: cimBoundaryStatus,
+  refresh: refreshCimBoundary,
+  schedule: scheduleCimBoundary,
+  stop: stopCimBoundary,
+} = useCimBoundaryOverlay(() => mapRef.value, API_BASE, cimBoundaryLink.level);
 const probe = ref<CimProbeResult | null>(null);
 /**
  * 当前底图是否是高德兜底。
@@ -225,8 +234,6 @@ const streetLegendText = computed(() => {
   }
   for (const [label, n] of Object.entries(byProvider)) parts.push(`${label} ${n}（虚线·非权威）`);
   if (sc.buffer > 0) parts.push(`点位缓冲近似 ${sc.buffer}（蓝虚线 ≈）`);
-  // CIM 栅格边界（真网格线，但只能看不能填色）单独标出，避免被误认为可交互的网格面
-  if (cimGridReady.value) parts.push('CIM 网格边界（栅格线·只读）');
   return parts.length ? `街道/网格面＝${parts.join(' + ')}` : '街道/网格面＝待接入';
 });
 /** 要素级 provider → 中文标注（与 gridLayer.packProviderLabel 同口径） */
@@ -762,122 +769,13 @@ function shutdownMarkerStyle(feature: Feature, category: ShutdownCategory): Styl
   return linked ? [new Style({ image: halo, zIndex: 2 }), pointStyle] : pointStyle;
 }
 
-/* ------------------------------------------------ CIM 社区网格边界（栅格） */
-/*
- * 数据来自 CIM 平台「抖动-行政区划-社区网格」服务（《CIM-配置2》，EPSG:4490）。
- *
- * 为什么是栅格：2026-11-24 实测该服务 queryable=false，没有要素/属性通道
- * （queryResults/data/WMS/MVT 全 404）。所以这里只能按当前视野请求一张边界图，
- * 铺成 ImageStatic —— 网格线可见、与 CIM 影像完全贴合，但**不能按诉求量填色**。
- * 五色热力仍等 CIM 开放数据服务/矢量瓦片（见 server/docs/cim-grid-overlay.md）。
- *
- * 纪律：
- *   · 只请求当前视野 bbox（后端再夹到市域框），视野太小/太大都跳过，避免刷爆上游；
- *   · token 由后端持有，前端只带自己的登录令牌；
- *   · 拉不到就安静降级，不阻塞点位/热力图层。
- */
-const cimGridLayer = shallowRef<ImageLayer<ImageStatic> | null>(null);
-const cimGridReady = ref(false);
-let cimGridTimer: number | null = null;
-let cimGridSeq = 0;
-/** 宜昌市域框（CIM 服务 bounds），视野超出部分裁掉 */
-const CIM_CITY_BBOX = [110.251, 29.935, 112.089, 31.572];
-
-async function refreshCimGridBoundary() {
-  const m = mapRef.value;
-  if (!m) return;
-  const size = m.getSize();
-  if (!size) return;
-  const ext = m.getView().calculateExtent(size);
-  const west = Math.max(ext[0], CIM_CITY_BBOX[0]);
-  const south = Math.max(ext[1], CIM_CITY_BBOX[1]);
-  const east = Math.min(ext[2], CIM_CITY_BBOX[2]);
-  const north = Math.min(ext[3], CIM_CITY_BBOX[3]);
-  if (!(east > west + 1e-3 && north > south + 1e-3)) return;
-  const token = (() => { try { return sessionStorage.getItem('gqxq-token'); } catch { return null; } })();
-  if (!token) return;
-  /*
-   * ⚠️ 出图纵横比必须按「度」等距算，**不能做 cos(纬度) 地面米校正**（2026-11-24 实测）。
-   *
-   * CIM 的 image.png 是「等度像素」网格：服务端按请求的 width×height 直接铺满 viewBounds。
-   * 一旦按地面米做 cos 校正（把 height 放大 1/cos φ ≈ 1.16 倍），请求的像素纵横比就和 bbox
-   * 的度纵横比不一致，服务端会按自己的比例扩边，前端再把整张图拉回 bbox —— 于是网格线整层
-   * 上下偏移。实测 0.4°×0.3° 框叠加高德区县界：
-   *   · 等度像素 → 偏差 0~2px（<100m，属两家边界概括差异，不是错位）；
-   *   · cos 校正   → 偏差 44px ≈ 1.6km，就是「网格线跟影像/着色对不上」的来源。
-   *
-   * 另外夹上限时必须**等比例**缩放：只夹 height 会把纵横比又改回不平（同一个坑的第二半）。
-   */
-  const spanLon = Math.max(east - west, 1e-9);
-  const spanLat = Math.max(north - south, 1e-9);
-  const degAspect = spanLat / spanLon; // 度空间「高/宽」
-  let width = 1024;
-  let height = Math.round(width * degAspect);
-  if (height > 1024) {
-    height = 1024;
-    width = Math.round(height / degAspect);
-  }
-  if (height < 160) {
-    height = 160;
-    width = Math.round(height / degAspect);
-  }
-  width = Math.max(128, Math.min(2048, width));
-  height = Math.max(128, Math.min(2048, height));
-  const bbox = [west, south, east, north].map((n) => n.toFixed(5)).join(',');
-  const seq = ++cimGridSeq;
-  try {
-    const res = await fetch(API_BASE + '/cim/grid-overlay?level=sqwg&bbox=' + bbox + '&w=' + width + '&h=' + height, {
-      headers: { Authorization: 'Bearer ' + token },
-    });
-    if (seq !== cimGridSeq) return;
-    if (!res.ok) { cimGridReady.value = false; return; }
-    const blob = await res.blob();
-    const bmp = await createImageBitmap(blob);
-    const cvs = document.createElement('canvas');
-    cvs.width = bmp.width;
-    cvs.height = bmp.height;
-    const ctx = cvs.getContext('2d');
-    if (!ctx) return;
-    // CIM 出图是「黄线 + 透明底」；转青绿，避免与琥珀底稿、绿色底图撞色
-    ctx.filter = 'hue-rotate(150deg) saturate(1.15)';
-    ctx.globalAlpha = 0.9;
-    ctx.drawImage(bmp, 0, 0);
-    const src = new ImageStatic({
-      url: cvs.toDataURL('image/png'),
-      imageExtent: [west, south, east, north],
-      projection: 'EPSG:4326',
-    });
-    /*
-     * 网格栅格是「参考层」，不是第二张底图：视角越广，它越该退到背景。
-     * 市域视角几十条网格线糊满屏时很容易被误读成「多了一个底图」，所以按视野宽度给透明度分级。
-     */
-    const gridOpacity = spanLon > 1.2 ? 0.28 : spanLon > 0.6 ? 0.45 : 0.72;
-    if (cimGridLayer.value) {
-      cimGridLayer.value.setSource(src as never);
-      cimGridLayer.value.setOpacity(gridOpacity);
-    } else {
-      const layer = new ImageLayer({ source: src, opacity: gridOpacity, zIndex: 3, className: 'cim-grid-layer' });
-      cimGridLayer.value = layer as never;
-      m.addLayer(layer);
-    }
-    cimGridReady.value = true;
-  } catch {
-    if (seq === cimGridSeq) cimGridReady.value = false;
-  }
-}
-
-function scheduleCimGridBoundary() {
-  if (cimGridTimer) window.clearTimeout(cimGridTimer);
-  cimGridTimer = window.setTimeout(() => { void refreshCimGridBoundary(); }, 400);
-}
-
 async function initMap() {
   if (!hostRef.value) return;
 
   const view = new View({
     projection: 'EPSG:4326',
-    center: DEFAULT_CENTER_LONLAT,
-    zoom: DEFAULT_ZOOM,
+    center: cimBoundaryLink.center ?? DEFAULT_CENTER_LONLAT,
+    zoom: cimBoundaryLink.center ? 13 : DEFAULT_ZOOM,
     minZoom: 6,
     maxZoom: 18,
     extent: [-180, -90, 180, 90],
@@ -892,6 +790,17 @@ async function initMap() {
     ]),
   });
   mapRef.value = map;
+  if (cimBoundaryLink.center) {
+    const marker = document.createElement('span');
+    marker.className = 'map2d__cim-marker';
+    marker.textContent = '参考位置';
+    map.addOverlay(new Overlay({
+      element: marker,
+      position: cimBoundaryLink.center,
+      positioning: 'center-center',
+      stopEvent: false,
+    }));
+  }
   /*
    * 诊断钩子：把当前 scale / resolution 写到容器 dataset 上。
    * 生产环境也保留 —— 排查「标签该不该显示」「色块为什么这样分档」时，
@@ -909,12 +818,8 @@ async function initMap() {
   map.on("moveend", syncScaleAttr);
   setTimeout(syncScaleAttr, 0);
 
-  /*
-   * CIM 社区网格边界（栅格）：随视野刷新。
-   * 首屏延迟 3s 再取 —— 底图瓦片优先，边界层是增强项，不能抢首屏带宽。
-   */
-  map.on('moveend', scheduleCimGridBoundary);
-  window.setTimeout(() => { void refreshCimGridBoundary(); }, 3000);
+  map.on('moveend', () => scheduleCimBoundary());
+  scheduleCimBoundary(3000);
   // 联调钩子：仅开发环境挂到 window，供自动化验证按经纬度取像素坐标（生产不挂）
   if (import.meta.env.DEV) {
     (window as any).__map2d = map;
@@ -2435,6 +2340,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  stopCimBoundary();
   const map = mapRef.value;
   if (map) {
     map.setTarget(undefined);
@@ -2443,7 +2349,7 @@ onBeforeUnmount(() => {
   mapRef.value = null;
 });
 
-defineExpose({ resetCamera, flyToDistrict, setPipelineVisible, loadPipeline, clearPipelineSelection, setShutdownVisible, loadShutdown, clearShutdownSelection, shutdownHighlightedCount, locateCommunity, clearLocatedCommunity, locateGrid });
+defineExpose({ resetCamera, flyToDistrict, setPipelineVisible, loadPipeline, clearPipelineSelection, setShutdownVisible, loadShutdown, clearShutdownSelection, shutdownHighlightedCount, locateCommunity, clearLocatedCommunity, locateGrid, refreshCimBoundary });
 </script>
 
 <template>
@@ -2625,6 +2531,23 @@ defineExpose({ resetCamera, flyToDistrict, setPipelineVisible, loadPipeline, cle
       <button type="button" class="map2d__sdreload" title="重新拉取停水停气事件" @click="loadShutdown">
         {{ shutdownLoading ? '…' : '刷新' }}
       </button>
+      </div>
+      <div class="map2d__layerbar-switches map2d__cim-controls">
+        <label class="map2d__cim-control">
+          <span class="map2d__layerbar-label">CIM 参考边界</span>
+          <select v-model="cimBoundaryLevel" class="map2d__pipebtn map2d__cim-select">
+            <option value="">关闭</option>
+            <option v-for="(label, level) in CIM_BOUNDARY_LEVELS" :key="level" :value="level">{{ label }}</option>
+          </select>
+        </label>
+        <span class="map2d__cim-status" role="status">{{ cimBoundaryStatus.text }}</span>
+        <button
+          v-if="cimBoundaryStatus.retry"
+          type="button"
+          class="map2d__pipebtn"
+          aria-label="重试 CIM 参考边界"
+          @click="refreshCimBoundary"
+        >重试</button>
       </div>
     </div>
 
@@ -3122,6 +3045,48 @@ defineExpose({ resetCamera, flyToDistrict, setPipelineVisible, loadPipeline, cle
   color: #7ea8a0;
   font-size: 10px;
   margin-right: 1px;
+}
+.map2d__cim-controls {
+  border-top: 1px solid rgba(134, 251, 231, 0.16);
+}
+.map2d__cim-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.map2d__cim-select {
+  background: #0c302e;
+  color: #c5f7ee;
+}
+.map2d__cim-status {
+  margin-left: 3px;
+  color: #b8ded6;
+  font-size: 11px;
+}
+.map2d :deep(.map2d__cim-marker) {
+  display: block;
+  position: relative;
+  transform: translateX(calc(50% + 10px));
+  padding: 2px 4px;
+  background: #112f31;
+  border-radius: 2px;
+  color: #fff1b5;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.map2d :deep(.map2d__cim-marker::before) {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 2px);
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  border: 2px solid #ffe57a;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #112f31;
 }
 .map2d__layerbar-sep,
 .map2d__layerbar-vsep {

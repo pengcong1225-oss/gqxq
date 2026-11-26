@@ -1229,6 +1229,7 @@ async function submitLogin() {
     await realLogin(loginUser.value.trim(), loginPw.value);
     loginOpen.value = false;
     loginPw.value = '';
+    void map2dRef.value?.refreshCimBoundary();
     showToast('已登录：加载真实诉求数据（token 仅保存在 sessionStorage）');
     await reload();
     void reloadMonthly();

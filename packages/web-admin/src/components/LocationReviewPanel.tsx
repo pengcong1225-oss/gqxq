@@ -1,13 +1,16 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Button,Card,Collapse,Input,Select,Space,Typography} from 'antd';
 import {useAppStore} from '../stores/appStore';
+import {usePermissionAccess,useWriteAccess} from '../stores/roleAccess';
 import {getComplaint} from '../api/complaints';
+import {BASE_PATH} from '../api/request';
 import type {ComplaintDetail,CorrectionItem} from '../types/api';
 import type {LocationCorrectionOptions,LocationCorrectionResult} from '../types/locationCorrection';
 import {confirmLocationGroup,deferLocationGroup,getLocationCorrectionOptions,listComplaintCorrections} from '../api/corrections';
 import {locationDraftInput,type LocationDraft} from './LocationCorrectionFields';
 import AmapLocationPicker from './AmapLocationPicker';
 import {adoptLocation,safePlaceQuery,suggestLocations,resolveAddressLocation} from '../utils/locationSuggestions';
+import {cimAddressReference} from '../utils/cimAddressReference';
 export interface LocationReviewPanelProps {detail:ComplaintDetail;items:CorrectionItem[];disabled?:boolean;onSaved:(result:LocationCorrectionResult,next:boolean)=>void;onDeferred:(next:boolean)=>void}
 const fields=new Set(['address','location_lng','location_lat','district_name','district_code','admin_grid_code','community_code']);
 function initial(d:ComplaintDetail):LocationDraft{return {address:d.effectiveAddress??d.correctedAddress??d.address??'',districtCode:d.districtCode,adminGridCode:d.adminGridCode,communityCode:d.communityCode,lng:d.locationLng==null?'':String(d.locationLng),lat:d.locationLat==null?'':String(d.locationLat),coordinateSystem:d.locationCoordinateSystem??'unknown',coordinateSource:d.locationCoordinateSource??''};}
@@ -22,6 +25,9 @@ function Review({detail:incoming,items:incomingItems,disabled,onSaved,onDeferred
  const canRevise=!detail.closedInSystem&&items.some(i=>fields.has(i.fieldName))&&items.filter(i=>fields.has(i.fieldName)).every(i=>i.status==='confirmed');
  const suggestions=options?suggestLocations(detail,options):null;
  const addressResolution=options?resolveAddressLocation(draft.address??'',options):null;
+ const canReviewLocation=useWriteAccess('complaint.correct').can;
+ const canReadReference=usePermissionAccess('assessment.read').can;
+ const cimReference=cimAddressReference(BASE_PATH,detail);
  useEffect(()=>{alive.current=true;void getLocationCorrectionOptions(detail.complaintId).then(o=>{if(!alive.current)return;setOptions(o);const s=suggestLocations(detail,o);const manual=!!detail.correctedAddress||items.some(i=>fields.has(i.fieldName)&&i.status==='confirmed');setDraft(current=>{
  if(!changed.current&&s.unique&&!manual)return adoptLocation(current,s.unique);
  if(current.address&&!current.districtCode&&!current.adminGridCode&&!current.communityCode){
@@ -65,6 +71,14 @@ function Review({detail:incoming,items:incomingItems,disabled,onSaved,onDeferred
   {!pending&&<Alert type="success" message={revision?'正在重新核对已确认位置，请填写本次核对依据':'本条位置待办已处理'} action={canRevise&&!revision?<Button disabled={disabled||busy||stale} onClick={()=>{setRevision(true);setEditing(true);setDirty(true);setDraft(current=>({...current,basis:''}));}}>重新核对已确认位置</Button>:undefined}/>}
   <Typography.Paragraph>区县：{options?.districts.find(d=>d.code===draft.districtCode)?.name??'待核实'}；网格：{options?.adminGrids.find(g=>g.code===draft.adminGridCode)?.name??'待核实'}；小区：{options?.communities.find(c=>c.code===draft.communityCode)?.name??'待核实'}</Typography.Paragraph>
   <Typography.Paragraph>待确认地点：{draft.address||'待选择'}；坐标{draft.lng&&draft.lat?'已提供，仍按来源状态核验':'未知'}</Typography.Paragraph>
+  {canReviewLocation&&<Typography.Paragraph>
+   {canReadReference?<Space wrap>
+    <Button href={cimReference.href} target="_blank" rel="noopener noreferrer">查看 CIM 行政边界</Button>
+    <Typography.Text type="secondary">{cimReference.hasPoint
+     ? '使用工单已保存的 WGS84 坐标作参考，位置精度与归属仍需人工核对。'
+     : '缺少可用于核对的 WGS84 位置，仅显示边界概览。'} 边界仅供核对，确认结果请在此处保存。</Typography.Text>
+   </Space>:<Typography.Text type="secondary">当前账号未获 CIM 参考边界查看授权。</Typography.Text>}
+  </Typography.Paragraph>}
    {draft.address&&addressResolution&&<Alert type="info" showIcon message={addressResolution.message} description={addressResolution.township?'乡镇／街道线索：'+addressResolution.township+'（从地址提取）':undefined} />}
   {suggestions&&suggestions.candidates.length>1&&<Space wrap>{suggestions.candidates.map((c,i)=><Button key={i} disabled={blocked} onClick={()=>change(adoptLocation(draft,c))}>{c.address} · {options?.districts.find(d=>d.code===c.districtCode)?.name??'区县未知'} · {options?.adminGrids.find(g=>g.code===c.adminGridCode)?.name??'网格未知'}</Button>)}</Space>}
   <Space wrap style={{marginBottom:12}}><Button type="primary" disabled={blocked||!options} loading={busy} onClick={()=>void submit(true)}>确认位置并下一条</Button><Button disabled={blocked||!options} onClick={()=>void submit(false)}>确认位置</Button><Button disabled={blocked} onClick={()=>setEditing(v=>!v)}>调整位置</Button><Button disabled={blocked||revision} onClick={()=>setDeferring(v=>!v)}>暂无法确认</Button></Space>
