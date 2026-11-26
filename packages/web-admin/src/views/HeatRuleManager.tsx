@@ -62,7 +62,7 @@ export default function HeatRuleManager(){
  if(!can)return <Alert type="warning" message="当前账号未获热力规则管理权限"/>;
  return <div style={{maxWidth:1280}}>
   <h2>热力规则配置</h2>
-  <p>配置诉求类别的五档热力系数及生效版本。<Link to="/heatmap">打开后台效果预览</Link></p>
+  <p>配置诉求类别的五档热力系数及生效版本。</p>
   <Alert type="info" showIcon style={{marginBottom:20}} message="按标书设置五档热力系数" description={<><div>热力值 = 统计天数 × 热力系数。诉求量处于两个热力值之间时，显示较大热力值对应的颜色。等于阈值归较低档，零值为绿色，超过最高阈值为红色。</div><div>小类规则优先，未设置时使用所属大类规则；没有规则时不设等级。统计天数含首尾自然日。<Link to="/dicts">维护诉求分类</Link></div></>}/>
   {error&&<Alert type="error" showIcon message={error} style={{marginBottom:16}}/>}
   {success&&<Alert type="success" showIcon message={success} style={{marginBottom:16}}/>}

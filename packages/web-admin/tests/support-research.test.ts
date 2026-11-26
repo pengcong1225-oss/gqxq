@@ -48,23 +48,21 @@ test('summer uses water pressure only and latest started season, empty data stay
  assert.equal(buildSupportResearch(dataset([]),'2026-01-01','2026-11-10',rules).winter.topGrids.length,0);
 });
 
-test('read-only permission renders disabled rule fields and simulation labeling',async()=>{
+test('read-only permission renders disabled rule fields',async()=>{
  const React=await import('react');
  const {renderToStaticMarkup}=await import('react-dom/server');
- const {default:SupportResearch}=await import('../src/tenderSupport/SupportResearch');
- const html=renderToStaticMarkup(React.createElement(SupportResearch,{data:dataset([]),from:'2026-11-01',to:'2026-11-10',onComplaint:()=>{},config:{revision:1,rules},onSaveRules:async()=>{},canManage:false}));
- assert.match(html,/模拟数据/);assert.match(html,/无规则管理权限/);
+ const {default:SupportWarningRules}=await import('../src/tenderSupport/SupportResearch');
+ const html=renderToStaticMarkup(React.createElement(SupportWarningRules,{config:{revision:1,rules},onSaveRules:async()=>{},canManage:false}));
+ assert.match(html,/只有规则查看权限/);
  assert.match(html,/aria-label="冬季供气观察天数"[^>]*disabled/);
- assert.match(html,/保存预警规则/);assert.match(html,/prefers-reduced-motion/);
+ assert.match(html,/保存预警规则/);
 });
 
-test('backend rule view excludes presentation charts, preview excludes configuration',async()=>{
+test('专题预警规则管理只显示规则维护',async()=>{
  const React=await import('react');
  const {renderToStaticMarkup}=await import('react-dom/server');
- const {default:SupportResearch}=await import('../src/tenderSupport/SupportResearch');
- const props={data:dataset([]),from:'2026-11-01',to:'2026-11-10',onComplaint:()=>{},config:{revision:1,rules},onSaveRules:async()=>{},canManage:true};
- const manage=renderToStaticMarkup(React.createElement(SupportResearch,{...props,view:'rules'}));
- assert.match(manage,/保存预警规则/);assert.doesNotMatch(manage,/最近五季诉求总量|往年同期高发诉求/);
- const preview=renderToStaticMarkup(React.createElement(SupportResearch,{...props,view:'preview'}));
- assert.match(preview,/最近五季诉求总量/);assert.doesNotMatch(preview,/保存预警规则|触发阈值/);
+ const {default:SupportWarningRules}=await import('../src/tenderSupport/SupportResearch');
+ const manage=renderToStaticMarkup(React.createElement(SupportWarningRules,{config:{revision:1,rules},onSaveRules:async()=>{},canManage:true}));
+ assert.match(manage,/保存预警规则/);
+ assert.doesNotMatch(manage,/最近五季诉求总量|往年同期高发诉求|未达阈值|查看完整明细/);
 });

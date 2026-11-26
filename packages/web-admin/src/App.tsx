@@ -1,14 +1,11 @@
 import BusinessRuleManager from './views/BusinessRuleManager';
 import DataAlerts from './views/DataAlerts';
-import AppealAssessment from './views/AppealAssessment';
-import SeasonalAssessment from './views/SeasonalAssessment';
-import GridComparison from './views/GridComparison';
 import React from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Result } from 'antd';
 import { useAppStore } from './stores/appStore';
 import { FORBIDDEN_MESSAGE, usePermissionAccess } from './stores/roleAccess';
-import MainLayout from './layouts/MainLayout';
+import MainLayout, { AdminHome } from './layouts/MainLayout';
 import Dashboard from './views/Dashboard';
 import ComplaintList from './views/ComplaintList';
 import ComplaintDetail from './views/ComplaintDetail';
@@ -18,7 +15,6 @@ import DispatchOrders from './views/DispatchOrders';
 import DispatchArchive from './views/DispatchArchive';
 import CompanyList from './views/CompanyList';
 import GridManager from './views/GridManager';
-import HeatmapView from './views/HeatmapView';
 import HeatRuleManager from './views/HeatRuleManager';
 import UtilityTimeoutView from './views/UtilityTimeoutView';
 import ShutdownList from './views/ShutdownList';
@@ -32,6 +28,32 @@ import ImportBatchList from './views/ImportBatchList';
 import ChangePassword from './views/ChangePassword';
 import Login from './views/Login';
 import TenderSupportView from './views/TenderSupportView';
+import { BASE_PATH } from './api/request';
+import { setScreenToken } from './stores/sessionStorage';
+
+function LegacyScreenLink({ drawer, heat }: { drawer?: 'research' | 'compare'; heat?: boolean }) {
+  const token = useAppStore(s => s.token);
+  const ready = useAppStore(s => Boolean(s.userInfo && !s.userInfo.mustChangePassword));
+  const screenPath = BASE_PATH + '/screen/';
+  const params = new URLSearchParams();
+  if (drawer) params.set('drawer', drawer);
+  if (heat) params.set('view', '2d');
+  const href = screenPath + '#/accept' + (params.size ? `?${params}` : '');
+  React.useEffect(() => {
+    if (!token || !ready) return;
+    setScreenToken(token);
+    // A host without the screen deployment may fall back to this SPA.
+    if (window.location.pathname !== screenPath) window.location.replace(href);
+  }, [href, ready, screenPath, token]);
+  if (!ready) return null;
+  return (
+    <Result
+      title="诉求分析大屏"
+      subTitle="请通过独立大屏查看地图和研判。"
+      extra={<a href={href}>打开诉求分析大屏</a>}
+    />
+  );
+}
 
 /**
  * 未登录直接跳登录页。
@@ -44,7 +66,7 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const userInfo = useAppStore(s=>s.userInfo);
   const location = useLocation();
   if (token === null || token === '') {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }} />;
   }
   if(userInfo?.mustChangePassword&&location.pathname!=='/change-password') return <Navigate to="/change-password" replace/>;
   return <>{children}</>;
@@ -78,10 +100,9 @@ const App: React.FC = () => {
       <Route path="/login" element={<Login />} />
       <Route path="/change-password" element={<RequireAuth><ChangePassword/></RequireAuth>}/>
       <Route path="/" element={<RequireAuth><MainLayout /></RequireAuth>}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route index element={<AdminHome />} />
         <Route path="dashboard" element={<Dashboard />} />
-        {/* 对外规划的大屏地址是 /screen（服务商按域名后缀转发），这里做别名，不复制页面 */}
-        <Route path="screen" element={<Dashboard />} />
+        <Route path="screen" element={<LegacyScreenLink />} />
         <Route path="complaints" element={<ComplaintList />} />
         <Route path="complaints/:id" element={<ComplaintDetail />} />
         <Route path="address-correction" element={<AddressCorrection />} />
@@ -90,7 +111,7 @@ const App: React.FC = () => {
         <Route path="dispatch/archive" element={<DispatchArchive />} />
         <Route path="companies" element={<CompanyList />} />
         <Route path="grids" element={<GridManager />} />
-        <Route path="heatmap" element={<HeatmapView />} />
+        <Route path="heatmap" element={<LegacyScreenLink heat />} />
         <Route path="heat-rules" element={<RequireRole permission="heatmap.manage"><HeatRuleManager/></RequireRole>} />
         <Route path="shutdowns" element={<RequireRole permission="shutdown.read"><ShutdownList /></RequireRole>} />
         <Route path="utility-timeouts" element={<RequireRole permission="shutdown.read"><UtilityTimeoutView /></RequireRole>} />
@@ -98,9 +119,9 @@ const App: React.FC = () => {
         <Route path="reports" element={<ReportView />} />
         <Route path="business-rules" element={<RequireRole permission="business.rules.manage"><BusinessRuleManager/></RequireRole>} />
         <Route path="business-alerts" element={<RequireRole permission="alert.read"><DataAlerts/></RequireRole>} />
-        <Route path="appeal-assessment" element={<RequireRole permission="assessment.read"><AppealAssessment/></RequireRole>} />
-        <Route path="seasonal-assessment" element={<RequireRole permission="assessment.read"><SeasonalAssessment/></RequireRole>} />
-        <Route path="grid-comparison" element={<RequireRole permission="assessment.read"><GridComparison/></RequireRole>} />
+        <Route path="appeal-assessment" element={<LegacyScreenLink />} />
+        <Route path="seasonal-assessment" element={<LegacyScreenLink drawer="research" />} />
+        <Route path="grid-comparison" element={<LegacyScreenLink drawer="compare" />} />
         <Route path="tender-support" element={<RequireRole permission="statistics.read"><TenderSupportView/></RequireRole>} />
         <Route path="dicts" element={<RequireRole permission="system.dict.manage"><DictManager /></RequireRole>} />
         <Route path="system/roles" element={<RequireRole permission="system.roles.manage"><RoleManager/></RequireRole>} />

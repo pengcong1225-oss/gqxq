@@ -662,3 +662,111 @@ test('固定报告保留默认口径，显式切换采购口径才发送采购�
     assert.equal(submitted[1].query.comparisonPolicyId,'procurement-source-completed-v2');
   } finally {ui.unmount();cleanup();request.defaults.adapter=originalAdapter;useAppStore.setState({userInfo:originalUser});}
 });
+
+
+test('管理端菜单保留规则、预警办理与统计入口，移除大屏展示入口', async () => {
+  const { default: MainLayout } = await vite.ssrLoadModule('/src/layouts/MainLayout.tsx');
+  const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
+  const { render, within } = await import('@testing-library/react');
+  const original = useAppStore.getState().userInfo;
+  useAppStore.setState({
+    userInfo: {
+      userId: 'admin', realName: '管理员', roles: ['admin'],
+      permissions: [
+        'dashboard.read', 'statistics.read', 'complaint.read',
+        'heatmap.read', 'heatmap.manage', 'assessment.read', 'alert.read', 'business.rules.manage',
+      ],
+    },
+  });
+  const ui = render(<MemoryRouter><MainLayout /></MemoryRouter>);
+  try {
+    const nav = within(ui.getByRole('navigation', { name: '业务导航' }));
+    for (const name of ['数据概览', '五档热力规则', '主账预警研判规则', '真实主账预警']) {
+      assert.ok(nav.getByRole('menuitem', { name: new RegExp(name) }));
+    }
+    for (const name of ['热力效果预览', '历史同期研判', '五季保障研判', '行政网格对比']) {
+      assert.equal(nav.queryByRole('menuitem', { name: new RegExp(name) }), null);
+    }
+  } finally {
+    ui.unmount();
+    useAppStore.setState({ userInfo: original });
+  }
+});
+
+test('旧大屏链接走正式大屏地址并指向对应抽屉', async () => {
+  const { default: App } = await vite.ssrLoadModule('/src/App.tsx');
+  const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
+  const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
+  const { render } = await import('@testing-library/react');
+  const original = useAppStore.getState();
+  const originalScreenToken = sessionStorage.getItem('gqxq-token');
+  const originalAdapter = request.defaults.adapter;
+  const userInfo = { userId: 'fx', roles: ['admin'], permissions: [] };
+  useAppStore.setState({ token: 'fixture', userInfo });
+  request.defaults.adapter = async (config: { url: string }) => {
+    assert.equal(config.url, '/auth/user-info');
+    return { data: { code: 200, data: userInfo }, status: 200, headers: {}, config };
+  };
+  // When a host serves the admin SPA as a fallback at /screen/, the compatibility
+  // route should still show a usable handoff instead of redirecting repeatedly.
+  dom.reconfigure({ url: 'http://localhost/screen/' });
+  try {
+    for (const [oldPath, screenUrl] of [
+      ['/heatmap', '/screen/#/accept?view=2d'],
+      ['/appeal-assessment', '/screen/#/accept'],
+      ['/seasonal-assessment', '/screen/#/accept?drawer=research'],
+      ['/grid-comparison', '/screen/#/accept?drawer=compare'],
+      ['/screen', '/screen/#/accept'],
+    ]) {
+      const ui = render(<MemoryRouter initialEntries={[oldPath]}><App /></MemoryRouter>);
+      try {
+        assert.equal(ui.getByRole('link', { name: '打开诉求分析大屏' }).getAttribute('href'), screenUrl, oldPath);
+        assert.equal(sessionStorage.getItem('gqxq-token'), 'fixture');
+      } finally {
+        ui.unmount();
+      }
+    }
+  } finally {
+    dom.reconfigure({ url: 'http://localhost/' });
+    request.defaults.adapter = originalAdapter;
+    if (originalScreenToken === null) sessionStorage.removeItem('gqxq-token');
+    else sessionStorage.setItem('gqxq-token', originalScreenToken);
+    useAppStore.setState({ userInfo: original.userInfo, token: original.token });
+  }
+});
+
+
+test('后台首页优先统计，并为缺少统计权限的账号进入已授权页面', async () => {
+  const { AdminHome } = await vite.ssrLoadModule('/src/layouts/MainLayout.tsx');
+  const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
+  const { render } = await import('@testing-library/react');
+  const original = useAppStore.getState().userInfo;
+  try {
+    for (const [permissions, destination] of [
+      [['dashboard.read', 'statistics.read', 'complaint.read'], '统计首页'],
+      [['dashboard.read', 'complaint.read'], '诉求首页'],
+      [['alert.read'], '预警首页'],
+    ] as const) {
+      useAppStore.setState({
+        userInfo: { userId: 'fx', roles: ['readonly'], permissions: [...permissions] },
+      });
+      const ui = render(
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route path="/" element={<AdminHome />} />
+            <Route path="/dashboard" element={<p>统计首页</p>} />
+            <Route path="/complaints" element={<p>诉求首页</p>} />
+            <Route path="/business-alerts" element={<p>预警首页</p>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      try {
+        assert.ok(ui.getByText(destination));
+      } finally {
+        ui.unmount();
+      }
+    }
+  } finally {
+    useAppStore.setState({ userInfo: original });
+  }
+});

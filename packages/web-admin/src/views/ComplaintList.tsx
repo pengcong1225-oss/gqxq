@@ -880,7 +880,7 @@ const ComplaintList: React.FC = () => {
                 <Button type="primary" onClick={() => void load(params)}>
                   重试
                 </Button>
-                <Button onClick={() => navigate('/dashboard')}>返回大屏</Button>
+                <Button onClick={() => navigate('/')}>返回工作台</Button>
               </Space>
             }
           />

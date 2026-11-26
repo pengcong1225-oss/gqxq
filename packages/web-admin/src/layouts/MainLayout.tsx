@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Avatar, Breadcrumb, Dropdown, Tag } from 'antd';
+import { Link, Navigate, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Layout, Menu, Button, Avatar, Breadcrumb, Dropdown, Result, Tag } from 'antd';
 import { useAppStore } from '../stores/appStore';
 import { getUserInfo, logoutOidc } from '../api/auth';
 import { isOidcMarker } from '../stores/sessionStorage';
@@ -40,7 +40,6 @@ const menuEntries: MenuEntry[] = [
   { key: '/companies', icon: <TeamOutlined />, label: '企业管理', permission: 'enterprise.read' },
   { key: '/grids', icon: <AppstoreOutlined />, label: '网格管理', permission: 'grid.read' },
   {key:'/heat-rules',icon:<FireOutlined/>,label:'五档热力规则',permission:'heatmap.manage'},
-  { key: '/heatmap', icon: <FireOutlined />, label: '热力效果预览', permission: 'heatmap.read' },
   {key:'/tender-support',icon:<BarChartOutlined/>,label:'专题数据与预警管理',permission:'statistics.read'},
   { key: '/reports', icon: <FilePdfOutlined />, label: '分析报告', permission: 'report.read' },
   { key: '/dicts', icon: <DatabaseOutlined />, label: '字典管理', permission: 'system.dict.manage' },
@@ -49,11 +48,31 @@ const menuEntries: MenuEntry[] = [
 
 menuEntries.push({key:'/business-rules',icon:<BarChartOutlined/>,label:'主账预警研判规则',permission:'business.rules.manage'});
 menuEntries.push({key:'/business-alerts',icon:<BarChartOutlined/>,label:'真实主账预警',permission:'alert.read'});
-menuEntries.push({key:'/appeal-assessment',icon:<BarChartOutlined/>,label:'历史同期研判',permission:'assessment.read'});
-menuEntries.push({key:'/seasonal-assessment',icon:<BarChartOutlined/>,label:'五季保障研判',permission:'assessment.read'});
-menuEntries.push({key:'/grid-comparison',icon:<BarChartOutlined/>,label:'行政网格对比',permission:'assessment.read'});
 menuEntries.push({key:'/system/roles',icon:<SettingOutlined/>,label:'角色权限',permission:'system.roles.manage'});
 menuEntries.push({key:'/system/audit-logs',icon:<AuditOutlined/>,label:'登录与操作日志',permission:'system.audit.read'});
+
+function availableMenuEntries(permissions: string[]) {
+  return menuEntries.filter(entry =>
+    permissions.includes(entry.permission)
+    && (entry.key !== '/dashboard' || permissions.includes('statistics.read'))
+    && (entry.key !== '/tender-support' || permissions.includes('complaint.read'))
+    && (entry.key !== '/master-data/imports'
+      || ['enterprise.manage', 'grid.manage', 'system.dict.manage'].some(code => permissions.includes(code))),
+  );
+}
+
+export function AdminHome() {
+  const userInfo = useAppStore(s => s.userInfo);
+  if (!userInfo) return null;
+
+  const entries = availableMenuEntries(userInfo.permissions);
+  const destination = entries.find(entry => entry.key === '/dashboard')
+    ?? entries.find(entry => entry.key === '/complaints')
+    ?? entries[0];
+  return destination
+    ? <Navigate to={destination.key} replace />
+    : <Result status="403" title="当前账号没有可访问的后台页面" />;
+}
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
@@ -86,14 +105,13 @@ const MainLayout: React.FC = () => {
   const selectedKey = currentEntry?.key;
 
   const menuItems = useMemo(() => {
-    const available = menuEntries.filter(e => permissions.includes(e.permission) && !userInfo?.mustChangePassword &&
-      (e.key !== '/master-data/imports' || ['enterprise.manage', 'grid.manage', 'system.dict.manage'].some(code => permissions.includes(code))));
+    const available = availableMenuEntries(permissions);
     const groups = [
       { label: '诉求办理', keys: ['/complaints', '/dispatch', '/address-correction', '/dispatch/archive'] },
       { label: '公共事业填报对接', keys: ['/shutdowns','/pipelines','/utility-timeouts'] },
-      { label: '真实主账预警与研判', keys: ['/business-alerts','/appeal-assessment','/seasonal-assessment','/grid-comparison','/business-rules'] },
+      { label: '主账预警', keys: ['/business-alerts','/business-rules'] },
       { label: '统计与报告', keys: ['/dashboard', '/analysis', '/reports'] },
-      { label: '规则与数据管理', keys: ['/heat-rules', '/tender-support', '/heatmap'] },
+      { label: '规则与数据管理', keys: ['/heat-rules', '/tender-support'] },
       { label: '基础资料', keys: ['/companies', '/grids', '/master-data/imports', '/dicts'] },
       { label: '系统管理', keys: ['/system/users', '/system/roles', '/system/audit-logs'] },
     ];
@@ -101,7 +119,7 @@ const MainLayout: React.FC = () => {
       children: group.keys.flatMap(key => available.filter(entry => entry.key === key).map(({key, icon, label}) => ({key, icon, label})))
     })).filter(group => group.children.length);
     return collapsed ? visible.flatMap(group => group.children) : visible;
-  }, [permissions, userInfo, collapsed]);
+  }, [permissions, collapsed]);
 
   const userMenuItems = [
     { key: 'password', icon: <UserOutlined />, label: '修改密码' },
@@ -112,7 +130,7 @@ const MainLayout: React.FC = () => {
     <Layout className="app-layout">
       <Sider trigger={null} collapsible collapsed={collapsed} width={220} collapsedWidth={72}
         theme="light" className="app-sider" breakpoint="lg" onBreakpoint={setCollapsed}>
-        <Link to="/dashboard" className="app-brand" aria-label="诉求平台首页">
+        <Link to="/" className="app-brand" aria-label="诉求平台首页">
           <span className="brand-mark"><CustomerServiceOutlined /></span>
           {!collapsed && <span>宜昌水燃诉求分析</span>}
         </Link>

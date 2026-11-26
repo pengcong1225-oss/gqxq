@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { getOidcStatus, login as loginApi, oidcStartUrl, readOidcSession } from '../api/auth';
 import { BASE_PATH } from '../api/request';
 import { useAppStore } from '../stores/appStore';
+import { setScreenToken } from '../stores/sessionStorage';
 
 /**
  * 登录页。
@@ -41,7 +42,7 @@ const Login: React.FC = () => {
         setUserInfo(session.userInfo);
         setToken(session.token);
         if (query.get('view') === 'screen' && !session.userInfo.mustChangePassword) {
-          window.sessionStorage.setItem('gqxq-token', session.token);
+          setScreenToken(session.token);
           window.location.replace(`${BASE_PATH}/screen/`);
         }
       }).catch((err) => {
@@ -63,7 +64,7 @@ const Login: React.FC = () => {
     // in router state. Only the current server flag may require another change.
     const destination = returnPath && !['/login', '/change-password'].includes(returnPath.toLowerCase())
       ? from as string
-      : '/dashboard';
+      : '/';
     navigate(userInfo.mustChangePassword ? '/change-password' : destination, { replace: true });
   }, [token, userInfo, location.search, location.state, navigate]);
 
