@@ -58,8 +58,12 @@ export interface ComplaintListItem {
   correctionStatusName: string;
   correctionConfidence: number | null;
 
+  /** 来源状态同步快照的归一值。 */
   sourceEventStatusCode: string;
   sourceEventStatusName: string;
+  /** 来源导出原件的「事件状态」和「督办状态」。 */
+  sourceEventStatusRaw?: string | null;
+  sourceSupervisionStatusRaw?: string | null;
   /**
    * 超期时效派生标记（complaint.overtime_flag，M11）。**三态**：
    *   null = 来源未给出时效信息（未同步 / 正常在办 / 认不出 / 历史未回填）——不是"未超期"
@@ -69,6 +73,7 @@ export interface ComplaintListItem {
   overtimeFlag: number | null;
   /** 三态标签（超期 / 未超期 / 无时效信息）由服务端给；前端不自建翻译表 */
   overtimeFlagName: string | null;
+  /** 本平台交办状态。 */
   supervisionStatusCode: string;
   supervisionStatusName: string;
   reportingStatusCode: string;
@@ -80,6 +85,20 @@ export interface ComplaintListItem {
   activeDispatchStatusCode: string | null;
   activeDispatchStatusName: string | null;
   legacyStatus: string;
+  /** 是否重复来电（同一市民同内容再次反映）；投诉量不合并，仅打标用于重复投诉率 */
+  repeatFlag: boolean;
+  /** 关联的首件诉求 complaint_id */
+  repeatOf: string | null;
+  /** 判定依据 */
+  repeatReason: string | null;
+  streetName: string | null;
+  communityName: string | null;
+  gridName: string | null;
+  seatSatisfaction: string | null;
+  operatorName: string | null;
+  secondaryDepartment: string | null;
+  onlineCloseBasis: string | null;
+  locationFlag: string | null;
   satisfactionText: string | null;
   satisfactionCode: string | null;
   citizenFeedbackResolution: string | null;
@@ -225,6 +244,8 @@ export interface ComplaintStats {
   pendingMatchCount: number;
   activeDispatchCount: number;
   closedInSystemCount: number;
+  /** 重复来电数（同电话同内容的二次来电，不合并） */
+  repeatCount: number;
 }
 
 export interface ComplaintListResult extends Paged<ComplaintListItem> {
@@ -722,9 +743,9 @@ export interface CreateDispatchRequest {
   targetEnterpriseCode: string;
   targetEnterpriseName: string;
   reason?: string;
-  requirement?: string;
+  requirement: string;
   /** 带时区偏移的 ISO-8601 */
-  deadline?: string;
+  deadline: string;
   dispatchType?: 'auto' | 'manual';
   triggerType?: 'sensitive_word' | 'manual_flag';
 }
@@ -842,7 +863,7 @@ export interface AuditLogView {
 export type AccountType = 'internal'|'enterprise'|'unknown';
 export interface FollowupFacts {contacted:boolean;occurredAt:string;evaluationCode:'satisfied'|'dissatisfied'|null;dissatisfactionReason:string|null;notes:string|null}
 export interface FollowupInput extends FollowupFacts {complaintId:string;requestId:string}
-export interface FollowupView extends FollowupFacts {followupId:string;complaintId:string;ownerId:string;version:number;order:number;action:'create'|'revise'|'conclude';operatorId:string;operatorName:string;reason:string|null;createdAt:string;revisedAt:string;conclusion:string|null;concludedBy:string|null;concludedAt:string|null}
+export interface FollowupView extends FollowupFacts {followupId:string;complaintId:string;ownerId:string;version:number;order:number;action:'create'|'revise'|'conclude';operatorId:string;operatorName:string;operatorAccount:string|null;reason:string|null;createdAt:string;revisedAt:string;conclusion:string|null;concludedBy:string|null;concludedAt:string|null}
 export interface SourceEvaluationView {state:'available'|'unavailable'|'withheld';label:string|null;reason:string|null;provenance:string}
 export interface ComplaintFollowupsView {complaintId:string;records:FollowupView[];history:FollowupView[];sourceEvaluation:SourceEvaluationView;formalEvaluation:{state:'unavailable';reason:string}}
 export interface FollowupRevisionInput extends FollowupFacts {requestId:string;expectedVersion:number;reason:string}

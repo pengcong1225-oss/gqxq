@@ -1,5 +1,5 @@
 // 平台统一身份令牌校验：住新工作服务平台以 RS256 签发，公钥从其 JWKS 端点获取。
-// 本模块只做「验签 + 绑定查询」，不签发本地令牌、不复制平台密码。
+// 本模块处理验签与旧有平台绑定查询。
 import jwt from 'jsonwebtoken';
 import { createPublicKey, type KeyObject } from 'node:crypto';
 import type { Request } from 'express';
@@ -14,6 +14,8 @@ interface PlatformClaims {
   roles?: string[];
   permissions?: string[];
   exp?: number;
+  jti?: string;
+  auth_version?: number;
 }
 
 const ISSUER = env.platformIdentityIssuer;

@@ -3,10 +3,11 @@ import {readUtilityFeed,utilityIntegrationStatus,readUtilityDelivery,deliverUtil
 import {pool} from '../db/pool';
 import {AppError} from '../http/errors';
 import {canAccessComplaint,assertAllScope,buildComplaintScopeSql} from '../auth/accessScope';
+import {findRelatedComplaints} from './relatedComplaintService';
 import {readSupportStore,saveSupportStore} from './tenderSupportService';
 import {simulatedSupportData} from '../domain/tenderSupportData';
 import {shanghaiToday} from '../domain/statisticsQuery';
-import {validateUtilityEvent,timeoutCandidate,TIMEOUT_WINDOW} from '../domain/utility';
+import {validateUtilityEvent,timeoutCandidate,utilityTimeoutWindow,TIMEOUT_WINDOW} from '../domain/utility';
 import type {MasterDataContext} from '../types/masterData';
 import type {UtilityMode,UtilityEvent,UtilityOptions,UtilityState,UtilityComplaint,TimeoutItem} from '../types/utility';
 export const UTILITY_SOURCE='公共事业管理的填报系统';
@@ -28,8 +29,9 @@ function seed():UtilityState{
  const events:UtilityEvent[]=picked.map((c,i)=>({id:'SIM-U-'+i,mode:'simulation',kind:i<4?'shutdown':'pipeline',title:'【模拟】'+(i<4?'停供检修申请':'管道施工改造申请')+(i+1),businessType:c.businessType,enterpriseId:c.enterpriseId,gridIds:[c.gridId],districtCode:c.districtCode,startsAt:new Date(Date.parse(c.occurredAt)-25*3600000).toISOString(),endsAt:new Date(Date.parse(c.occurredAt)-3600000).toISOString(),restoredAt:i<4?new Date(Date.parse(c.occurredAt)-3600000).toISOString():null,households:500,workers:12,reason:'【模拟】设备检修',area:'【模拟】'+d.grids.find(g=>g.id===c.gridId)!.name,plan:'【模拟】通知用户、设置警戒并提供备用供给',housing:'【模拟】住宅楼8栋',sourceApplicationNo:'SIM-APPLY-'+i,approvalStatus:'approved',approvalNote:'【模拟】来源系统审批通过',approvedBy:'模拟审批人',approvedAt:new Date(Date.parse(c.occurredAt)-26*3600000).toISOString(),relatedTypes:[c.type],revision:1,updatedAt:now.toISOString()}));
  return {events,deliveries:{}};
 }
-async function loadLocal(mode:UtilityMode){const row=await readSupportStore('utility-'+mode);return {revision:row?.revision??0,state:(row?.content??(mode==='simulation'?seed():{events:[],deliveries:{}})) as UtilityState};}
-export async function loadUtility(mode:UtilityMode){const local=await loadLocal(mode),remote=await readUtilityFeed(mode);return {...local,feedRevision:remote.revision,feedSyncedAt:remote.state?.syncedAt??null,state:{...local.state,events:[...local.state.events,...(remote.state?.sources.flatMap(s=>s.events)??[])]}};}
+export async function readStoredUtilityApplications(mode:UtilityMode,db=pool){const row=await readSupportStore('utility-'+mode,db);return {revision:row?.revision??0,state:(row?.content??(mode==='simulation'?seed():{events:[],deliveries:{}})) as UtilityState};}
+const loadLocal=readStoredUtilityApplications;
+export async function loadUtility(mode:UtilityMode){const local=await loadLocal(mode),remote=await readUtilityFeed(mode);return {...local,feedRevision:remote.revision,feedSyncedAt:remote.state?.syncedAt??null,state:{...local.state,events:[...local.state.events.filter(event=>event.mode===mode),...(remote.state?.sources.flatMap(s=>s.events)??[])]}};}
 const load=loadUtility;
 export async function utilityList(mode:UtilityMode,kind:string,ctx:MasterDataContext){
  read(ctx,kind);const {revision,state}=await load(mode),o=await utilityOptions(mode);
@@ -39,16 +41,53 @@ export async function utilityList(mode:UtilityMode,kind:string,ctx:MasterDataCon
  return {revision,events,source:UTILITY_SOURCE,integration:all?await utilityIntegrationStatus(mode):undefined,sourceRows:all?feed.state?.sources.filter(s=>(kind==='pipeline')===(s.source.kind==='construction')).map(s=>({sourceApplicationNo:s.source.sourceApplicationNo,kind:s.source.kind,sourceRevision:s.source.revision,sourceStatus:s.source.status,syncStatus:s.syncStatus,issues:s.issues,fields:s.source.fields,approvalTraces:s.source.approvalTraces}))??[]:[],options:all?o:{enterprises:o.enterprises.filter(c=>events.some(e=>e.enterpriseId===c.id)),grids:o.grids.filter(g=>events.some(e=>e.gridIds.includes(g.id)))}};
 }
 export async function utilityComplaints(e:UtilityEvent,ctx:MasterDataContext,from:string,to:string,after=false):Promise<UtilityComplaint[]>{
- if(!ctx.permissionCodes.includes('complaint.read')||!e.gridIds.length||!e.relatedTypes.length)return [];
- if(e.mode==='simulation')return fixture().complaints.filter(c=>canAccessComplaint(ctx.access,{enterprise_code:c.enterpriseId,district_code:c.districtCode})&&c.businessType===e.businessType&&e.gridIds.includes(c.gridId)&&e.relatedTypes.includes(c.type)&&Date.parse(c.occurredAt)>=(Date.parse(from)+(after?1:0))&&Date.parse(c.occurredAt)<=Math.min(Date.parse(to),Date.now())).map(c=>({id:c.id,title:c.title,type:c.type,occurredAt:c.occurredAt,gridId:c.gridId}));
- const scope=buildComplaintScopeSql(ctx.access,'c');
- const marks=e.relatedTypes.map(()=>'?').join(',');
+ if(e.mode!=='real'&&e.mode!=='simulation')return [];
+ if(after){
+  if(!ctx.permissionCodes.includes('complaint.read')||!e.gridIds.length||!e.relatedTypes.length)return [];
+  if(e.mode==='real')return realTimeoutComplaints(e,ctx,from,to);
+ }
+ /**
+  * 诉求 ↔ 事件 关联（标书 1.2.2）。
+  *
+  * 口径已按标书原文修正：**只以「诉求录入时间落在事件时间范围内」为硬条件**，
+  * 保留同行业约束，网格仅在事件有网格时才约束，**去掉诉求类型限制**。
+  * 详细说明见 services/relatedComplaintService.ts 顶部注释。
+  */
+ const rows=await findRelatedComplaints(
+   {gridIds:e.gridIds,businessType:e.businessType,relatedTypes:e.relatedTypes,mode:e.mode,enterpriseId:e.enterpriseId,districtCode:e.districtCode},
+   ctx,
+   from,
+   to,
+   after,
+   pool as unknown as {query:(sql:string,params?:unknown[])=>Promise<[unknown[],unknown]>},
+   buildComplaintScopeSql,
+   fixture,
+   canAccessComplaint,
+ );
+ return after?rows.filter(row=>e.relatedTypes.includes(row.type)):rows;
+}
+async function realTimeoutComplaints(e:UtilityEvent,ctx:MasterDataContext,from:string,to:string):Promise<UtilityComplaint[]>{
+ const end=Math.min(Date.parse(to),Date.now()),start=Date.parse(from);
+ if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return [];
+ const placeholders=(values:unknown[])=>values.map(()=>'?').join(',');
+ const marks=placeholders(e.relatedTypes);
  const [categories]=await pool.query<any[]>("select item_value code,item_label label from dict_item where dict_type='complaint_category' and status='enabled' and published=1 and (item_value in ("+marks+") or item_label in ("+marks+"))",[...e.relatedTypes,...e.relatedTypes]);
- const codes=[...new Set(categories.map(c=>String(c.code)))];if(!codes.length)return [];
- const categorySql='(c.major_category_code in ('+codes.map(()=>'?').join(',')+') or c.minor_category_code in ('+codes.map(()=>'?').join(',')+'))';
- const [rows]=await pool.query<any[]>('select c.complaint_id id,c.title,c.major_category_code majorCode,c.minor_category_code minorCode,coalesce(c.minor_category_code,c.major_category_code) type,coalesce(c.source_reported_at,c.received_at) occurredAt,c.admin_grid_code gridId from complaint c where '+scope.sql+' and c.source_system=? and c.business_type=? and c.admin_grid_code in ('+e.gridIds.map(()=>'?').join(',')+') and '+categorySql+' and coalesce(c.source_reported_at,c.received_at) '+(after?'>':'>=')+' ? and coalesce(c.source_reported_at,c.received_at)<=? order by c.complaint_id limit 10001',[...scope.params,'宜接就办',e.businessType,...e.gridIds,...codes,...codes,new Date(from),new Date(Math.min(Date.parse(to),Date.now()))]);
+ const codes=[...new Set(categories.map(c=>String(c.code)))];
+ if(!codes.length)return [];
+ const categoryMarks=placeholders(codes),scope=buildComplaintScopeSql(ctx.access,'c');
+ const [rows]=await pool.query<any[]>(
+  'select c.complaint_id id,c.title,c.major_category_code majorCode,c.minor_category_code minorCode,'+
+  'coalesce(c.source_reported_at,c.received_at) occurredAt,c.admin_grid_code gridId from complaint c where '+scope.sql+
+  ' and c.source_system=? and c.business_type=? and c.admin_grid_code in ('+placeholders(e.gridIds)+')'+
+  ' and (c.major_category_code in ('+categoryMarks+') or c.minor_category_code in ('+categoryMarks+'))'+
+  ' and coalesce(c.source_reported_at,c.received_at)>? and coalesce(c.source_reported_at,c.received_at)<=? order by c.complaint_id limit 10001',
+  [...scope.params,'宜接就办',e.businessType,...e.gridIds,...codes,...codes,new Date(start),new Date(end)]
+ );
  if(rows.length>10000)throw AppError.validation('关联诉求超过10000条，请缩小事件范围');
- return rows.map(r=>({...r,type:e.relatedTypes.find(t=>categories.some(c=>(c.code===r.majorCode||c.code===r.minorCode)&&(c.code===t||c.label===t)))??r.type,occurredAt:new Date(r.occurredAt).toISOString()}));
+ return rows.flatMap(row=>{
+  const type=e.relatedTypes.find(value=>categories.some(c=>(c.code===row.majorCode||c.code===row.minorCode)&&(c.code===value||c.label===value)));
+  return type?[{id:String(row.id),title:String(row.title),type,occurredAt:new Date(row.occurredAt).toISOString(),gridId:String(row.gridId)}]:[];
+ });
 }
 export async function utilityDetail(mode:UtilityMode,id:string,ctx:MasterDataContext){
  const {state}=await load(mode),event=state.events.find(e=>e.id===id);if(!event||!visible(event,ctx))throw AppError.notFound('申请不存在或无权限');
@@ -85,8 +124,12 @@ export async function importUtility(raw:any,ctx:MasterDataContext){
 export async function utilityTimeouts(mode:UtilityMode,ctx:MasterDataContext){
  read(ctx,'shutdown');if(!ctx.permissionCodes.includes('complaint.read'))throw AppError.forbidden('超时匹配需要诉求查询权限');
  const {revision,state}=await load(mode),items:TimeoutItem[]=[];
- for(const event of state.events.filter(e=>e.kind==='shutdown'&&visible(e,ctx)&&e.approvalStatus==='approved'&&e.restoredAt&&Date.parse(e.restoredAt)<Date.now())){
- const end=new Date(Date.parse(event.restoredAt!)+24*3600000).toISOString();const rows=await utilityComplaints(event,ctx,event.restoredAt!,end,true),item=timeoutCandidate(event,rows,new Date());if(item)items.push(event.sourceSystem==='public-utility'?(await readUtilityDelivery(mode,item.id)).state?.item??item:state.deliveries[item.id]??item);}
+ const now=new Date();
+ for(const event of state.events.filter(e=>visible(e,ctx))){
+  const window=utilityTimeoutWindow(event,now);if(!window)continue;
+  const rows=await utilityComplaints(event,ctx,window.from,window.to,true),item=timeoutCandidate(event,rows,now);
+  if(item)items.push(event.sourceSystem==='public-utility'?(await readUtilityDelivery(mode,item.id)).state?.item??item:state.deliveries[item.id]??item);
+ }
  if(ctx.access.rules.some(r=>r.kind==='all'))for(const old of await utilityDeliveryHistory(mode))if(!items.some(i=>i.id===old.id))items.push(['sent','simulated'].includes(old.status)?old:{...old,status:'superseded'});
  // Retain prior attempts even if a later edit changes the matching set; explicit old revision is shown.
  for(const old of Object.values(state.deliveries)){if(ctx.access.rules.some(r=>r.kind==='all')&&!items.some(i=>i.id===old.id)&&state.events.some(e=>e.id===old.eventId&&visible(e,ctx)))items.push(old);}

@@ -13,7 +13,6 @@ import { assertLockedComplaintAccess } from '../auth/accessScope';
 import { AppError } from '../http/errors';
 import type { FieldError } from '../http/errors';
 import type {
-  CreateDispatchRequest,
   CreateDispatchResult,
   DispatchOrderDetail,
   DispatchOrderFilter,
@@ -220,6 +219,31 @@ export async function getDispatchOrder(assignmentId: string): Promise<DispatchOr
 
 /* ---------------- 创建（幂等） ---------------- */
 
+async function recordDuplicateDispatch(
+  tx: Tx,
+  order: DispatchOrderDetail,
+  ctx: OperatorContext,
+): Promise<CreateDispatchResult> {
+  await insertAudit(tx, {
+    userId: ctx.userId,
+    appCode: GQXQ_APP_CODE,
+    resourceCode: order.orderNo,
+    action: 'DISPATCH_CREATE',
+    bizType: 'dispatch_order',
+    bizId: order.complaintId,
+    result: 'duplicate',
+    clientIp: ctx.clientIp,
+    detail: {
+      assignmentId: order.assignmentId,
+      complaintId: order.complaintId,
+      reason: '该诉求已有进行中交办，返回既有记录',
+      existingStatus: order.status,
+    },
+    createdAt: new Date(),
+  });
+  return { created: false, order };
+}
+
 export async function createDispatch(
   rawBody: unknown,
   ctx: OperatorContext
@@ -257,9 +281,17 @@ export async function createDispatch(
   let createdOrderNo: string | null = null;
 
   try {
-    await withTransaction(async (tx) => {
+    const replay = await withTransaction(async (tx) => {
       const complaint = await lockComplaintByAnyKey(tx, complaintIdOrNo);
       if (!complaint) throw AppError.notFound('诉求不存在');
+      // 旧客户端缺少新必填项时，可以回读已有交办。
+      if (requirement === null || deadline === null) {
+        const existing = await findActiveOrderByComplaint(tx, complaint.complaint_id);
+        if (existing) return recordDuplicateDispatch(tx, rowToDispatchDetail(existing), ctx);
+        if (requirement === null) fieldErrors.push({ field: 'requirement', message: '请填写企业处置说明' });
+        if (deadline === null) fieldErrors.push({ field: 'deadline', message: '请选择企业填报截止时间' });
+        throw AppError.validation(fieldErrors.map((field) => field.message).join('；'), fieldErrors);
+      }
       const target = await assertTargetEnterprise(tx, targetEnterpriseCodeInput, targetEnterpriseNameInput,
         { code: 'targetEnterpriseCode', name: 'targetEnterpriseName' },complaint.complaint_id);
       const targetEnterpriseCode = target.code;
@@ -342,32 +374,16 @@ export async function createDispatch(
       createdAssignmentId = assignmentId;
       createdOrderNo = orderNo;
     });
+    if (replay) return replay;
   } catch (err) {
     if (isDuplicateKey(err)) {
       // 撞唯一键：该诉求已有进行中交办（唯一键保证最多一条）。回读既有记录，返回 created=false，不报错。
       const existing = await findActiveOrderByComplaint(pool, ref.complaint_id);
       if (existing) {
-        await withTransaction(async tx => {
+        return withTransaction(async tx => {
           await assertLockedComplaintAccess(tx, ref.complaint_id);
-          await insertAudit(tx, {
-            userId: ctx.userId,
-            appCode: GQXQ_APP_CODE,
-            resourceCode: String(existing.order_no),
-            action: 'DISPATCH_CREATE',
-            bizType: 'dispatch_order',
-            bizId: ref.complaint_id,
-            result: 'duplicate',
-            clientIp: ctx.clientIp,
-            detail: {
-              assignmentId: String(existing.assignment_id),
-              complaintId: ref.complaint_id,
-              reason: '该诉求已有进行中交办，返回既有记录',
-              existingStatus: String(existing.status),
-            },
-            createdAt: new Date(),
-          });
+          return recordDuplicateDispatch(tx, rowToDispatchDetail(existing), ctx);
         });
-        return { created: false, order: rowToDispatchDetail(existing) };
       }
       // 撞的不是有效交办唯一键，只能是 request_id 重复：属于幂等键异常，不能静默
       throw AppError.conflict('交办幂等请求号冲突，请重试');
@@ -470,7 +486,7 @@ export interface PushPreparation {
   complaintTitle: string;
   targetEnterpriseCode: string;
   targetEnterpriseName: string;
-  requirement: string | null;
+  requirement: string;
   reason: string | null;
   deadline: Date;
   dispatchType: string | null;
@@ -502,6 +518,7 @@ export async function preparePush(assignmentId: string, db: Tx | typeof pool = p
 
   const targetEnterpriseCode = textOf(row.target_enterprise_code);
   const targetEnterpriseName = textOf(row.target_enterprise_name);
+  const requirement = textOf(row.requirement);
   const deadline = row.deadline instanceof Date ? row.deadline : null;
 
   const fieldErrors: FieldError[] = [];
@@ -512,10 +529,13 @@ export async function preparePush(assignmentId: string, db: Tx | typeof pool = p
     fieldErrors.push({ field: 'targetEnterpriseName', message: '交办单没有责任企业名称，无法创建填报任务' });
   }
   if (deadline === null) {
-    fieldErrors.push({ field: 'deadline', message: '交办单没有截止时间；对方 deadline 必填且要求带时区偏移' });
+    fieldErrors.push({ field: 'deadline', message: '交办单缺少企业填报截止时间，请撤销后重新交办' });
+  }
+  if (requirement === '') {
+    fieldErrors.push({ field: 'requirement', message: '交办单缺少企业处置说明，请撤销后重新交办' });
   }
   if (fieldErrors.length > 0) {
-    throw AppError.validation('交办单信息不完整，无法创建填报任务', fieldErrors);
+    throw AppError.validation(fieldErrors.map((field) => field.message).join('；'), fieldErrors);
   }
 
   const [sourceRows] = await db.query('select title,content,source_system,source_id,source_payload from complaint where complaint_id=?',[String(row.complaint_id)]) as [Array<Record<string,unknown>>,unknown];
@@ -542,7 +562,7 @@ export async function preparePush(assignmentId: string, db: Tx | typeof pool = p
     complaintTitle: textOf(row.complaint_title) === '' ? '敏感交办' : textOf(row.complaint_title),
     targetEnterpriseCode,
     targetEnterpriseName,
-    requirement: row.requirement === null || row.requirement === undefined ? null : String(row.requirement),
+    requirement,
     reason: row.reason === null || row.reason === undefined ? null : String(row.reason),
     deadline: deadline as Date,
     dispatchType: row.dispatch_type === null || row.dispatch_type === undefined ? null : String(row.dispatch_type),

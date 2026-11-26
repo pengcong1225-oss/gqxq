@@ -3,17 +3,17 @@
  * 验收大屏 · 网格对比（标书 1.2.8）
  *
  * 交互：选择 2~3 个行政网格（第 4 个禁用并提示「标书规定 2~3 个」）→ 开始对比
- * 结果：行=诉求大类（major，如 water_service / gas_service；后端不返回小类 g01/w01），
+ * 结果：行=诉求类型（默认小类）或诉求大类，
  *       列=网格，格值=件数；按后端 `highest` 数组高亮最高值（并列全部高亮）；
  *       底部「合计」行 + 对比结论一句话。
  * 口径：真实主账 dataset=ledger / projection=current / periodKind=custom，窗口取大屏当前起止日期；
  *       未定位件单列（unlocatedCount），不参与网格对比；空/缺数据如实显示，不补 0。
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import EChart from '@/stats/components/EChart.vue';
 import type { EChartsCoreOption } from '@/stats/echarts';
 import { hashQuery } from '@/stats/useDesignScale';
-import { CATEGORY_OPTIONS, realAdminGridOptions } from '@/stats/realSource';
+import { CATEGORY_OPTIONS } from '@/stats/realSource';
 import {
   fetchAssessmentGrids,
   fetchGridComparison,
@@ -38,6 +38,7 @@ const demoCmp = qp.get('cmp');
 const MINOR_LABELS: Record<string, string> = Object.fromEntries(CATEGORY_OPTIONS.map((c) => [c.code, c.name]));
 /** 标书 1.2.8：按「诉求类型」（小类）对比；?clevel=major 可切大类兼容口径 */
 const level = ref<CategoryLevel>(qp.get('clevel') === 'major' ? 'major' : 'minor');
+const categoryScope = computed(() => level.value === 'minor' ? '诉求类型（小类）' : '诉求大类');
 function categoryLabel(code: string): string {
   if (level.value === 'minor') return MINOR_LABELS[code] ?? majorCategoryLabel(code);
   return majorCategoryLabel(code);
@@ -52,10 +53,13 @@ const selected = ref<string[]>([]);
 const phase = ref<'select' | 'result'>('select');
 const tip = ref('');
 let tipTimer: number | null = null;
+let demoTimer: number | null = null;
+let disposed = false;
 
 const result = ref<ComparisonResult | null>(null);
 const resultLoading = ref(false);
 const resultError = ref('');
+let compareSequence = 0;
 
 const gridNameOf = computed<Record<string, string>>(() => Object.fromEntries(grids.value.map((g) => [g.code, g.name])));
 const filtered = computed(() => {
@@ -76,50 +80,70 @@ const selectHint = computed(() =>
 function flashTip(msg: string) {
   tip.value = msg;
   if (tipTimer != null) window.clearTimeout(tipTimer);
-  tipTimer = window.setTimeout(() => (tip.value = ''), 3200);
+  tipTimer = window.setTimeout(() => {
+    tipTimer = null;
+    tip.value = '';
+  }, 3200);
+}
+
+function cancelDemo() {
+  if (demoTimer == null) return;
+  window.clearTimeout(demoTimer);
+  demoTimer = null;
 }
 
 function toggle(code: string) {
-  const i = selected.value.indexOf(code);
-  if (i >= 0) {
-    selected.value.splice(i, 1);
+  if (selected.value.includes(code)) {
+    remove(code);
     return;
   }
   if (selected.value.length >= 3) {
     flashTip('标书规定 2~3 个网格：最多选择 3 个（第 4 个已禁用）');
     return;
   }
+  cancelDemo();
   selected.value.push(code);
 }
 function remove(code: string) {
   const i = selected.value.indexOf(code);
-  if (i >= 0) selected.value.splice(i, 1);
+  if (i < 0) return;
+  cancelDemo();
+  selected.value.splice(i, 1);
 }
 function clearAll() {
   selected.value = [];
-  phase.value = 'select';
+  backToSelect();
 }
 function backToSelect() {
+  cancelDemo();
+  compareSequence++;
   phase.value = 'select';
+  result.value = null;
+  resultError.value = '';
+  resultLoading.value = false;
 }
 
 async function runCompare() {
-  if (!canCompare.value) return;
+  if (disposed || !canCompare.value) return;
+  cancelDemo();
+  const sequence = ++compareSequence;
   phase.value = 'result';
   resultLoading.value = true;
   resultError.value = '';
   result.value = null;
   try {
-    result.value = await fetchGridComparison({
+    const data = await fetchGridComparison({
       adminGridCodes: [...selected.value],
       from: props.fromDate,
       to: props.toDate,
       categoryLevel: level.value,
     });
+    if (sequence === compareSequence) result.value = data;
   } catch (e) {
+    if (sequence !== compareSequence) return;
     resultError.value = e instanceof FeatureApiError ? `${e.message}（code=${e.code}）` : e instanceof Error ? e.message : String(e);
   } finally {
-    resultLoading.value = false;
+    if (sequence === compareSequence) resultLoading.value = false;
   }
 }
 
@@ -130,33 +154,30 @@ function setLevel(next: CategoryLevel) {
   if (phase.value === 'result') void runCompare();
 }
 
-/** 网格列表：优先 /assessment/admin-grids（带名称），失败回退大屏既有 realAdminGridOptions（仅编码） */
+watch([() => props.fromDate, () => props.toDate], () => {
+  if (phase.value === 'result') void runCompare();
+});
+
 async function loadGrids() {
   gridLoading.value = true;
   gridError.value = '';
   try {
     const list = await fetchAssessmentGrids();
-    if (list.length) {
-      grids.value = list;
-    } else {
-      throw new FeatureApiError(2001, '行政网格主数据为空');
-    }
+    if (disposed) return;
+    grids.value = list;
+    if (list.length === 0) gridError.value = '当前范围无已登记的下级网格编码';
   } catch (e) {
-    const fallback = realAdminGridOptions();
-    if (fallback.length) {
-      grids.value = fallback.map((g) => ({ code: g.code, name: g.code, version: 0, hasGeometry: false }));
-      gridError.value = `行政网格名称接口不可用（${e instanceof Error ? e.message : String(e)}），已回退为编码列表`;
-    } else {
-      gridError.value = e instanceof Error ? e.message : String(e);
-    }
+    if (disposed) return;
+    gridError.value = e instanceof Error ? e.message : String(e);
   } finally {
-    gridLoading.value = false;
+    if (!disposed) gridLoading.value = false;
   }
 }
 
 const DEMO_CODES = ['420502001', '420502011', '420503003'];
 onMounted(async () => {
   await loadGrids();
+  if (disposed) return;
   if (demoCmp === '3' && grids.value.length) {
     const picked = DEMO_CODES.filter((c) => grids.value.some((g) => g.code === c));
     for (const g of grids.value) {
@@ -165,8 +186,18 @@ onMounted(async () => {
     }
     selected.value = picked.slice(0, 3);
     // 让主屏 3 份 bootstrap 先落地，避免首屏并发把对比请求挤掉（dev 代理偶发 ECONNRESET）
-    window.setTimeout(() => void runCompare(), 900);
+    demoTimer = window.setTimeout(() => {
+      demoTimer = null;
+      void runCompare();
+    }, 900);
   }
+});
+
+onBeforeUnmount(() => {
+  disposed = true;
+  compareSequence++;
+  cancelDemo();
+  if (tipTimer != null) window.clearTimeout(tipTimer);
 });
 
 /* ---------------------------------------------------------------- 结果派生 */
@@ -200,7 +231,7 @@ const conclusion = computed(() => {
   if (lead) {
     parts.push(`所选 ${gridCols.value.length} 个网格合计 ${totalAll} 条，${lead.name}最高（${lead.count} 条）`);
   }
-  // 结论按小类给：取件数最多的前 3 个诉求类型，说明各自最高网格（并列全部列出）
+  // 取当前分类口径下件数最多的前 3 项，列出各项件数最高的网格（含并列）。
   const topRows = [...rows.value].sort((a, b) => b.count - a.count).slice(0, 3);
   for (const c of topRows) {
     const names = c.highest.map((code) => gridNameOf.value[code] ?? code).filter(Boolean);
@@ -217,7 +248,7 @@ function sum(arr: number[]): number {
 
 /* ---------------------------------------------------------------- 并列柱状图（分类 × 网格） */
 
-const GRID_COLORS = ['#86fbe7', '#ffd67c', '#7fb2ff'];
+const GRID_COLORS = ['#baa6ff', '#ffd67c', '#7fb2ff'];
 
 const chartOption = computed<EChartsCoreOption>(() => {
   const r = result.value;
@@ -306,8 +337,9 @@ const chartOption = computed<EChartsCoreOption>(() => {
     <div class="cmp__meta">
       <span class="cmp__chip"><i>统计期间</i>{{ fromDate }} ~ {{ toDate }}</span>
       <span class="cmp__chip"><i>数据口径</i>诉求总账 · 来源明确办结（ledger / current）</span>
-      <span class="cmp__chip"><i>分类口径</i>{{ level === 'minor' ? '诉求类型（小类 g01…/w01…）' : '大类（gas_service / water_service）' }}</span>
-      <span v-if="result" class="cmp__chip"><i>未定位</i>{{ result.unlocatedCount }} 条（单列，不参与网格对比）</span>
+      <span class="cmp__chip"><i>分类口径</i>{{ categoryScope }}</span>
+      <span v-if="grids.length && grids.every(grid => !grid.hasGeometry)" class="cmp__chip"><i>网格口径</i>按登记的下级编码比较，正式社区网格目录待核验</span>
+      <span v-if="result" class="cmp__chip"><i>缺下级网格关联</i>{{ result.unlocatedCount }} 件</span>
       <span v-if="result" class="cmp__chip"><i>快照</i>{{ (result.snapshotId ?? '—').slice(0, 16) }}</span>
       <div class="cmp__level" role="group" aria-label="分类层级切换">
         <button type="button" :class="{ 'is-active': level === 'minor' }" @click="setLevel('minor')">小类 · 诉求类型</button>
@@ -389,8 +421,8 @@ const chartOption = computed<EChartsCoreOption>(() => {
 
       <template v-else-if="result">
         <div v-if="!rows.length" class="acc-empty">
-          <b>该快照无可用正式分类记录</b>
-          <span>所选网格在该统计期间没有可对比的分类记录；请核查数据期间、分类映射与网格归属（不补 0）。</span>
+          <b>暂无{{ categoryScope }}对比记录</b>
+          <span>请核查所选网格、统计期间和分类映射。</span>
         </div>
 
         <template v-else>
@@ -399,7 +431,7 @@ const chartOption = computed<EChartsCoreOption>(() => {
             <table class="cmp__table">
               <thead>
                 <tr>
-                  <th class="cmp__th-cat">{{ level === 'minor' ? '诉求类型（小类） / 分类版本' : '诉求大类 / 分类版本' }}</th>
+                  <th class="cmp__th-cat">{{ categoryScope }} / 分类版本</th>
                   <th v-for="g in gridCols" :key="g.code">
                     <span>{{ g.name }}</span>
                     <small>{{ g.code }}</small>
@@ -448,7 +480,7 @@ const chartOption = computed<EChartsCoreOption>(() => {
             <!-- 并列柱状图：分类 × 网格 -->
             <div class="cmp__chartwrap">
               <div class="cmp__charthead">
-                <b>{{ level === 'minor' ? '按诉求类型（小类）并列对比（条）' : '按诉求大类并列对比（条）' }}</b>
+                <b>按{{ categoryScope }}并列对比（条）</b>
                 <span>青色高亮 = 该分类最高（并列全部高亮）</span>
               </div>
               <EChart class="cmp__chart" :option="chartOption" />

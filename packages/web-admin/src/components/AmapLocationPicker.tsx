@@ -5,10 +5,10 @@ import { EnvironmentOutlined } from '@ant-design/icons';
 /**
  * 高德地图人工选点（标书 1.2.12 指定地图服务商 = 高德）。
  *
- * 与旧的天地图选点保持同一 props 契约，LocationReviewPanel 无需改动调用方式。
+ * 保持与 LocationReviewPanel 既有的 props 契约，无需改动调用方式。
  * 关键口径：
  *   - 高德 JS API 返回 GCJ-02；平台位置字段统一 WGS84，因此 onPick 一律回传 WGS84；
- *   - 未配置 VITE_AMAP_KEY 时明确报错并保留手动输入经纬度兜底，不静默降级天地图；
+ *   - 未配置 VITE_AMAP_KEY 时明确报错并保留手动输入经纬度兜底，不静默降级其他地图；
  *   - 只回传坐标与地址建议，不直接改写诉求地址/区划字段。
  */
 export interface PlaceCandidate {

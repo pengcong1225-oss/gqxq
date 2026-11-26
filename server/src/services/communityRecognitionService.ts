@@ -2,9 +2,22 @@ import regions from '../data/yichangTownships.snapshot.json';
 import type {Tx} from '../db/tx';
 import {pool} from '../db/pool';
 import {parseFieldState} from '../domain/effectiveFieldPolicy';
-import {cachedLocation,locationCandidates} from '../domain/locationCandidates';
+import {locationCandidates} from '../domain/locationCandidates';
 import {recognizedCommunity,type CommunityPoint} from '../domain/communityRecognition';
 import {insertAudit} from '../repositories/auditLogRepo';
+/** 小区主数据点位（高德定位）。 */
+async function communityPointFor(tx:Tx,row:Record<string,unknown>):Promise<CommunityPoint|null>{
+ const district=String(row.district_code??'').trim();
+ const params:unknown[]=[row.address??'',row.title??'',row.content??''];
+ const districtSql=district?' and district_code=?':'';
+ if(district)params.push(district);
+ const [[hit]]:any=await tx.query('select name,district_code,location_lng,location_lat from community '+
+  'where location_state=\'located\' and location_lng is not null and char_length(name)>=4'+districtSql+
+  ' and (instr(?,name)>0 or instr(?,name)>0 or instr(?,name)>0) order by char_length(name) desc limit 1',params);
+ if(!hit)return null;
+ return {name:String(hit.name),districtCode:hit.district_code?String(hit.district_code):null,providerLevel:'兴趣点',score:100,
+  longitude:Number(hit.location_lng),latitude:Number(hit.location_lat)};
+}
 export async function recognizeCommunityIn(tx:Tx,id:string):Promise<boolean>{
  const [[row]]=await tx.query<any[]>('select * from complaint where complaint_id=? and coalesce(deleted,0)=0 for update',[id]);
  if(!row)return false;
@@ -12,7 +25,7 @@ export async function recognizeCommunityIn(tx:Tx,id:string):Promise<boolean>{
  const previouslyAccepted=String(row.location_coordinate_source??'').startsWith('系统自动认可：')&&['address','district_name','district_code','location_lng','location_lat','location_coordinate_system','location_coordinate_source'].every(k=>existingStates[k]?.resolution==='no_correction'&&existingStates[k]?.reason?.startsWith('系统自动认可：'));
  if(!previouslyAccepted&&!String(row.location_coordinate_source??'').startsWith('待纠偏：'))return false;
  const evaluation=previouslyAccepted?{...row,effective_field_state:Object.fromEntries(Object.entries(existingStates).map(([k,v])=>[k,{...v,resolution:'unresolved'}]))}:row;
- const point=cachedLocation(row) as (CommunityPoint|null);
+ const point=await communityPointFor(tx,row);
  if(!point||!recognizedCommunity(evaluation,locationCandidates(evaluation),point))return false;
  const [items]=await tx.query<any[]>("select * from correction_item where complaint_id=? and field_name in ('district_name','address','location_lng','location_lat') for update",[id]);
  if(previouslyAccepted&&!items.length)return false;

@@ -9,7 +9,7 @@ type Grid=AdministrativeHeatData['grids'][number];
  * 行政网格五色热力地图（高德 JS API）。
  *
  * 数据是 WGS84（后端契约），高德地图使用 GCJ-02，因此绘制前统一 wgs84ToGcj02；
- * 天地图已下线，不再有"未配天地图 Key"的降级文案，改为"未配置高德 Key"。
+ * 地图服务统一为高德：未配置 Key 时提示"未配置高德 Key"。
  * 交互：悬停显示网格名/数量/覆盖率，点击回调 onGrid；点位按 needsCorrection 区分。
  */
 export default function AdministrativeHeatMap({data,showPoints,onGrid}:{data:AdministrativeHeatData;showPoints:boolean;onGrid:(g:Grid)=>void}){

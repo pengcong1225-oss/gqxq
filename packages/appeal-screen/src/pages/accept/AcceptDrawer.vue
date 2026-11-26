@@ -52,7 +52,7 @@ const emit = defineEmits<{
 
 const TITLES: Record<AcceptDrawerKey, { title: string; caption: string }> = {
   compare: { title: '网格对比', caption: '标书 1.2.8：选择 2~3 个行政网格 · 按诉求大类对比件数 · 最高值高亮（并列全部高亮）' },
-  warnings: { title: '数据预警', caption: '标书 1.2.10：冬季保供 / 夏季保畅 / 计划性停水停气 / 燃气三件套（待业务确认）' },
+  warnings: { title: '数据预警', caption: '冬季保供 / 夏季保畅 / 计划性停水停气 / 燃气三件套安装' },
   research: { title: '冬夏研判', caption: '标书 1.2.11：近 5 个保障季年度量 / 上年度月度 / 本期 Top6 网格（g08 燃气气压 · w04 水压）' },
   events: { title: '停供与施工', caption: '标书 1.2.6 / 1.2.7：停水停气 / 管道施工改造事件（正式接口未接入，字段口径 + 空态）' },
   analysis: { title: '更多分析', caption: '诉求动态（满意/时长/周变化/高峰）+ 供气供水四维摘要' },

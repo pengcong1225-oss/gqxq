@@ -6,76 +6,63 @@ import { env } from '../config/env';
 import { pool } from '../db/pool';
 import { findAuthIdentity } from '../repositories/userRepo';
 import { bearerToken, findBoundUserId, verifyPlatformToken } from '../auth/platformIdentity';
+import { checkLegacyPlatformAccess, checkManagedSession, findManagedBySubject, findManagedByUser, type ManagedSession } from '../auth/managedIdentity';
 import { AppError } from '../http/errors';
+import { gqxqOidc } from '../auth/gqxqOidc';
+import { isOidcSessionMarker } from '../auth/oidcRelyingParty';
 
 interface GqxqJwtPayload {
   sub?: string;
   username?: string;
-  roles?: string[];
   sessionVersion?: number;
+  managedSession?: ManagedSession;
 }
 
-/** Token proves identity/session version only. Each request reloads status,
- * current enabled role and permissions. Old role claims never authorize a request. */
-export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
-  const header = req.header('authorization') ?? '';
-  const matched = /^Bearer\s+(.+)$/i.exec(header.trim());
-  if (!matched) {
-    next(AppError.unauthenticated('缺少 Bearer 令牌'));
-    return;
-  }
-
-  // 先尝试平台统一身份令牌：验签通过后按 platform_identity 绑定解析本地用户，
-  // 角色与权限仍从本地库读取，平台令牌不携带任何本地授权结论。
-  const platformClaims = await verifyPlatformToken(matched[1]).catch(() => null);
-  if (platformClaims && platformClaims.iss && platformClaims.sub) {
-    const boundUserId = await findBoundUserId(platformClaims.iss, platformClaims.sub);
-    if (!boundUserId) {
-      next(AppError.unauthenticated('当前平台账号尚未绑定本系统账号，请联系管理员绑定'));
-      return;
-    }
-    const identity = await findAuthIdentity(pool, boundUserId);
-    if (identity === null || identity.status !== 1) {
-      next(AppError.unauthenticated('绑定账号已停用，请联系管理员'));
-      return;
-    }
-    const authorization = await resolveAuthorization(identity.userId);
-    req.user = {
-      accountType: identity.accountType,
-      id: identity.userId,
-      username: identity.username,
-      roles: authorization.roleCodes,
-      permissionCodes: authorization.permissionCodes,
-      authorizationVersion: authorization.authorizationVersion,
-      mustChangePassword: identity.mustChangePassword,
-      sessionVersion: identity.sessionVersion,
-    };
-    req.accessContext = await resolveAccessContext(identity.userId, authorization);
-    runWithAccessContext(req.accessContext, () => next());
-    return;
-  }
-
-  let payload: GqxqJwtPayload;
+function verifyLocalToken(token: string): GqxqJwtPayload {
   try {
-    payload = jwt.verify(matched[1], env.jwtSecret) as GqxqJwtPayload;
-  } catch (err) {
-    const name = (err as { name?: string })?.name;
-    next(AppError.unauthenticated(name === 'TokenExpiredError' ? '登录已过期，请重新登录' : '令牌无效'));
-    return;
-  }
-
-  if (!payload.sub || !payload.username) {
-    next(AppError.unauthenticated('令牌缺少必要字段'));
-    return;
-  }
-
-  try {
-    const identity = await findAuthIdentity(pool, payload.sub);
-    if (identity === null || identity.status !== 1 || payload.sessionVersion !== identity.sessionVersion) {
-      // 账号被禁用或被删（本批不提供删除，故实际只有禁用）⇒ 会话立即失效
-      next(AppError.unauthenticated('登录状态已失效，请重新登录'));
-      return;
+    const payload = jwt.verify(token, env.jwtSecret, { algorithms: ['HS256'] });
+    if (typeof payload === 'string' || typeof payload.sub !== 'string' || typeof payload.username !== 'string') {
+      throw AppError.unauthenticated('令牌缺少必要字段');
     }
+    return payload;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw AppError.unauthenticated((error as { name?: string }).name === 'TokenExpiredError' ? '登录已过期，请重新登录' : '令牌无效');
+  }
+}
+
+async function authenticate(token: string) {
+  const claims = gqxqOidc ? null : await verifyPlatformToken(token);
+  if (claims?.iss && claims.sub) {
+    if (await findManagedBySubject(claims.iss, claims.sub)) throw AppError.unauthenticated('请通过门户进入诉求应用');
+    const userId = await findBoundUserId(claims.iss, claims.sub);
+    if (!userId || await findManagedByUser(userId)) {
+      throw AppError.unauthenticated('当前平台账号尚未绑定本系统账号，请联系管理员绑定');
+    }
+    await checkLegacyPlatformAccess(userId, claims);
+    return await findAuthIdentity(pool, userId);
+  }
+  const local = verifyLocalToken(token);
+  const identity = await findAuthIdentity(pool, local.sub!);
+  if (!identity || identity.status !== 1 || local.sessionVersion !== identity.sessionVersion) return null;
+  const managed = await findManagedByUser(identity.userId);
+  if (managed) await checkManagedSession(managed, local.managedSession);
+  else {
+    if (local.managedSession !== undefined) throw AppError.unauthenticated('登录状态已失效，请重新登录');
+    await checkLegacyPlatformAccess(identity.userId);
+  }
+  return identity;
+}
+
+/** Reload current business roles and restrictions for each protected operation. */
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const token = bearerToken(req);
+    if (!token) throw AppError.unauthenticated('缺少 Bearer 令牌');
+    const oidcSession = isOidcSessionMarker(token);
+    if (oidcSession) res.setHeader('Cache-Control', 'no-store');
+    const identity = oidcSession ? await gqxqOidc?.authenticate(req, token) : await authenticate(token);
+    if (!identity || identity.status !== 1) throw AppError.unauthenticated('登录状态已失效，请重新登录');
     const authorization = await resolveAuthorization(identity.userId);
     req.user = {
       accountType: identity.accountType,

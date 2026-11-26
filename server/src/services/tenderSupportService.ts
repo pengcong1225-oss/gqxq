@@ -11,7 +11,7 @@ export function supportMode(raw:unknown):'real'|'simulation'{if(raw!=='real'&&ra
 const decoded=(v:any)=>typeof v==='string'?JSON.parse(v):v;
 function requireRead(ctx:MasterDataContext){if(!ctx.permissionCodes.includes('statistics.read')||!ctx.permissionCodes.includes('complaint.read'))throw AppError.forbidden('专题明细需要统计和诉求查询权限');}
 function requireWrite(ctx:MasterDataContext,permission:string){requireRead(ctx);if(!ctx.userId||!ctx.permissionCodes.includes(permission)||ctx.access.roles.includes('readonly'))throw AppError.forbidden();assertAllScope(ctx.access);}
-export async function readSupportStore(key:string){const [rows]=await pool.query<any[]>('select revision,content from gqxq_tender_support_store where store_key=?',[key]);return rows[0]?{revision:Number(rows[0].revision),content:decoded(rows[0].content)}:null;}
+export async function readSupportStore(key:string,db=pool){const [rows]=await db.query<any[]>('select revision,content from gqxq_tender_support_store where store_key=?',[key]);return rows[0]?{revision:Number(rows[0].revision),content:decoded(rows[0].content)}:null;}
 export async function supportDataset(mode:'simulation'|'real',ctx:MasterDataContext):Promise<TenderDataset>{
  requireRead(ctx);const today=shanghaiToday(()=>new Date());
  const real=mode==='real'?await readSupportStore('dataset-real'):null;

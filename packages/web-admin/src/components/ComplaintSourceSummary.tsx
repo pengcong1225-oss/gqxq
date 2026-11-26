@@ -19,34 +19,39 @@ export default function ComplaintSourceSummary({detail,canReadDocument,documentL
      <div><Typography.Text type="secondary" style={{fontSize:12}}>主数据企业：{detail.enterpriseName}</Typography.Text></div>
     )}
    </Descriptions.Item>
-   <Descriptions.Item label="二级单位">{raw(s?.secondaryDepartment)}</Descriptions.Item>
+   <Descriptions.Item label="二级单位">{raw(detail.secondaryDepartment ?? s?.secondaryDepartment)}</Descriptions.Item>
    <Descriptions.Item label="行业主管部门">{raw(detail.industryDepartment)}</Descriptions.Item>
    <Descriptions.Item label="是否保密">{raw(detail.isConfidential)}</Descriptions.Item>
    <Descriptions.Item label="是否自办自结">{raw(detail.selfHandled)}</Descriptions.Item>
    <Descriptions.Item label="事项分类">{raw(detail.itemCategory)}</Descriptions.Item>
    <Descriptions.Item label="来源小类">{raw(detail.sourceSubCategory)}</Descriptions.Item>
    <Descriptions.Item label="来源区">{raw(s?.district)}</Descriptions.Item>
-   <Descriptions.Item label="来源街道">{raw(s?.street)}</Descriptions.Item>
-   <Descriptions.Item label="来源小区／社区">{raw(s?.community)}</Descriptions.Item>
-   <Descriptions.Item label="来源网格">{raw(s?.grid)}</Descriptions.Item>
+   <Descriptions.Item label="来源街道">{raw(detail.streetName ?? s?.street)}</Descriptions.Item>
+   <Descriptions.Item label="来源小区／社区">{raw(detail.communityName ?? s?.community)}</Descriptions.Item>
+   <Descriptions.Item label="来源网格">{raw(detail.gridName ?? s?.grid)}</Descriptions.Item>
    <Descriptions.Item label="来源录入时间">{detail.sourceReportedAt?new Date(detail.sourceReportedAt).toLocaleString('zh-CN'):'来源未提供'}</Descriptions.Item>
+   <Descriptions.Item label="来源事件状态">{raw(s?.eventStatus)}</Descriptions.Item>
    <Descriptions.Item label="来源督办状态">{raw(s?.supervisionStatus)}</Descriptions.Item>
-   <Descriptions.Item label="规定完成时间">{raw(s?.deadlineRaw)}</Descriptions.Item>
-   <Descriptions.Item label="实际完成时间">{raw(s?.completedRaw)}</Descriptions.Item>
+   {detail.sourceEventStatusCode !== 'unknown' && detail.sourceEventStatusName && (
+    <Descriptions.Item label="来源同步状态" span={2}>{detail.sourceEventStatusName}</Descriptions.Item>
+   )}
+   <Descriptions.Item label="接线员">{raw(detail.operatorName)}</Descriptions.Item>
+   <Descriptions.Item label="定位情况">{raw(detail.locationFlag)}</Descriptions.Item>
+   <Descriptions.Item label="规定完成时间（来源原件）">{raw(s?.deadlineRaw)}</Descriptions.Item>
+   <Descriptions.Item label="实际完成时间（来源原件）">{raw(s?.completedRaw)}</Descriptions.Item>
    <Descriptions.Item label="市民回复结果（满意度）" span={2}>
     {satisfactionText ? (
      <Space size={6} wrap><span>{satisfactionText}</span>{satisfactionCode && <Tag>{SATISFACTION_LABEL[satisfactionCode] ?? satisfactionCode}</Tag>}</Space>
     ) : raw(null)}
    </Descriptions.Item>
+   <Descriptions.Item label="坐席满意度" span={2}>{raw(detail.seatSatisfaction)}</Descriptions.Item>
    <Descriptions.Item label="办理结果" span={2}>{raw(detail.handlingResult ?? s?.result)}</Descriptions.Item>
    <Descriptions.Item label="回复市民结果" span={2}>{raw(detail.replyToCitizen)}</Descriptions.Item>
+   <Descriptions.Item label="在线办结依据" span={2}>{raw(detail.onlineCloseBasis)}</Descriptions.Item>
    <Descriptions.Item label="市民姓名">{detail.citizenName ? detail.citizenName : raw(null)}</Descriptions.Item>
    <Descriptions.Item label="市民电话">{detail.citizenPhone ? detail.citizenPhone : raw(null)}</Descriptions.Item>
    <Descriptions.Item label="来源原件" span={2}>{canReadDocument?<Space wrap><Button size="small" loading={documentLoading} onClick={onReadDocument}>查看市民信息及来源原件</Button><Typography.Text type="secondary">按来源原件权限读取并留存访问记录</Typography.Text></Space>:'需来源原件读取权限'}</Descriptions.Item>
   </Descriptions>
-  <Typography.Paragraph type="secondary" style={{margin:"12px 0 0"}}>
-   本批为历史导入：规定/实际完成时间源表未提供；市民姓名/电话已从来源第 8/9 列原样入库，详情展示；满意度取自来源“市民回复结果”。
-  </Typography.Paragraph>
  </Card>;
 }
 /** Only render after the audited source-document endpoint has authorized this read. */

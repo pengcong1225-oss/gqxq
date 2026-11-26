@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {projectComplaintDetail} from '../src/services/complaintProjection';
 import {parseListQuery} from '../src/services/complaintService';
 import {buildWhere} from '../src/repositories/complaintRepo';
+import {rowToListItem} from '../src/repositories/complaintMapper';
 import {runAsTrustedSystem} from '../src/auth/accessScope';
 import {normalizeComplaintTable} from '../src/services/complaintImportParser';
 import {parseLocationCorrectionInput,assertLocationReviewState} from '../src/services/locationValidationService';
@@ -66,11 +67,42 @@ test('v2 27-column export maps source summary and list filters fall back to v2 k
  assert.equal(detail.sourceSummary.department,'中燃宜昌公司');
  assert.equal(detail.sourceSummary.district,'西陵区');
  assert.equal(detail.sourceSummary.community,'石马小区');
- assert.equal(detail.sourceSummary.supervisionStatus,'已办结');
+ assert.equal(detail.sourceSummary.eventStatus,'已办结');
+ assert.equal(detail.sourceSummary.supervisionStatus,null);
  assert.equal(detail.sourceSummary.result,'已处理');
  assert.equal(detail.sourceSummary.deadlineRaw,null);
  const {filter}=parseListQuery({sourceMajorCategory:'住'});
  const where=buildWhere(filter);
  assert.ok(where.text.includes('json_unquote(json_extract(c.source_payload, ?)) = ?'));
  assert.ok(where.params.includes('$.metadata."大类"'));
+});
+
+test('ledger and detail preserve the two source status fields independently of platform statuses',()=>{
+ const cases = [
+  {metadata:{'事件状态':'办理中'},event:'办理中',supervision:null},
+  {metadata:{'督办状态':'超期结案'},event:null,supervision:'超期结案'},
+  {metadata:{'事件状态':'重办评价不满意','督办状态':'正常在办'},event:'重办评价不满意',supervision:'正常在办'},
+  {metadata:{'事件状态':' ','督办状态':null},event:null,supervision:null},
+ ];
+ for(const {metadata,event,supervision} of cases){
+  const stored={...row,source_event_status:'completed',supervision_status:'accepted',source_payload:JSON.stringify({metadata})};
+  const detail=projectComplaintDetail(stored as never,access as never);
+  const ledger=rowToListItem(stored as never);
+  assert.equal(detail.sourceSummary?.eventStatus,event);
+  assert.equal(detail.sourceSummary?.supervisionStatus,supervision);
+  assert.equal(ledger.sourceEventStatusRaw,event);
+  assert.equal(ledger.sourceSupervisionStatusRaw,supervision);
+  assert.equal(ledger.sourceEventStatusCode,'completed');
+  assert.equal(ledger.supervisionStatusCode,'accepted');
+ }
+});
+
+test('an explicit event status does not discard old export classification and source times',()=>{
+ const metadata = {...row.source_payload.metadata, '事件状态': '已办结', '督办状态': '超期结案'};
+ const detail = projectComplaintDetail({...row, source_payload: {metadata}}, access as never);
+ assert.equal(detail.sourceSummary?.caseType, '燃气安全');
+ assert.equal(detail.sourceSummary?.department, '测试部门');
+ assert.equal(detail.sourceSummary?.eventStatus, '已办结');
+ assert.equal(detail.sourceSummary?.supervisionStatus, '超期结案');
+ assert.equal(detail.sourceCompletedAt, '2026-11-10T11:30:00.000Z');
 });

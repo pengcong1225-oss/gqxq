@@ -57,6 +57,9 @@ import {
  * 真实数据源自己的错误类型（避免与 api.ts 循环依赖）。
  * api.ts 收到后会转成 ScreenApiError，UI 侧仍按统一错误码语义处理。
  */
+import { resolveApiBase } from './apiBase';
+import type { AdministrativeHeat } from '../components/Map/map2d/administrativeHeat';
+
 export class RealApiError extends Error {
   code: number;
   traceId: string;
@@ -78,7 +81,8 @@ try {
   token = null;
 }
 
-export const REAL_BASE = '/api/v1';
+/** 真实数据 API 基址（推导规则见 ./apiBase.ts，全项目唯一实现） */
+export const REAL_BASE = resolveApiBase();
 
 export function hasRealSession(): boolean {
   return !!token;
@@ -138,12 +142,14 @@ export async function realLogin(username: string, password: string): Promise<voi
   }
 }
 
-async function realGet<T>(path: string, qs: URLSearchParams): Promise<T> {
+async function realGet<T>(path: string, qs: URLSearchParams, signal?: AbortSignal): Promise<T> {
   if (!token) throw new RealApiError(3001, '未登录：真实数据需要先登录', '');
   let res: Response;
   try {
     res = await fetch(`${REAL_BASE}${path}?${qs.toString()}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      signal,
+      cache: signal ? 'no-store' : undefined,
     });
   } catch (e) {
     throw new RealApiError(
@@ -231,12 +237,13 @@ interface RealBootstrap {
   top3: { state: string; reason?: string; data?: { items: any[]; from: string; to: string; coverage?: string } };
   warnings: { state: string; reason?: string; data?: { items: any[] } };
   research: { state: string; reason?: string; data?: { seasons: any[] } };
-  heat: { state: string; reason?: string; data?: any };
+  heat: AdministrativeHeat;
   spatial?: { state: string; reason?: string; data?: { communities?: { id: string; name?: string; gridId?: string; longitude?: number; latitude?: number; coordinateSource?: string }[] } };
   spatial: { state: string; reason?: string; data?: any };
   unavailable: Record<string, string>;
   contextId: string;
   generatedAt: string;
+  expiresAt: string;
   periodAnchor?: string;
 }
 
@@ -324,8 +331,8 @@ export function setRealAsOf(v: string | null) {
   bootstrapCache.clear();
 }
 function anchorDate(): Date {
-  if (!asOfOverride) return new Date();
-  const d = new Date(`${asOfOverride}T00:00:00`);
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  const d = new Date(`${asOfOverride ?? today}T00:00:00`);
   return Number.isNaN(d.getTime()) ? new Date() : d;
 }
 
@@ -340,16 +347,15 @@ const bootstrapCache = new Map<string, Promise<Bundle>>();
 let lastAllBundle: RealBootstrap | null = null;
 
 function bundleKey(filters: ScreenFilters): string {
-  const w = periodWindow(filters.period, anchorDate());
-  const f: any = filters;
+  const w = filters.window ?? currentRealWindow(filters.period);
   return [
     w.from,
     w.to,
-    filters.gridCode ?? f.adminGridCode ?? '',
+    filters.gridCode ?? '',
     filters.districtCode ?? '',
-    f.enterpriseCode ?? '',
-    f.communityCode ?? '',
-    f.categoryCode ?? '',
+    filters.enterpriseCode ?? '',
+    filters.communityCode ?? '',
+    filters.categoryCode ?? '',
   ].join('|');
 }
 
@@ -395,19 +401,30 @@ export function realCommunityOptions(): { id: string; name: string; gridId?: str
   return [...communityOptionCache].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
 }
 
+/**
+ * 丢弃某组筛选条件下的 bootstrap 缓存。
+ *
+ * 用途：服务端的查询上下文（contextId）有有效期，过期后 /screen/demands 会 409。
+ * 此时必须重新 bootstrap 拿新 contextId —— 但如果只 clear() 整个缓存，
+ * 其它筛选条件的缓存也会一起丢（大屏上会看到整屏重新加载）。
+ * 所以按 bundleKey 精确失效。
+ */
+export function invalidateBundleCache(filters: ScreenFilters): void {
+  bootstrapCache.delete(bundleKey(filters));
+}
+
 /** 一次取齐 ALL/GAS/WATER 三份 bootstrap（同一窗口），所有面板共用 */
 export function fetchBundle(filters: ScreenFilters): Promise<Bundle> {
   const key = bundleKey(filters);
   const hit = bootstrapCache.get(key);
   if (hit) return hit;
-  const { from, to } = periodWindow(filters.period, anchorDate());
+  const { from, to } = filters.window ?? currentRealWindow(filters.period);
   const district = filters.districtCode ?? null;
-  const f: any = filters;
   const extra = {
-    adminGridCode: filters.gridCode ?? f.adminGridCode ?? null,
-    enterpriseCode: f.enterpriseCode ?? null,
-    communityCode: f.communityCode ?? null,
-    categoryCode: f.categoryCode ?? null,
+    adminGridCode: filters.gridCode,
+    enterpriseCode: filters.enterpriseCode,
+    communityCode: filters.communityCode,
+    categoryCode: filters.categoryCode,
   };
   const p = Promise.all([
     loadOne(from, to, undefined, district, extra),
@@ -470,7 +487,7 @@ function buildMeta(bs: RealBootstrap, filters: ScreenFilters): ScreenMeta {
   else if (catUnmapped > 0) notes.push(`分类未映射 ${catUnmapped} 件`);
   if (entMissingAll) notes.push('企业服务户数未维护：缺跨期有效户数及分母口径，企业每万户不可计算');
   if (communityMissingAll) notes.push('小区/网格主数据未配置：缺「小区→行政网格」对照，高频小区不可排名');
-  if (bs.heat?.state !== 'available') notes.push(`网格热力未发布：${bs.heat?.reason ?? '缺空间资源与发布规则'}`);
+  if (bs.heat?.reason) notes.push(`网格热力：${bs.heat.reason}`);
   if (unlocated > 0) notes.push(`未定位 ${unlocated} 件（单列，不参与六区着色）`);
   return {
     snapshotId: `REAL-${bs.contextId.slice(0, 8)}`,
@@ -543,9 +560,25 @@ function industryOverview(bs: RealBootstrap, code: 'GAS' | 'WATER'): IndustryOve
 
 /* ------------------------------------------------------------------ 六个面板映射 */
 
+/** 按行业口径从三份 bundle 里选出对应的那一份（ALL / GAS / WATER） */
+export function pickIndustryBundle(bs: Bundle, industry: unknown): RealBootstrap {
+  if (industry === 'GAS') return bs.gas;
+  if (industry === 'WATER') return bs.water;
+  return bs.all;
+}
+
 export function mapOverview(bs: Bundle, filters: ScreenFilters): OverviewData {
-  const meta = buildMeta(bs.all, filters);
-  const s = bs.all.summary;
+  /*
+   * 必须按 filters.industry 选 bundle，不能用 bs.all。
+   *
+   * 历史 bug：这里原来写死 bs.all —— 无论切到「供气服务」还是「供水服务」，
+   * 诉求总览的合计/年度/季度/月度全是「全部行业」的数字，客户看到的就是
+   * 「切 tab 只有部分内容变，总览和地图纹丝不动」。
+   * 实测同一窗口：全部 844 件 / 供气 583 件 / 供水 261 件。
+   */
+  const picked = pickIndustryBundle(bs, filters.industry);
+  const meta = buildMeta(picked, filters);
+  const s = picked.summary;
   return {
     meta,
     summary: {
@@ -593,6 +626,7 @@ export function mapSupply(bs: Bundle, filters: ScreenFilters): SupplyData {
           : households === null
             ? na('MISSING_HOUSEHOLDS')
             : na('ZERO_BASE'),
+        reasonText: typeof r.reason === 'string' ? r.reason : undefined,
         denominatorDate: r.at ? String(r.at) : r.version ? `维护版本 ${r.version}` : '—',
       } as EnterpriseRatio;
     })
@@ -756,12 +790,36 @@ export function mapDemandDynamic(bs: Bundle, filters: ScreenFilters): DemandDyna
   }));
   const weekdayMap = new Map<number, number>();
   for (const row of weekdaySplit) {
-    // 兼容旧 WeekdaySeries：0=周日 … 6=周六
-    const idx = row.weekday % 7;
+    /**
+     * 后端 `charts.weekly[].weekday` 口径：**周一=1 … 周日=7**（已对运行中接口实测确认）。
+     *
+     * 旧实现是 `row.weekday % 7` + `labels = ['周日','周一',…,'周六']`。
+     * **实测旧实现的结果其实是对的**（7 % 7 = 0 恰好落回「周日」那格），不存在错位。
+     *
+     * 之所以仍然改写，是因为它对**两种口径都只是碰巧成立**：
+     *   · 后端若改回 0=周日…6=周六，旧代码同样“看起来”能跑，但语义完全变了；
+     *   · 反过来若有人按注释把数据改成 0-6，旧代码会整体平移一格，且不报错、极难发现。
+     * 现在显式归一为「周一=0 … 周日=6」的内部索引，并兼容 0..6 输入，
+     * 让口径写死在一处、可读、可测，不再依赖巧合。
+     */
+    const raw = Number(row.weekday);
+    let idx: number;
+    if (raw >= 1 && raw <= 7) {
+      idx = raw - 1; // 周一=1 → 0；周日=7 → 6
+    } else if (raw >= 0 && raw <= 6) {
+      idx = raw; // 已是 0-6 口径
+    } else {
+      continue;
+    }
     weekdayMap.set(idx, (weekdayMap.get(idx) ?? 0) + row.count);
   }
-  const labels = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const weekdayPoints: WeekdayPoint[] = labels.map((label, i) => ({ weekday: i, label, value: weekdayMap.get(i) ?? null }));
+  // 周一在前的展示顺序（标书 1.2.3 的「周变化」按自然工作周读更顺；周日在末）
+  const labels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  const weekdayPoints: WeekdayPoint[] = labels.map((label, i) => ({
+    weekday: i,
+    label,
+    value: weekdayMap.get(i) ?? null,
+  }));
   const weekday: WeekdaySeries = {
     points: weekdayPoints,
     reason: weekdayMap.size ? null : 'NO_SAMPLE',
@@ -823,7 +881,7 @@ export function mapDemandDynamic(bs: Bundle, filters: ScreenFilters): DemandDyna
  * items 只在有可识别编码时返回；无 items 才显示不可用原因（保留参考期与覆盖说明）。
  */
 export function mapTopTypes(bs: Bundle, filters: ScreenFilters): TopTypesData {
-  const b = bs.all;
+  const b = pickIndustryBundle(bs, filters.industry);
   const meta = buildMeta(b, filters);
   const refFrom = b.top3?.data?.from ?? '—';
   const refTo = b.top3?.data?.to ?? '—';
@@ -846,6 +904,7 @@ export function mapTopTypes(bs: Bundle, filters: ScreenFilters): TopTypesData {
     return {
       rank: i + 1,
       typeId: it.code,
+      ...(typeof it.evidenceKey === 'string' ? { evidence: { contextId: b.contextId, key: it.evidenceKey } } : {}),
       title: `${catLabel(it.code)} · 往年同期（${refFrom} ~ ${refTo}）`,
       typeName: catLabel(it.code),
       count,
@@ -862,7 +921,7 @@ export function mapTopTypes(bs: Bundle, filters: ScreenFilters): TopTypesData {
       ? `往年同期 Top3 不可用：${b.top3.reason}（参考期 ${refFrom} ~ ${refTo}${coverage ? `；覆盖：${coverage}` : ''}）`
       : `往年同期无数据（参考期 ${refFrom} ~ ${refTo}）`;
 
-  return { meta, period: filters.period, industry: filters.industry, items, emptyReason };
+  return { meta, period: filters.period, industry: filters.industry, items, coverage, emptyReason };
 }
 
 export function mapWarnings(bs: Bundle, filters: ScreenFilters): WarningListData {
@@ -883,8 +942,95 @@ export function mapResearch(bs: Bundle, filters: ScreenFilters): ResearchTopData
 
 /* ------------------------------------------------------------------ 下钻明细 */
 
+export interface ShutdownStatsSnapshot {
+  contextId: string;
+  expiresAt: string;
+  from: string;
+  to: string;
+}
+
+export interface ShutdownDemandEvidence {
+  id: string;
+  complaintNo: string | null;
+  type: string;
+  occurredAt: string;
+  gridId: string;
+}
+
+interface ShutdownMapEvidence {
+  contextId: string;
+  event: { id: string; kind: 'shutdown'; layerVersion: string };
+  relatedDemands: { items: ShutdownDemandEvidence[]; total: number | null; reason: string };
+}
+
+export interface RealComplaintDetail {
+  complaintId: string;
+  complaintNo: string;
+  title: string;
+  content: string | null;
+  businessTypeName: string;
+  complaintTypeName: string;
+  sourceEventStatusName: string;
+  enterpriseName: string | null;
+}
+
+export type ShutdownComplaintDetail = RealComplaintDetail;
+
+export async function realFetchShutdownEvidence(
+  eventId: string, layerVersion: string, snapshot: ShutdownStatsSnapshot, signal: AbortSignal,
+) {
+  const data = await realGet<ShutdownMapEvidence>(
+    `/screen/events/${encodeURIComponent(eventId)}`,
+    new URLSearchParams({ contextId: snapshot.contextId, layerVersion }), signal,
+  );
+  if (data.contextId !== snapshot.contextId || data.event?.id !== eventId ||
+      data.event.kind !== 'shutdown' || data.event.layerVersion !== layerVersion) {
+    throw new RealApiError(409, '图层事件与统计快照不一致，请刷新');
+  }
+  return data.relatedDemands;
+}
+
+export async function realFetchComplaintDetail(row: Pick<ShutdownDemandEvidence, 'id' | 'complaintNo'>, signal: AbortSignal) {
+  // 既有详情接口将纯数字路径按数值主键解释。纯数字工单号用证据行的业务主键定位。
+  const key = row.complaintNo && !/^\d+$/.test(row.complaintNo) ? row.complaintNo : row.id;
+  const complaint = await realGet<RealComplaintDetail>(`/complaints/${encodeURIComponent(key)}`, new URLSearchParams(), signal);
+  if (complaint.complaintId !== row.id || (row.complaintNo && complaint.complaintNo !== row.complaintNo)) {
+    throw new RealApiError(409, '工单记录已变化，请刷新统计后核对');
+  }
+  return complaint;
+}
+
+export const realFetchShutdownComplaint = realFetchComplaintDetail;
+
+export interface PipelineComplaintClues {
+  projectId: string;
+  gridCode: string;
+  page: number;
+  size: number;
+  state: 'available' | 'unavailable';
+  reason: string;
+  window: { from: string; to: string } | null;
+  total: number | null;
+  items: (ShutdownDemandEvidence & { title: string })[];
+}
+
+export async function realFetchPipelineClues(
+  projectId: string, gridCode: string, page: number, revision: string | null | undefined, signal: AbortSignal,
+) {
+  const query = new URLSearchParams({ gridCode, page: String(page) });
+  if (revision) query.set('sourceRevision', revision);
+  const data = await realGet<PipelineComplaintClues>(
+    `/assessment/pipeline-layer/projects/${encodeURIComponent(projectId)}/complaints`, query, signal,
+  );
+  if (data.projectId !== projectId || data.gridCode !== gridCode || data.page !== page) {
+    throw new RealApiError(409, '改造项目或网格已变化，请重新选择色块');
+  }
+  return data;
+}
+
 interface RealDemands {
   contextId: string;
+  window?: { from: string; to: string } | null;
   page: number;
   size: number;
   total: number;
@@ -893,8 +1039,8 @@ interface RealDemands {
     businessType: string;
     districtCode: string;
     enterpriseCode: string;
-    adminGridCode: string;
-    communityCode: string;
+    adminGridCode: string | null;
+    communityCode: string | null;
     categoryCode: string;
     title: string;
     status: string;
@@ -906,40 +1052,43 @@ export async function realFetchDemands(
   bs: Bundle,
   query: DrillQuery
 ): Promise<ApiResponse<DemandListData>> {
+  const picked = pickIndustryBundle(bs, query.industry);
   const qs = new URLSearchParams({
-    contextId: bs.all.contextId,
+    contextId: query.evidence?.contextId ?? picked.contextId,
     page: String(query.page ?? 1),
     size: String(query.pageSize ?? 8),
   });
-  // 后端 /screen/demands 只接受：metricKey/categoryCode/districtCode/adminGridCode/communityCode/enterpriseCode/from/to
-  // （businessType、month 不在白名单，传了会 400 明细筛选无效）
   if (query.metricKey) qs.set('metricKey', String(query.metricKey));
   if (query.typeId) qs.set('categoryCode', String(query.typeId));
   if (query.districtCode) qs.set('districtCode', query.districtCode);
-  if (query.gridCode) qs.set('adminGridCode', String(query.gridCode));
+  if (query.gridCode) qs.set(query.formalHeatGrid ? 'heatGridCode' : 'adminGridCode', String(query.gridCode));
   // 标书 1.2.2 ④：高频小区点击传小区编码（C-xxxxxxxx-xxxx）按小区过滤；
   // 中文小区名不是后端可识别条件（传了会 400），只在旧调用方传 C- 编码时兼容。
   if (query.communityCode) qs.set('communityCode', String(query.communityCode));
-  if (query.communityName && /^C-/.test(String(query.communityName))) qs.set('communityCode', String(query.communityName));
-if (query.enterpriseId) qs.set('enterpriseCode', String(query.enterpriseId));
+  else if (query.communityName && /^C-/.test(query.communityName)) qs.set('communityCode', query.communityName);
+  if (query.enterpriseId) qs.set('enterpriseCode', String(query.enterpriseId));
   // 月度趋势点击：后端白名单只有 from/to，用它表达「某月」
   if (query.month) {
-    const year = Number(String(bs.all.window?.to ?? '').slice(0, 4)) || new Date().getFullYear();
+    const year = Number(String(picked.window?.to ?? '').slice(0, 4)) || new Date().getFullYear();
     const m = String(query.month).padStart(2, '0');
     const last = new Date(Date.UTC(year, query.month, 0)).getUTCDate();
     qs.set('from', `${year}-${m}-01`);
     qs.set('to', `${year}-${m}-${String(last).padStart(2, '0')}`);
   }
 
-  const data = await realGet<RealDemands>('/screen/demands', qs);
+  const data = query.evidence
+    ? await realGet<RealDemands>('/screen/evidence', new URLSearchParams({
+        contextId: query.evidence.contextId, evidenceKey: query.evidence.key,
+        page: String(query.page ?? 1), size: String(query.pageSize ?? 8),
+      }))
+    : await realGet<RealDemands>('/screen/demands', qs);
   const commMeta = communityMeta(bs);
-  const filtered = data.items.filter((it) => (query.industry === 'ALL' ? true : query.industry === 'GAS' ? it.businessType === 'gas' : it.businessType === 'water'));
-  const items: DemandItem[] = filtered.map((it) => ({
+  const items: DemandItem[] = data.items.map((it) => ({
     caseNo: it.id,
     industry: it.businessType === 'gas' ? 'GAS' : 'WATER',
     typeName: catLabel(it.categoryCode),
-    communityName: it.communityCode === MISSING ? '未映射小区' : (commMeta.get(String(it.communityCode))?.name ?? String(it.communityCode)),
-    gridName: it.adminGridCode === MISSING ? '未映射网格' : String(it.adminGridCode),
+    communityName: !it.communityCode ? '—' : it.communityCode === MISSING ? '未映射小区' : (commMeta.get(it.communityCode)?.name ?? it.communityCode),
+    gridName: !it.adminGridCode ? '—' : it.adminGridCode === MISSING ? '未映射网格' : it.adminGridCode,
     intakeTime: it.occurredDay,
     status: it.status === 'completed' ? '已办结' : it.status === 'pending' ? '处理中' : '待核验',
     relatedEvent: false,
@@ -947,7 +1096,7 @@ if (query.enterpriseId) qs.set('enterpriseCode', String(query.enterpriseId));
     satisfaction: '未评价',
   }));
 
-  const meta = buildMeta(bs.all, {
+  const meta = buildMeta(picked, {
     period: query.period,
     industry: query.industry,
     snapshotId: '',
@@ -956,7 +1105,7 @@ if (query.enterpriseId) qs.set('enterpriseCode', String(query.enterpriseId));
   return {
     code: 0,
     message: 'ok',
-    traceId: bs.all.contextId,
+    traceId: data.contextId ?? picked.contextId,
     data: {
       meta,
       condition: query,
@@ -964,6 +1113,7 @@ if (query.enterpriseId) qs.set('enterpriseCode', String(query.enterpriseId));
       pageSize: data.size,
       total: data.total,
       items,
+      ...(query.evidence && data.window ? { evidenceWindow: data.window } : {}),
     },
   };
 }

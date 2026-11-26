@@ -7,10 +7,19 @@ import {AppError} from '../http/errors';
 import {toIso} from './complaintMapper';
 export interface FollowupHeader {followupId:string;complaintId:string;ownerId:string;version:number;order:number;createdAt:string}
 const hColumns='h.id,h.followup_id,h.complaint_id,h.owner_id,h.current_version,h.created_at';
-const rColumns='r.version,r.contacted,r.occurred_at,r.evaluation_code,r.dissatisfaction_reason,r.notes,r.conclusion,r.concluded_by,r.concluded_at,r.action,r.operator_id,r.operator_name,r.reason,r.revised_at';
+const rColumns='r.version,r.contacted,r.occurred_at,r.evaluation_code,r.dissatisfaction_reason,r.notes,r.conclusion,r.concluded_by,r.concluded_at,r.action,r.operator_id,r.operator_name,r.operator_real_name,r.reason,r.revised_at';
 const nullable=(v:unknown)=>v==null?null:String(v);
 function header(r:Record<string,unknown>):FollowupHeader {return {followupId:String(r.followup_id),complaintId:String(r.complaint_id),ownerId:String(r.owner_id),version:Number(r.current_version),order:Number(r.id),createdAt:toIso(r.created_at)!};}
-function view(r:Record<string,unknown>):FollowupView {return {...header(r),version:Number(r.version),contacted:Number(r.contacted)===1,occurredAt:toIso(r.occurred_at)!,evaluationCode:r.evaluation_code as FollowupView['evaluationCode'],dissatisfactionReason:nullable(r.dissatisfaction_reason),notes:nullable(r.notes),conclusion:nullable(r.conclusion),concludedBy:nullable(r.concluded_by),concludedAt:toIso(r.concluded_at),action:r.action as FollowupView['action'],operatorId:String(r.operator_id),operatorName:String(r.operator_name),reason:nullable(r.reason),revisedAt:toIso(r.revised_at)!};}
+function view(r:Record<string,unknown>):FollowupView {
+ // operator_name stores the login account captured when the version was written.
+ return {
+  ...header(r),version:Number(r.version),contacted:Number(r.contacted)===1,occurredAt:toIso(r.occurred_at)!,
+  evaluationCode:r.evaluation_code as FollowupView['evaluationCode'],dissatisfactionReason:nullable(r.dissatisfaction_reason),
+  notes:nullable(r.notes),conclusion:nullable(r.conclusion),concludedBy:nullable(r.concluded_by),concludedAt:toIso(r.concluded_at),
+  action:r.action as FollowupView['action'],operatorId:String(r.operator_id),operatorName:nullable(r.operator_real_name)?.trim()||'',
+  operatorAccount:nullable(r.operator_name)?.trim()||null,reason:nullable(r.reason),revisedAt:toIso(r.revised_at)!,
+ };
+}
 /** Minimal locked canonical identity avoids rereading protected/source-wide detail DTOs. */
 export async function lockComplaint(tx:Tx,idOrNo:string,access:AccessContext):Promise<Record<string,unknown>> {
  if(!idOrNo||idOrNo.length>128)throw AppError.validation('诉求标识不合法');
@@ -34,7 +43,10 @@ export async function readRequest(tx:Tx,ownerId:string,complaintId:string,operat
 }
 export async function insertHeader(tx:Tx,id:string,complaintId:string,ownerId:string,now:Date) {await tx.execute('insert into manual_followup(followup_id,complaint_id,owner_id,current_version,created_at) values(?,?,?,1,?)',[id,complaintId,ownerId,now]);}
 export async function appendRevision(tx:Tx,v:FollowupView) {
- await tx.execute('insert into manual_followup_revision(followup_id,version,contacted,occurred_at,evaluation_code,dissatisfaction_reason,notes,conclusion,concluded_by,concluded_at,action,operator_id,operator_name,reason,revised_at) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[v.followupId,v.version,v.contacted?1:0,new Date(v.occurredAt),v.evaluationCode,v.dissatisfactionReason,v.notes,v.conclusion,v.concludedBy,v.concludedAt?new Date(v.concludedAt):null,v.action,v.operatorId,v.operatorName,v.reason,new Date(v.revisedAt)]);
+ await tx.execute(
+  'insert into manual_followup_revision(followup_id,version,contacted,occurred_at,evaluation_code,dissatisfaction_reason,notes,conclusion,concluded_by,concluded_at,action,operator_id,operator_name,operator_real_name,reason,revised_at) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+  [v.followupId,v.version,v.contacted?1:0,new Date(v.occurredAt),v.evaluationCode,v.dissatisfactionReason,v.notes,v.conclusion,v.concludedBy,v.concludedAt?new Date(v.concludedAt):null,v.action,v.operatorId,v.operatorAccount??'',v.operatorName||null,v.reason,new Date(v.revisedAt)],
+ );
  await tx.execute('update manual_followup set current_version=? where followup_id=?',[v.version,v.followupId]);
 }
 export async function insertRequest(tx:Tx,ownerId:string,complaintId:string,operation:string,requestId:string,hash:string,followupId:string,version:number) {await tx.execute('insert into manual_followup_request(owner_id,complaint_id,operation,request_id,payload_hash,followup_id,result_version) values(?,?,?,?,?,?,?)',[ownerId,complaintId,operation,requestId,hash,followupId,version]);}

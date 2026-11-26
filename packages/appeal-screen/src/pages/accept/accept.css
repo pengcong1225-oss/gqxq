@@ -246,6 +246,28 @@
   border: 1px solid rgba(52, 139, 124, 0.5);
   border-radius: 3px;
 }
+/*
+ * 更多筛选（第二行）：区域 / 企业 / 网格 / 小区。
+ * 标书 1.2.2、1.2.9 只要求「时间范围 + 诉求类型」，这四项是本方增强，
+ * 默认收起；展开后紧贴第一行下方，不遮挡下面 22% 处的图层控制条。
+ */
+.accept-filters--more {
+  top: calc(13.6% + 36px);
+  max-width: 790px;
+}
+.accept-filters__more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.accept-filters__caret {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  font-size: 9px;
+}
+.accept-filters__caret.is-open {
+  transform: rotate(180deg);
+}
 .accept-filters input[type='date'] {
   width: 112px;
   padding: 2px 3px;
@@ -391,7 +413,12 @@
   display: flex;
   flex-direction: column;
   padding: 0 12px 10px;
-  background: linear-gradient(100deg, rgba(5, 35, 33, 0.94), rgba(3, 24, 25, 0.78));
+  /*
+   * 卡片背景：原来右侧 alpha 0.78，地图上的图例、色块、文字会从卡片右半边透出来，
+   * 列表可读性很差（截图可见「管线图层/停水停气」图例叠在小区名上）。
+   * 统一提高到 0.97/0.94，保留轻微层次感但不再透底。
+   */
+  background: linear-gradient(100deg, #052321, #031819);
   border: 1px solid rgba(51, 139, 124, 0.5);
   box-shadow: inset 0 0 24px rgba(11, 73, 64, 0.28);
 }
@@ -650,7 +677,7 @@
   font-size: 10.5px;
   line-height: 1.5;
   color: #a8d8ce;
-  background: linear-gradient(100deg, rgba(5, 35, 33, 0.97), rgba(3, 24, 25, 0.94));
+  background: linear-gradient(100deg, #052321, #031819);
   border: 1px solid rgba(83, 191, 173, 0.55);
   box-shadow: inset 0 0 22px rgba(11, 73, 64, 0.34), 0 10px 30px rgba(0, 0, 0, 0.45);
 }
@@ -902,19 +929,25 @@
 }
 
 /* 3D 小状态卡：左上角贴边，只留 3 行（已渲染 / 底图 / 小区点位） */
+/* 地图状态小卡：贴地图区左缘中部，**半透明**，避开筛选条与面板 */
 .accept-3dmini {
   position: absolute;
+  /* 筛选条占 13.6%~约 18%，状态卡下移到它下面，避免重叠挡住「重置」按钮 */
   left: 23.4%;
-  top: 20%;
+  top: 19.2%;
   z-index: 6;
-  width: 430px;
-  padding: 7px 10px 8px;
-  font-size: 10.5px;
-  line-height: 1.45;
+  width: max-content;
+  max-width: 330px;
+  padding: 5px 9px 6px;
+  font-size: 10px;
+  line-height: 1.4;
   color: #a8d8ce;
-  background: linear-gradient(100deg, rgba(5, 35, 33, 0.9), rgba(3, 24, 25, 0.82));
-  border: 1px solid rgba(83, 191, 173, 0.42);
-  box-shadow: inset 0 0 18px rgba(11, 73, 64, 0.28);
+  /* 比原来的 0.9 透明度低一半以上：透出下面的影像，不再形成深色矩形块 */
+  background: linear-gradient(100deg, rgba(5, 35, 33, 0.55), rgba(3, 24, 25, 0.42));
+  border: 1px solid rgba(83, 191, 173, 0.3);
+  border-radius: 2px;
+  backdrop-filter: blur(2px);
+  box-shadow: inset 0 0 12px rgba(11, 73, 64, 0.18);
 }
 .accept-3dmini__head {
   display: flex;
@@ -945,6 +978,46 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.accept-3dmini__line--warn {
+  color: #ffd28a;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+/* ---------------------------------------------------------------- 地图视图切换（二维 / 三维） */
+
+.accept-viewswitch {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  height: 26px;
+  border: 1px solid rgba(112, 216, 194, 0.45);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.accept-viewswitch button {
+  min-width: 46px;
+  padding: 0 10px;
+  border: 0;
+  background: rgba(6, 42, 40, 0.72);
+  color: #8fd8cc;
+  font-size: 12px;
+  line-height: 24px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+.accept-viewswitch button + button {
+  border-left: 1px solid rgba(112, 216, 194, 0.28);
+}
+.accept-viewswitch button:hover {
+  color: #d6f6ef;
+  background: rgba(14, 74, 68, 0.85);
+}
+.accept-viewswitch button.is-active {
+  background: rgba(46, 196, 170, 0.9);
+  color: #04211f;
+  font-weight: 600;
 }
 
 /* 仅三维：二维影像叠色层已移除（三维画布自己就是深色地球） */
@@ -1193,4 +1266,142 @@
 .accept-activity__body > .acc-card {
   flex: 1 1 0;
   min-height: 200px;
+}
+
+/* ==========================================================================
+   管线改造事件详情（标书 1.2.7 管线图层对接）
+   点击地图上的改造项目网格 → 右侧浮层展示改造事件信息，不遮住整张图。
+   ========================================================================== */
+.accept-pipeline {
+  position: absolute;
+  top: 210px;
+  right: 336px;
+  z-index: 620;
+  display: flex;
+  flex-direction: column;
+  width: 560px;
+  max-height: calc(100% - 200px);
+  background: linear-gradient(100deg, rgba(5, 35, 33, 0.97), rgba(3, 24, 25, 0.95));
+  border: 1px solid #59a998;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.62), inset 0 0 30px rgba(11, 73, 64, 0.22);
+  animation: accept-pipeline-in 0.18s ease;
+}
+@keyframes accept-pipeline-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+.accept-pipeline__head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(52, 139, 124, 0.5);
+}
+.accept-pipeline__head b {
+  font-family: 'YouSheBiaoTiHei', 'Bahnschrift', sans-serif;
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: 1.5px;
+  color: #e5fff8;
+}
+.accept-pipeline__sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: #97cbc0;
+}
+.accept-pipeline__close {
+  margin-left: auto;
+  flex: none;
+  padding: 2px 9px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.2;
+  color: #d5f8ef;
+  background: #0c3632;
+  border: 1px solid #347d72;
+  cursor: pointer;
+}
+.accept-pipeline__close:hover {
+  background: #1b7466;
+  border-color: #86fbe7;
+  color: #fff;
+}
+.accept-pipeline__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px 12px;
+}
+
+/* ==========================================================================
+   停水停气事件详情（标书 1.2.6 停水停气图层）
+   点击地图上的打点标识 → 右侧浮层展示事件信息。
+   与管线详情浮层（1.2.7）错开位置：管线在 top:210px，停水停气放在它下方偏左，
+   两者同时打开也不会完全互相遮挡（实际交互上点一个会覆盖另一个的面板内容区）。
+   ========================================================================== */
+.accept-shutdown {
+  position: absolute;
+  top: 210px;
+  right: 336px;
+  z-index: 630;
+  display: flex;
+  flex-direction: column;
+  width: 580px;
+  max-height: calc(100% - 200px);
+  background: linear-gradient(100deg, rgba(5, 35, 33, 0.97), rgba(3, 24, 25, 0.95));
+  border: 1px solid #59a998;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.62), inset 0 0 30px rgba(11, 73, 64, 0.22);
+  animation: accept-pipeline-in 0.18s ease;
+}
+.accept-shutdown__head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(52, 139, 124, 0.5);
+}
+.accept-shutdown__head b {
+  font-family: 'YouSheBiaoTiHei', 'Bahnschrift', sans-serif;
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: 1.5px;
+  color: #e5fff8;
+}
+.accept-shutdown__sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: #97cbc0;
+}
+.accept-shutdown__close {
+  margin-left: auto;
+  flex: none;
+  padding: 2px 9px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.2;
+  color: #d5f8ef;
+  background: #0c3632;
+  border: 1px solid #347d72;
+  cursor: pointer;
+}
+.accept-shutdown__close:hover {
+  background: #1b7466;
+  border-color: #86fbe7;
+  color: #fff;
+}
+.accept-shutdown__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px 12px;
 }

@@ -36,6 +36,7 @@ import {reportsRouter} from './reports';
 import {businessFeaturesRouter} from './businessFeatures';
 import {tenderSupportRouter} from './tenderSupport';
 import {screenRouter} from './screen';
+import {cimOverlayRouter} from './cimOverlay';
 import { enforceRolePolicy } from '../middleware/requireRole';
 
 /**
@@ -77,6 +78,7 @@ export function buildRouter(): Router {
   root.use(complaintImportsRouter);
   root.use(dashboardRouter);
   root.use(screenRouter);
+  root.use(cimOverlayRouter);
   root.use(statisticsRouter);
   root.use(tenderStatisticsRouter);
   root.use(administrativeHeatRouter);

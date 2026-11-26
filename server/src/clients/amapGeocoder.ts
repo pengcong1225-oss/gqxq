@@ -26,6 +26,7 @@ export interface AmapGeocodeResult {
   township: string | null;
   formattedAddress: string | null;
   reason: string | null;
+  failure?: 'retry' | 'review';
 }
 
 const EMPTY: AmapGeocodeResult = { ok: false, longitude: null, latitude: null, level: null, adcode: null, district: null, township: null, formattedAddress: null, reason: null };
@@ -103,19 +104,21 @@ export async function amapGeocode(address: string): Promise<AmapGeocodeResult> {
   const cityTokens = (keyword.match(/[一-鿿]{2,8}?(?:市|自治州|地区|盟)/g) ?? []).filter(
     (token) => !/宜昌|湖北/.test(token),
   );
-  if (cityTokens.length) return { ...EMPTY, reason: '地址指向其他城市（' + cityTokens[0] + '），不在宜昌市域内' };
+  if (cityTokens.length) return { ...EMPTY, failure: 'review', reason: '地址指向其他城市，需人工核验' };
   const body = await call('/v3/geocode/geo', { address: keyword, city: '宜昌', citylimit: 'true' });
   if (!body) return { ...EMPTY, reason: '高德地理编码请求失败' };
   if (String(body.status) !== '1') return { ...EMPTY, reason: '高德返回错误：' + String(body.info ?? 'unknown') };
-  const first = Array.isArray(body.geocodes) ? body.geocodes[0] : null;
+  const matches = Array.isArray(body.geocodes) ? body.geocodes : [];
+  if (matches.length > 1) return { ...EMPTY, failure: 'review', reason: '高德返回多个地址匹配，需人工核验' };
+  const first = matches[0];
   const location = str(first?.location);
-  if (!first || !location) return { ...EMPTY, reason: '高德无匹配结果' };
+  if (!first || !location) return { ...EMPTY, failure: 'review', reason: '高德未返回可确认地址，需人工核验' };
   const [gcjLng, gcjLat] = location.split(',').map(Number);
   if (!Number.isFinite(gcjLng) || !Number.isFinite(gcjLat)) return { ...EMPTY, reason: '高德坐标格式无效' };
   const [lng, lat] = utilityGcj02ToWgs84(gcjLng, gcjLat);
   const adcode = str(first.adcode);
-  if (!inBounds(lng, lat)) return { ...EMPTY, reason: '匹配结果不在宜昌市域范围内' };
-  if (!isYichang(adcode)) return { ...EMPTY, reason: '匹配结果行政区划不是宜昌市（adcode=' + String(adcode ?? '—') + '）' };
+  if (!inBounds(lng, lat)) return { ...EMPTY, failure: 'review', reason: '匹配结果不在宜昌市域范围内' };
+  if (!isYichang(adcode)) return { ...EMPTY, failure: 'review', reason: '高德匹配的行政区划不在宜昌市' };
   return {
     ok: true,
     longitude: lng,
@@ -142,7 +145,7 @@ export async function amapRegeocode(longitude: number, latitude: number): Promis
   if (!component) return { ...EMPTY, reason: '高德逆地理编码无结果' };
   const adcode = str(component.adcode);
   const city = str(component.city) ?? str(component.province);
-  if (!isYichang(adcode)) return { ...EMPTY, reason: '逆地理编码结果不属于宜昌市（' + String(city ?? '—') + '）' };
+  if (!isYichang(adcode)) return { ...EMPTY, failure: 'review', reason: '逆地理编码结果不属于宜昌市（' + String(city ?? '—') + '）' };
   return {
     ok: true,
     longitude,

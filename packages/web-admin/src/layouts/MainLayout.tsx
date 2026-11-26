@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Button, Avatar, Breadcrumb, Dropdown, Tag } from 'antd';
 import { useAppStore } from '../stores/appStore';
-import { getUserInfo } from '../api/auth';
+import { getUserInfo, logoutOidc } from '../api/auth';
+import { isOidcMarker } from '../stores/sessionStorage';
 import { useRoleLabel } from '../stores/roleAccess';
 import {
   DashboardOutlined, FileTextOutlined, BarChartOutlined, WarningOutlined,
@@ -137,6 +138,7 @@ const MainLayout: React.FC = () => {
               onClick: ({ key }) => {
                 if(key==='password') navigate('/change-password');
                 if (key === 'logout') {
+                  if (isOidcMarker(tokenValue)) void logoutOidc().catch(() => {});
                   logout();
                   navigate('/login', { replace: true });
                 }

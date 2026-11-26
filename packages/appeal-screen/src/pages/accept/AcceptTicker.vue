@@ -60,15 +60,13 @@ watch(items, () => {
 
 function drillCurrent() {
   const item = current.value;
-  if (!item) return;
+  if (!item?.evidence) return;
   emit('drill', {
     source: '验收大屏 · 往年同期 TOP3',
     title: `${item.title} · 关联明细`,
     period: props.periodMeta.key,
     industry: props.industry,
-    // 「查看证据」：按该诉求类型过滤明细（后端 /screen/demands 的 categoryCode）
-    ...(item.typeId ? { typeId: item.typeId } : {}),
-    ...(item.relatedEventNo ? { eventNo: item.relatedEventNo } : {}),
+    evidence: item.evidence,
   });
 }
 </script>
@@ -77,7 +75,7 @@ function drillCurrent() {
   <div class="ticker" :class="{ 'no-motion': noMotion }">
     <span class="ticker__label">
       往年同期 TOP3
-      <small>真实数据：历史覆盖/季节口径未发布时显示原因</small>
+      <small v-if="current">{{ topTypes.data?.coverage }}</small>
     </span>
 
     <div class="ticker__body">
@@ -86,13 +84,14 @@ function drillCurrent() {
         type="button"
         class="ticker__item"
         :title="current.hint"
+        :disabled="!current.evidence"
         @click="drillCurrent"
       >
         <i class="ticker__rank">TOP{{ current.rank }}</i>
         <b>{{ current.typeName }}</b>
         <span>{{ current.count }} 件</span>
         <span class="ticker__share" title="占比分母=TOP3 合计（历史覆盖未知，不是全量占比）">占 TOP3 {{ current.share.toFixed(1) }}%</span>
-        <em>查看证据 ›</em>
+        <em v-if="current.evidence">查看证据 ›</em>
       </button>
       <span v-else-if="topTypes.status === 'loading' || topTypes.status === 'idle'" class="ticker__empty">TOP3 研判加载中…</span>
       <span v-else class="ticker__empty">{{ topTypes.data?.emptyReason || '暂无往年同期 TOP3 数据' }}</span>

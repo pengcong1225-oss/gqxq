@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addressInputHash, extractAddressCandidate } from '../src/services/rules/addressExtract';
+import { ADDRESS_EXTRACTOR_VERSION, addressInputHash, extractAddressCandidate } from '../src/services/rules/addressExtract';
 import { findAddressCandidate, syncAddressCandidate } from '../src/repositories/addressCandidateRepo';
 import type { Queryable } from '../src/repositories/complaintSourceLogRepo';
 
@@ -260,5 +260,5 @@ test('re-extracts an unchanged input when the address rule version changes', asy
   };
 
   assert.equal(await syncAddressCandidate(db, 'C1', input), 'updated');
-  assert.equal((db as unknown as CandidateFake).row?.extractorVersion, 'address-extract.v3');
+  assert.equal((db as unknown as CandidateFake).row?.extractorVersion, ADDRESS_EXTRACTOR_VERSION);
 });

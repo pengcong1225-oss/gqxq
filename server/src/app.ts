@@ -87,7 +87,9 @@ export function createApp(): express.Express {
     next();
   });
   app.use(cors());
-  app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
+  app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev', {
+    skip: (req) => req.url?.split('?', 1)[0] === '/api/v1/auth/oidc/callback',
+  }));
   app.use('/api/v1/utility/import', express.json({limit:'6mb'}));
   app.use('/api/v1/tender-support/dataset',express.json({limit:'16mb'}));
   // 与 G3 契约一致的上限。

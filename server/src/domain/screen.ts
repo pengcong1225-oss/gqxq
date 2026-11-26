@@ -4,6 +4,7 @@ import { buildSupportStatistics } from './supportStatisticsModel';
 import { buildSupportResearch } from './supportResearchModel';
 import { defaultSupportWarnings } from './tenderSupportData';
 import type { ScreenDurationChart } from '../types/screen';
+import { previousYear } from './statisticsQuery';
 export type ScreenQuery = { mode: 'real' | 'simulation'; from: string; to: string; districtCode?: string; businessType?: string; enterpriseCode?: string; adminGridCode?: string; communityCode?: string; categoryCode?: string };
 /** 指标值：要么有数、要么带"为什么没有"的说明——两者互斥，所以显式声明。 */
 type Metric = { value: number | null; reason: string | null };
@@ -23,7 +24,14 @@ function firstValidTime(...values: Array<string | number | Date | null | undefin
 }
 const missing = (reason: string): Metric => ({ value: null, reason });
 const day = (v: unknown): string | null => { if (v == null) return null; const d = new Date(v as string); return Number.isFinite(d.valueOf()) ? new Date(d.valueOf() + 28800000).toISOString().slice(0, 10) : null; };
-export function buildScreen(q: ScreenQuery, access: AccessContext, raw: Record<string, any>[], events: any[], simulation: TenderDataset | null) {
+export function buildScreen(q: ScreenQuery, access: AccessContext, raw: Record<string, any>[], events: any[], simulation: TenderDataset | null, historicalRows?: Record<string, any>[]) {
+  const matchesDimensions = (r: Record<string, any>) =>
+    (!q.districtCode || (r.district_code || '__missing__') === q.districtCode) &&
+    (!q.enterpriseCode || (r.enterprise_code || '__missing__') === q.enterpriseCode) &&
+    (!q.businessType || r.business_type === q.businessType) &&
+    (!q.adminGridCode || (r.admin_grid_code || '__missing__') === q.adminGridCode) &&
+    (!q.communityCode || (r.community_code || '__missing__') === q.communityCode) &&
+    (!q.categoryCode || r.major_category_code === q.categoryCode || (r.minor_category_code || r.major_category_code || '__missing__') === q.categoryCode);
   const seen = new Set<string>(); let duplicates = 0, missingSourceKey = 0, missingDate = 0, fallback = 0;
   const initial: Record<string, any>[] = q.mode === 'simulation' ? (simulation?.complaints ?? []).map(c => ({ source_system: 'simulation', source_id: c.id, complaint_id: c.id, enterprise_code: c.enterpriseId, district_code: c.districtCode, business_type: c.businessType, source_reported_at: c.occurredAt, received_at: null, admin_grid_code: c.gridId, community_code: c.communityId, major_category_code: c.type, completedAt: c.completedAt, evaluation: c.evaluation, scenario: c.scenario })) : raw;
   const population = initial.filter(r => {
@@ -32,7 +40,7 @@ export function buildScreen(q: ScreenQuery, access: AccessContext, raw: Record<s
     if (!r.source_id) { missingSourceKey++; return false; }
     const key = JSON.stringify([r.source_system, r.source_id]); if (seen.has(key)) { duplicates++; return false; } seen.add(key);
     const at = day(r.source_reported_at) ?? day(r.received_at); if (!at) { missingDate++; return false; } if (!day(r.source_reported_at)) fallback++;
-    return at <= q.to && (!q.districtCode || (r.district_code || '__missing__') === q.districtCode) && (!q.enterpriseCode || (r.enterprise_code || '__missing__') === q.enterpriseCode) && (!q.businessType || r.business_type === q.businessType) && (!q.adminGridCode || (r.admin_grid_code || '__missing__') === q.adminGridCode) && (!q.communityCode || (r.community_code || '__missing__') === q.communityCode) && (!q.categoryCode || (r.minor_category_code || r.major_category_code || '__missing__') === q.categoryCode);
+    return at <= q.to && matchesDimensions(r);
   });
   const rows = population.filter(r => { const at = day(r.source_reported_at) ?? day(r.received_at)!; return at >= q.from && at <= q.to; });
   const count = (key: string) => Object.entries(rows.reduce((m: Record<string, number>, r) => { const k = String(r[key] || '__missing__'); m[k] = (m[k] ?? 0) + 1; return m; }, {})).map(([code, count]) => ({ code, count })).sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
@@ -168,11 +176,32 @@ export function buildScreen(q: ScreenQuery, access: AccessContext, raw: Record<s
   })();
 
   const toDetail = (r: Record<string, any>) => ({ id: r.complaint_id, businessType: r.business_type ?? null, districtCode: r.district_code || '__missing__', enterpriseCode: r.enterprise_code || '__missing__', adminGridCode: r.admin_grid_code || '__missing__', communityCode: r.community_code || '__missing__', categoryCode: r.minor_category_code || r.major_category_code || '__missing__', title: '诉求 ' + String(r.complaint_id), status: r.source_event_status ?? r.status ?? null, occurredDay: day(r.source_reported_at) ?? day(r.received_at) });
-  const previous = (value: string) => { const y = Number(value.slice(0, 4)) - 1; const candidate = String(y) + value.slice(4); const d = new Date(candidate + 'T00:00:00Z'); return Number.isFinite(d.valueOf()) && d.toISOString().slice(0, 10) === candidate ? candidate : String(y) + '-02-28'; };
-  const priorFrom = previous(q.from), priorTo = previous(q.to), priorCounts: Record<string, number> = {}; for (const r of population) { const d = day(r.source_reported_at) ?? day(r.received_at)!; if (d >= priorFrom && d <= priorTo) { const key = String(r.minor_category_code || r.major_category_code || '__missing__'); priorCounts[key] = (priorCounts[key] ?? 0) + 1; } } const priorTop3 = { from: priorFrom, to: priorTo, items: Object.entries(priorCounts).map(([code, count]) => ({ code, count })).sort((a, b) => b.count - a.count || a.code.localeCompare(b.code)).slice(0, 3) };
-  const priorEvidence=population.filter(r=>{const d=day(r.source_reported_at)??day(r.received_at)!;return d>=priorFrom&&d<=priorTo;}).map(toDetail);
-  const details = rows.map(toDetail); const periodDetails = Object.fromEntries(Object.entries(periods).filter(([, v]) => typeof v === 'object').map(([key, v]) => { const range = v as { from: string; to: string }; return [key, population.filter(r => { const x = day(r.source_reported_at) ?? day(r.received_at)!; return x >= range.from && x <= range.to; }).map(toDetail)]; })) as Record<string, typeof details>;
-  return { mode: q.mode, window: { from: q.from, to: q.to, timezone: 'Asia/Shanghai', timeBasis: '来源受理时间优先，缺失回退接收时间' }, summary: q.mode === 'simulation' && demonstration ? { ...summary, satisfaction: { value: demonstration.evaluation.percent, reason: demonstration.evaluation.evaluatedCount ? null : '无有效评价' }, duration: { value: demonstration.duration, reason: null } } : summary, quality: { duplicates, missingSourceKey, missingDate, sourceTimeFallback: fallback }, charts: { business: count('business_type'), district: count('district_code'), community: count('community_code'), enterprise: count('enterprise_code'), category: countMinor(), adminGrid: count('admin_grid_code'), trend: dayCounts, monthly: groupTime('month'), weekly: weekdayBuckets, hourly: hourBuckets, duration: durationChart, satisfaction: {...satisfaction, byIndustry: satisfactionByIndustry, sourceNote:'来源：市民回复结果（satisfaction_code），基本满意计入满意'}, districtByCategory, topTypes: countMinor().slice(0, 3) }, events: visibleEvents, layers: { cim: { state: 'unconfigured', reason: '未核验正式 CIM 授权和服务配置' }, heat: { state: 'unavailable', reason: '正式空间资源及已发布规则尚未核验' } }, unavailable: { households: summary.householdRate.reason, evaluation: summary.satisfaction.reason ?? '', duration: summary.duration.reason, history: '专题历史缺少来源系统和稳定主键映射，不纳入正式主账', spatial: '行政网格映射及空间资源版本待核验', warnings: '已发布预警规则及来源分类待核验', research: '历史覆盖与业务季节口径待确认', compare: '历史覆盖及比较口径待确认' }, periods, demonstration, compare: q.mode === 'simulation' ? count('admin_grid_code') : { value: null, reason: '正式网格映射及版本待核验' }, research: q.mode === 'simulation' ? demonstration?.seasons : { value: null, reason: '历史覆盖与季节口径待确认' }, warnings: q.mode === 'simulation' ? demonstration?.warnings : { value: null, reason: '正式发布预警规则与分类待核验' }, priorTop3, dynamicCharts, details, periodDetails, researchEvidence, priorEvidence };
+  const priorFrom = previousYear(q.from), priorTo = previousYear(q.to);
+  const priorSeen = new Set<string>();
+  const priorCounts = new Map<string, number>();
+  const priorEvidence: ReturnType<typeof toDetail>[] = [];
+  for (const row of historicalRows ?? population) {
+    if (q.mode === 'real' && row.source_system !== '宜接就办') continue;
+    if (!row.source_id || !canAccessComplaint(access, row) || !matchesDimensions(row)) continue;
+    const detail = toDetail(row);
+    if (!detail.occurredDay || detail.occurredDay < priorFrom || detail.occurredDay > priorTo) continue;
+    if (priorSeen.has(row.source_id)) continue;
+    priorSeen.add(row.source_id);
+    if (detail.categoryCode === '__missing__') continue;
+    priorEvidence.push(detail);
+    priorCounts.set(detail.categoryCode, (priorCounts.get(detail.categoryCode) ?? 0) + 1);
+  }
+  const priorTop3 = { from: priorFrom, to: priorTo, items: [...priorCounts].map(([code, count]) => ({ code, count }))
+    .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code)).slice(0, 3) };
+  const details = rows.map(toDetail);
+  const eventDemandTimes = q.mode === 'real' ? new Map(rows.map((r) => [
+    String(r.complaint_id), {
+      complaintNo: r.complaint_no ? String(r.complaint_no) : null,
+      occurredAt: firstValidTime(r.source_reported_at, r.received_at)?.toISOString() ?? null,
+    },
+  ])) : null;
+  const periodDetails = Object.fromEntries(Object.entries(periods).filter(([, v]) => typeof v === 'object').map(([key, v]) => { const range = v as { from: string; to: string }; return [key, population.filter(r => { const x = day(r.source_reported_at) ?? day(r.received_at)!; return x >= range.from && x <= range.to; }).map(toDetail)]; })) as Record<string, typeof details>;
+  return { mode: q.mode, window: { from: q.from, to: q.to, timezone: 'Asia/Shanghai', timeBasis: '来源受理时间优先，缺失回退接收时间' }, summary: q.mode === 'simulation' && demonstration ? { ...summary, satisfaction: { value: demonstration.evaluation.percent, reason: demonstration.evaluation.evaluatedCount ? null : '无有效评价' }, duration: { value: demonstration.duration, reason: null } } : summary, quality: { duplicates, missingSourceKey, missingDate, sourceTimeFallback: fallback }, charts: { business: count('business_type'), district: count('district_code'), community: count('community_code'), enterprise: count('enterprise_code'), category: countMinor(), adminGrid: count('admin_grid_code'), trend: dayCounts, monthly: groupTime('month'), weekly: weekdayBuckets, hourly: hourBuckets, duration: durationChart, satisfaction: {...satisfaction, byIndustry: satisfactionByIndustry, sourceNote:'来源：市民回复结果（satisfaction_code），基本满意计入满意'}, districtByCategory, topTypes: countMinor().slice(0, 3) }, events: visibleEvents, layers: { cim: { state: 'unconfigured', reason: '未核验正式 CIM 授权和服务配置' }, heat: { state: 'unavailable', reason: '正式空间资源及已发布规则尚未核验' } }, unavailable: { households: summary.householdRate.reason, evaluation: summary.satisfaction.reason ?? '', duration: summary.duration.reason, history: '专题历史缺少来源系统和稳定主键映射，不纳入正式主账', spatial: '行政网格映射及空间资源版本待核验', warnings: '已发布预警规则及来源分类待核验', research: '历史覆盖与业务季节口径待确认', compare: '历史覆盖及比较口径待确认' }, periods, demonstration, compare: q.mode === 'simulation' ? count('admin_grid_code') : { value: null, reason: '正式网格映射及版本待核验' }, research: q.mode === 'simulation' ? demonstration?.seasons : { value: null, reason: '历史覆盖与季节口径待确认' }, warnings: q.mode === 'simulation' ? demonstration?.warnings : { value: null, reason: '正式发布预警规则与分类待核验' }, priorTop3, dynamicCharts, details, eventDemandTimes, periodDetails, researchEvidence, priorEvidence };
 }
 export function compareGrids(details: { adminGridCode: string | null; categoryCode: string | null }[], codes: string[]) {
   const categories = [...new Set(details.filter(d => d.adminGridCode !== null && codes.includes(d.adminGridCode)).map(d => d.categoryCode ?? '__missing__'))].sort();

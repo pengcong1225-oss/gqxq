@@ -29,7 +29,7 @@ test('operator enqueue preserves unknown snapshot bytes and refuses missing iden
  const payload = {sourceAppCode:'gqxq',sourceBusinessId:'C',requestId:'R',enterpriseSubjects:[{subjectCode:'E',subjectName:'Enterprise'}],metadata:{contractVersion:2,assignmentId:'A'}};
  const serialized = serializeOnce(payload); let snapshot = serialized; let digest = serialized.bodySha256;
  let permission = true; let outbox: any = null; let fetches = 0; let reads = 0; let stored = true;
- const order = {assignment_id:'A',complaint_id:'C',request_id:'R',status:'pending',target_enterprise_code:'E',target_enterprise_name:'Enterprise',deadline:null,complaint_title:'changed title'};
+ const order = {assignment_id:'A',complaint_id:'C',request_id:'R',status:'pending',target_enterprise_code:'E',target_enterprise_name:'Enterprise',deadline:null,requirement:null as string|null,complaint_title:'changed title'};
  const query = async (sql:string) => {
   reads++;
   if(sql.includes('dispatch_push_snapshot')) return [stored ? [{body:snapshot.bodyText,sha256:digest}] : [],[]];
@@ -65,7 +65,7 @@ test('operator enqueue preserves unknown snapshot bytes and refuses missing iden
   digest='corrupted'; await assert.rejects(push,/digest mismatch/);
   snapshot=serializeOnce({...payload,requestId:'OTHER'});digest=snapshot.bodySha256;await assert.rejects(push,/identity mismatch/);
   assert.equal(fetches,0); assert.deepEqual(outbox,first);
-  stored=false; outbox=null; order.deadline=new Date() as any;
+  stored=false; outbox=null; order.deadline=new Date() as any; order.requirement='请复核处置现场';
   globalThis.fetch=async (url:any) => { assert.ok(String(url).endsWith('/preflight')); fetches++; return new Response(JSON.stringify({ready:false,issues:[{code:'TEMPLATE_UNAVAILABLE',subjectCode:null,message:'disabled'}]}),{status:200}); };
   await assert.rejects(push, (e:any)=>e.errorCode==='VALIDATION_FAILED');
   assert.equal(fetches,1); assert.equal(outbox,null);

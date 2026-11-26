@@ -219,6 +219,14 @@ export async function findPage(
   const total = Number((countRows[0] as { total?: unknown } | undefined)?.total ?? 0);
 
   const offset = (page - 1) * size;
+  // 两步查询：先只在主键/排序列上取本页 id（可走索引，避免宽列 + JOIN 触发全表 filesort），
+  // 再按 id 取完整行。53k 量级下直接把 JOIN/JSON 列带上排序会退化到 10s 以上。
+  const [idRows] = await pool.query<Row[]>(
+    'select c.id from complaint c where ' + where.text + ' order by ' + orderBy + ' limit ? offset ?',
+    [...where.params, size, offset]
+  );
+  const pageIds = (idRows as Array<{ id: number }>).map((r) => Number(r.id));
+  if (!pageIds.length) return { rows: [], total };
   const [rows] = await pool.query<Row[]>(
     'select ' +
       COMPLAINT_SELECT_COLUMNS +
@@ -226,15 +234,13 @@ export async function findPage(
       SOURCE_CATEGORY_COLUMNS +
       ' from complaint c' +
       ACTIVE_DISPATCH_JOIN +
-      ' where ' +
-      where.text +
-      ' order by ' +
-      orderBy +
-      ' limit ? offset ?',
-    [...where.params, size, offset]
+      ' where c.id in (?)',
+    [pageIds]
   );
+  const byId = new Map((rows as Array<Record<string, unknown>>).map((r) => [Number(r.id), r]));
+  const ordered = pageIds.map((id) => byId.get(id)).filter((r): r is Record<string, unknown> => r !== undefined);
 
-  return { rows: rows as unknown as ComplaintRow[], total };
+  return { rows: ordered as unknown as ComplaintRow[], total };
 }
 
 /** stats：当前筛选条件下的全量统计，不受分页影响 */
@@ -247,7 +253,8 @@ export async function findStats(filter: ComplaintFilter): Promise<ComplaintStats
     " sum(case when c.supervision_status = 'pending_match' then 1 else 0 end) as pendingMatchCount," +
     " sum(case when c.supervision_status in ('pending','pushed','accepted','processing','returned')" +
     ' then 1 else 0 end) as activeDispatchCount,' +
-    ' sum(case when c.closed_in_system = 1 then 1 else 0 end) as closedInSystemCount' +
+    ' sum(case when c.closed_in_system = 1 then 1 else 0 end) as closedInSystemCount,' +
+    ' sum(case when c.repeat_flag = 1 then 1 else 0 end) as repeatCount' +
     ' from complaint c where ' +
     where.text;
 
@@ -260,6 +267,7 @@ export async function findStats(filter: ComplaintFilter): Promise<ComplaintStats
     pendingMatchCount: toNum(r.pendingMatchCount) ?? 0,
     activeDispatchCount: toNum(r.activeDispatchCount) ?? 0,
     closedInSystemCount: toNum(r.closedInSystemCount) ?? 0,
+    repeatCount: toNum(r.repeatCount) ?? 0,
   };
 }
 

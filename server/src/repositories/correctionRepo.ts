@@ -1,5 +1,5 @@
 import { projectDisposalValue } from '../services/complaintProjection';
-import { currentScopeSql, relatedScopeSql } from '../auth/accessScope';
+import { currentAccessContext, currentScopeSql, relatedScopeSql } from '../auth/accessScope';
 // correction_item（纠偏待办，逐字段一行）。
 //
 // 设计约束（业主 2026-09-20 裁定，推翻 2026-09-17 的旧口径）：
@@ -11,6 +11,7 @@ import { currentScopeSql, relatedScopeSql } from '../auth/accessScope';
 //   * **未纠偏不得进入分析库** —— 是否可入库的判断在 service 层的事务里做（见 correctionService），
 //     本仓库只负责读写，不擅自决定业务规则。
 import { randomUUID } from 'node:crypto';
+import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { Tx } from '../db/tx';
 import type { CorrectionItem, CorrectionItemStatus } from '../types/api';
 import { cut, type Queryable } from './complaintSourceLogRepo';
@@ -246,43 +247,130 @@ export async function findPendingPage(
   };
 }
 
+const pendingSummaryLockNameSql = "sha2(concat(database(), ':correction-pending-summary'), 256)";
+
+/** 全量与增量共用一把库级锁，防止其他实例在重建时写入旧快照。 */
+async function withPendingSummaryTransaction<T>(db: Pool, refresh: (tx: Tx) => Promise<T>): Promise<T> {
+  const tx = await db.getConnection();
+  let locked = false;
+  let reusable = false;
+  try {
+    const [[lock]] = await tx.query<RowDataPacket[]>(`select get_lock(${pendingSummaryLockNameSql}, 10) as acquired`);
+    reusable = true;
+    locked = lock.acquired === 1;
+    if (!locked) throw new Error('Timed out acquiring the pending correction summary lock');
+
+    try {
+      await tx.beginTransaction();
+      const result = await refresh(tx);
+      await tx.commit();
+      return result;
+    } catch (error) {
+      try {
+        await tx.rollback();
+      } catch {
+        reusable = false;
+      }
+      throw error;
+    }
+  } finally {
+    try {
+      if (locked && reusable) {
+        const [[lock]] = await tx.query<RowDataPacket[]>(`select release_lock(${pendingSummaryLockNameSql}) as released`);
+        reusable = lock.released === 1;
+      }
+    } catch {
+      reusable = false;
+    } finally {
+      if (reusable) tx.release();
+      else tx.destroy();
+    }
+  }
+}
+
+async function insertPendingSummary(tx: Tx, complaintId?: string): Promise<number> {
+  // 先走 (status, complaint_id, created_at) 覆盖索引聚合，再关联诉求和定位状态。
+  const targeted = complaintId !== undefined;
+  const [result] = await tx.query<ResultSetHeader>(
+    'insert into correction_pending_summary (complaint_id, pending_count, first_pending_at, needs_manual_location, manual_location_reason, refreshed_at) ' +
+    'select p.complaint_id, p.pending_count, p.first_pending_at, (c.location_lng is null or c.location_lat is null or coalesce(' +
+    "li.state in ('review','retry') and li.reason like '地址归网v4：%' and json_unquote(json_extract(c.effective_field_state, '$.location_lng.resolution'))='unresolved', 0)), left(li.reason, 255), now() " +
+    'from (select complaint_id, count(*) as pending_count, min(created_at) as first_pending_at from correction_item ' +
+    "where status = 'pending'" + (targeted ? ' and complaint_id = ?' : '') + ' group by complaint_id) p ' +
+    'join complaint c on c.complaint_id = p.complaint_id ' +
+    'left join complaint_location_initialization li on li.complaint_id = p.complaint_id ' +
+    'where coalesce(c.deleted, 0) = 0',
+    targeted ? [complaintId] : []
+  );
+  return result.affectedRows;
+}
+
 /**
- * 诉求级待纠偏分页。先按 complaint_id 聚合再分页，确保 total 与 UI 行数都是诉求数；
- * 不能先分页逐字段行再在前端 group，否则多字段诉求会挤占分页并导致统计错误。
+ * 后台定时全量重建待纠偏汇总。
+ * 删除和重建同事务提交，读者在提交前仍能查询上一版汇总。
  */
+export async function refreshPendingSummary(db: Pool): Promise<number> {
+  return withPendingSummaryTransaction(db, async (tx) => {
+    await tx.query('delete from correction_pending_summary');
+    return insertPendingSummary(tx);
+  });
+}
+
+/** 近期有纠偏项变动的诉求（新增待处理 / 刚被确认或驳回），供汇总表增量刷新。 */
+export async function findRecentlyChangedPendingComplaints(db: Queryable, since: Date, limit = 5000): Promise<string[]> {
+  const [rows] = await db.query(
+    'select distinct complaint_id from correction_item ' +
+      "where (status = 'pending' and created_at >= ?) or (status <> 'pending' and confirmed_at >= ?) limit ?",
+    [since, since, limit]
+  );
+  return (rows as Array<{ complaint_id: string }>).map((r) => String(r.complaint_id));
+}
+
+/** 单件诉求的汇总刷新（确认/驳回/新入库后调用，保证用户自己的操作立刻反映到队列）。 */
+export async function refreshPendingSummaryFor(db: Pool, complaintId: string): Promise<void> {
+  await withPendingSummaryTransaction(db, async (tx) => {
+    await tx.query('delete from correction_pending_summary where complaint_id = ?', [complaintId]);
+    await insertPendingSummary(tx, complaintId);
+  });
+}
+
+/** 诉求级待纠偏分页。汇总表每件诉求一行，确保 total 和分页都按诉求数计算。 */
 export async function findPendingComplaintPage(
   db: Queryable,
   filter: PendingPageFilter,
   page: number,
   size: number
 ): Promise<{ content: PendingComplaintSummary[]; total: number }> {
-  const scope = currentScopeSql();
-  const parts: string[] = ["ci.status = 'pending'",scope.sql];
+  // 全量授权时不拼 scope 谓词：coalesce(c.deleted,0)=0 会让 4.5 万行的 count 退化到 2.7s
+  // （汇总刷新时已排除软删除诉求，这里不再重复判断）
+  const ctx = currentAccessContext();
+  const restricted = ctx.rules.some((r) => r.kind !== 'all');
+  const scope = restricted ? currentScopeSql() : { sql: '', params: [] as unknown[] };
+  const parts: string[] = ['1 = 1'];
   const params: unknown[] = [...scope.params];
+  if (scope.sql) parts.push(scope.sql);
   if (filter.complaintId !== undefined) {
-    parts.push('ci.complaint_id = ?');
+    parts.push('s.complaint_id = ?');
     params.push(filter.complaintId);
   }
-  if (filter.dispatched === 'dispatched') parts.push('exists (select 1 from dispatch_order d where d.complaint_id = ci.complaint_id)');
-  if (filter.dispatched === 'undispatched') parts.push('not exists (select 1 from dispatch_order d where d.complaint_id = ci.complaint_id)');
+  if (filter.dispatched === 'dispatched') parts.push('exists (select 1 from dispatch_order d where d.complaint_id = s.complaint_id)');
+  if (filter.dispatched === 'undispatched') parts.push('not exists (select 1 from dispatch_order d where d.complaint_id = s.complaint_id)');
   const where = ' where ' + parts.join(' and ');
+  const from = ' from correction_pending_summary s join complaint c on c.complaint_id = s.complaint_id';
 
-  const [countRows] = await db.query(
-    'select count(*) as total from (' +
-      'select ci.complaint_id from correction_item ci join complaint c on c.complaint_id = ci.complaint_id' +
-      where + ' group by ci.complaint_id' +
-      ') pending_complaints',
-    params
-  );
+  // 非受限范围时 count 不需要 join complaint（汇总表刷新时已排除软删除）
+  const countFrom = restricted ? from : ' from correction_pending_summary s';
+  const [countRows] = await db.query('select count(*) as total' + countFrom + where, params);
   const total = Number((countRows as unknown as Array<{ total: number | string }>)[0]?.total ?? 0);
 
   const [rows] = await db.query(
-    'select ci.complaint_id as complaintId, c.complaint_no as complaintNo, c.title,' +
-      ' count(*) as pendingCount, exists (select 1 from dispatch_order d where d.complaint_id = ci.complaint_id) as hasDispatch' +
-      ' from correction_item ci join complaint c on c.complaint_id = ci.complaint_id' +
-      where +
-      ' group by ci.complaint_id, c.complaint_no, c.title' +
-      ' order by min(ci.created_at) asc, min(ci.id) asc limit ? offset ?',
+    'select s.complaint_id as complaintId, c.complaint_no as complaintNo, c.title,' +
+      ' s.pending_count as pendingCount, s.needs_manual_location as needsManualLocation,' +
+      ' s.manual_location_reason as manualLocationReason,' +
+      ' exists (select 1 from dispatch_order d where d.complaint_id = s.complaint_id) as hasDispatch' +
+      from + where +
+      // 自动定位失败的诉求置顶（人工纠偏优先级最高），其余按入队时间
+      ' order by s.needs_manual_location desc, s.first_pending_at asc, s.complaint_id asc limit ? offset ?',
     [...params, size, (page - 1) * size]
   );
   return {
@@ -292,12 +380,13 @@ export async function findPendingComplaintPage(
       title: String(row.title ?? ''),
       pendingCount: Number(row.pendingCount ?? 0),
       hasDispatch: Number(row.hasDispatch) === 1 || row.hasDispatch === true,
+      needsManualLocation: Number(row.needsManualLocation) === 1 || row.needsManualLocation === true,
+      manualLocationReason: row.manualLocationReason == null ? null : String(row.manualLocationReason),
     })),
     total,
   };
 }
 
-/** 待纠偏项数量。分析入库与办结的前置校验都要用它，必须在同一事务内调用。 */
 export async function countPendingByComplaint(db: Queryable, complaintId: string): Promise<number> {
   const [rows] = await db.query(
     "select count(*) as total from correction_item where complaint_id = ? and" +

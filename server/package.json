@@ -37,9 +37,17 @@
     "predev": "npm run prepare:local-data",
     "pretest": "npm run prepare:local-data",
     "test": "node tests/run-tests.mjs unit",
-    "test:db": "node tests/run-tests.mjs db"
+    "test:db": "node tests/run-tests.mjs db",
+    "boundary:osm": "node scripts/fetch-osm-boundaries.mjs --levels=8 --tiles=2",
+    "boundary:osm:village": "node scripts/fetch-osm-boundaries.mjs --levels=10 --tiles=3",
+    "verify:boundary-pack": "tsx scripts/verify-boundary-pack.ts",
+    "boundary:derive": "tsx scripts/build-derived-grid-faces.ts --osm",
+    "boundary:districts": "tsx scripts/build-district-snapshot.ts"
   },
   "dependencies": {
+    "@turf/buffer": "^7.4.0",
+    "@turf/helpers": "^7.4.0",
+    "@turf/union": "^7.4.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "csv-parse": "5.6.0",
@@ -52,6 +60,7 @@
     "knex": "^3.3.0",
     "morgan": "^1.10.0",
     "mysql2": "^3.24.4",
+    "openid-client": "6.9.1",
     "yauzl": "3.2.0",
     "zod": "^3.25.76"
   },

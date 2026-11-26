@@ -48,7 +48,7 @@ const A: readonly Role[] = [ROLE_ADMIN];
 const param = '[^/]+';
 
 export const ROLE_POLICY: readonly PolicyRule[] = [
-  {method:'GET',path:/^\/screen\/(bootstrap|demands|compare|evidence|events\/[^/]+)$/,roles:R,permissionCode:'statistics.read',desc:'诉求大屏只读：另核 dashboard.read、complaint.read 和当前数据范围'},
+  {method:'GET',path:/^\/screen\/(bootstrap|demands|compare|evidence|events\/[^/]+|map-pick-demands)$/,roles:R,permissionCode:'statistics.read',desc:'诉求大屏只读：另核 dashboard.read、complaint.read 和当前数据范围'},
   {method:'GET',path:/^\/complaints\/[^/]+\/(?:followups|source-processes)$/,roles:R,permissionCode:'complaint.read',desc:'回访及来源流程明细'},
   {method:'GET',path:/^\/synchronized-followups(?:\/[^/]+)?$/,roles:R,permissionCode:'complaint.read',desc:'外部回访当前版本及历史，按目标诉求范围授权'},
   {method:'POST',path:/^\/complaints\/[^/]+\/followups$/,roles:A,permissionCode:'followup.create',desc:'回访登记，服务内重核当前身份范围'},
@@ -69,6 +69,7 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   {method:'GET',path:/^\/heat-rules(?:\/categories)?$/,roles:A,permissionCode:'heatmap.manage',desc:'D2 全局热力草稿'},
   {method:'POST',path:/^\/heat-rules(?:\/tender|\/[^/]+\/(?:preview|publish))?$/,roles:A,permissionCode:'heatmap.manage',desc:'D2 热力规则保存与发布'},
   {method:'GET',path:/^\/statistics\/(summary|complaints)$/,roles:R,permissionCode:'statistics.read',desc:'D1 候选统计，另需数据集能力；明细另需complaint.read'},
+  {method:'GET',path:/^\/statistics\/repeat-rate$/,roles:R,permissionCode:'statistics.read',desc:'重复投诉率（按月份/企业/区县）'},
   {method:'GET',path:/^\/statistics\/tender$/,roles:R,permissionCode:'statistics.read',desc:'标书统计驾驶舱，沿用数据集能力与当前诉求范围'},
   {method:'GET',path:/^\/statistics\/tender\/community-complaints$/,roles:R,permissionCode:'statistics.read',desc:'标书小区精确诉求明细，另核complaint.read与数据集能力'},
   {method:'GET',path:/^\/heatmap\/administrative-(data|complaints)$/,roles:R,permissionCode:'heatmap.read',desc:'行政网格热力与明细，另核statistics及complaint查询能力'},
@@ -84,6 +85,7 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   {method:'POST',path:/^\/enterprises\/[^/]+\/(households|department-mappings)$/,roles:A,permissionCode:'enterprise.manage',desc:'企业经营数据维护'},
 
   {method:'GET',path:/^\/categories$/,roles:R,permissionCode:'dict.read',desc:'正式分类可选项'},
+  {method:'POST',path:/^\/categories\/source-backfill\/(preview|apply)$/,roles:W,permissionCode:'complaint.correct',desc:'历史来源分类预览和补齐'},
   {method:'POST',path:/^\/complaints\/[^/]+\/category$/,roles:W,permissionCode:'complaint.correct',desc:'正式分类纠偏'},
   {method:'GET',path:/^\/complaints\/[^/]+\/category-history$/,roles:R,permissionCode:'complaint.read',desc:'正式分类修订'},
   ...(['GET','POST'] as const).map(method=>({method,path:/^\/dict-types$/,roles:A,permissionCode:'system.dict.manage' as const,desc:'通用字典类型管理'})),
@@ -106,8 +108,12 @@ export const ROLE_POLICY: readonly PolicyRule[] = [
   {method:'GET',path:/^\/business-rules$/,roles:A,permissionCode:'business.rules.manage',desc:'真实主账规则列表（全域）'},
   {method:'POST',path:/^\/business-rules(?:\/[^/]+\/publish)?$/,roles:A,permissionCode:'business.rules.manage',desc:'真实主账规则草稿及发布（全域）'},
   {method:'POST',path:/^\/business-rules\/baseline$/,roles:A,permissionCode:'business.rules.manage',desc:'预警阈值基线只读预览（全域）'},
-  {method:'GET',path:/^\/assessment\/(?:admin-grids|grid-comparison|historical|seasonal)$/,roles:R,permissionCode:'assessment.read',desc:'真实主账授权范围研判'},
+  {method:'GET',path:/^\/assessment\/(?:admin-grids|admin-boundaries|pipeline-layer|shutdown-layer|grid-comparison|historical|seasonal|seasonal\/details)$/,roles:R,permissionCode:'assessment.read',desc:'真实主账授权范围研判（含行政区边界/管线图层/停水停气图层）'},
+  {method:'GET',path:/^\/assessment\/pipeline-layer\/projects\/[^/]+\/complaints$/,roles:R,permissionCode:'assessment.read',desc:'管道改造诉求线索，另核施工查询、诉求查询和当前数据范围'},
+  // CIM 网格边界面代理（只出图；token 留在服务端）。与 assessment 同权限：读大屏即可看边界
+  {method:'GET',path:/^\/cim\/grid-overlay(?:\/status)?$/,roles:R,permissionCode:'assessment.read',desc:'CIM 社区网格边界栅格代理（只读出图）'},
   {method:'GET',path:/^\/business-alerts(?:\/[^/]+\/history)?$/,roles:R,permissionCode:'alert.read',desc:'持久预警及处理记录'},
+  {method:'GET',path:/^\/business-alerts\/rules$/,roles:R,permissionCode:'alert.read',desc:'已发布预警规则查询'},
   {method:'POST',path:/^\/business-alerts(?:\/evaluate|\/[^/]+\/actions)$/,roles:W,permissionCode:'alert.handle',desc:'核算及处理预警'},
   // ---------- S：身份自查询（三档皆放，只看自己） ----------
   { method: 'GET', path: new RegExp('^/auth/user-info$'), roles: R, selfService: true, desc: 'S1 当前登录用户信息' },

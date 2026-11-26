@@ -3,32 +3,26 @@
  * 验收大屏 · 数据预警（标书 1.2.10）
  *
  * 四场景：冬季保供 / 夏季保畅 / 计划性停水停气 / 燃气三件套安装。
- * - 顶部「今日评估」调 POST /business-alerts/evaluate（真实主账核算），展示每条规则的
- *   状态：已触发 / 低于阈值 / 数据不足（含后端 reason，不把「资料不足」显示成正常）；
- * - 下方展示 GET /business-alerts 已保存预警（场景 / 规则名 / 阈值 / 窗口 / 触发量 / 状态）；
- * - 燃气三件套：定义与分类映射待业务确认，系统拒绝未确认时落库 → UI 只显示「待业务确认」。
+ * 打开抽屉时读取已发布规则及已保存预警。核算由有权限的用户手动发起。
  */
 import { computed, onMounted, ref } from 'vue';
-import { hashQuery } from '@/stats/useDesignScale';
 import {
   evaluateBusinessAlerts,
   fetchBusinessAlertHistory,
   fetchBusinessAlerts,
+  fetchPublishedAlertRules,
   FeatureApiError,
+  type AlertRuleSettings,
   type BusinessAlertHistoryRow,
   type BusinessAlertRow,
   type EvaluateResult,
+  type PublishedAlertRule,
+  type PublishedAlertRules,
 } from '@/stats/businessFeatures';
-import { ALERT_SCENES, GAS_THREE_PIECE_NOTE, presetOf, SCENE_LABELS, type AlertScene } from './presetRules';
-
-const qp = hashQuery();
-/** 演示直达：?drawer=warnings&eval=1 = 打开即执行今日评估 */
-const autoEval = qp.get('eval') === '1';
+import { ALERT_SCENES, SCENE_LABELS } from './presetRules';
 
 function todayStr(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date());
 }
 
 const day = ref(todayStr());
@@ -36,6 +30,41 @@ const evaluating = ref(false);
 const evalError = ref('');
 const evalResult = ref<EvaluateResult | null>(null);
 const evalAt = ref('');
+
+const published = ref<PublishedAlertRules | null>(null);
+const rulesLoading = ref(true);
+const rulesError = ref<'login' | 'denied' | 'failed' | null>(null);
+const scenes = computed(() => ALERT_SCENES.map((scene) => ({
+  scene,
+  rules: (published.value?.rules ?? []).filter((rule) => rule.scene === scene),
+  hasDraft: published.value?.draftScenes?.includes(scene) ?? false,
+})));
+
+const RULE_STATE_LABELS: Record<PublishedAlertRule['state'], string> = {
+  enabled: '已启用', disabled: '已禁用', out_of_effect: '不在有效期',
+};
+
+function ruleCategories(rule: Partial<AlertRuleSettings>): string {
+  const parts = [];
+  if (rule.majorCodes?.length) parts.push(`大类 ${rule.majorCodes.join('、')}`);
+  if (rule.minorCodes?.length) parts.push(`小类 ${rule.minorCodes.join('、')}`);
+  if (rule.dictionaryVersion) parts.push(`字典 v${rule.dictionaryVersion}`);
+  return parts.join(' · ');
+}
+
+async function loadRules() {
+  rulesLoading.value = true;
+  rulesError.value = null;
+  published.value = null;
+  try {
+    published.value = await fetchPublishedAlertRules();
+  } catch (e) {
+    const code = e instanceof FeatureApiError ? e.code : null;
+    rulesError.value = code === 3001 ? 'login' : code === 403 ? 'denied' : 'failed';
+  } finally {
+    rulesLoading.value = false;
+  }
+}
 
 const rows = ref<BusinessAlertRow[]>([]);
 const rowsLoading = ref(false);
@@ -47,19 +76,22 @@ const detail = ref<BusinessAlertRow | null>(null);
 const detailHistory = ref<BusinessAlertHistoryRow[]>([]);
 const detailLoading = ref(false);
 const detailError = ref('');
+let detailRequest = 0;
 /** 证据诉求过多时只展示前 N 条，其余如实标注数量 */
 const DETAIL_IDS_LIMIT = 60;
 
 function openDetail(row: BusinessAlertRow) {
+  const request = ++detailRequest;
   detail.value = row;
   detailHistory.value = [];
   detailError.value = '';
   detailLoading.value = true;
   fetchBusinessAlertHistory(row.alertId)
     .then((list) => {
-      detailHistory.value = list;
+      if (request === detailRequest) detailHistory.value = list;
     })
     .catch((e) => {
+      if (request !== detailRequest) return;
       detailError.value =
         e instanceof FeatureApiError
           ? `${e.message}（code=${e.code}）`
@@ -68,11 +100,12 @@ function openDetail(row: BusinessAlertRow) {
             : String(e);
     })
     .finally(() => {
-      detailLoading.value = false;
+      if (request === detailRequest) detailLoading.value = false;
     });
 }
 
 function closeDetail() {
+  detailRequest += 1;
   detail.value = null;
   detailHistory.value = [];
   detailError.value = '';
@@ -82,8 +115,6 @@ function closeDetail() {
 const actionLabel = (a: string): string =>
   ({ acknowledge: '确认', resolve: '处理完成' })[a] ?? a;
 
-
-const sceneOfRule = (ruleId: string): AlertScene | null => presetOf(ruleId)?.scene ?? null;
 
 const statusLabel = (s: string): string =>
   ({ triggered: '已触发', below_threshold: '低于阈值', insufficient: '数据不足' })[s] ?? s;
@@ -118,8 +149,6 @@ function coverageOf(c: { eligibleCount?: number | null; incompleteCount?: number
   return { eligible, incomplete, total, rate: total > 0 ? (eligible ?? 0) / total : null };
 }
 
-const unconfigured = computed(() => new Set(evalResult.value?.unconfiguredScenes ?? []));
-
 const evalCards = computed(() => evalResult.value?.statuses ?? []);
 
 async function loadRows() {
@@ -135,9 +164,10 @@ async function loadRows() {
 }
 
 async function doEvaluate() {
-  if (evaluating.value) return;
+  if (!published.value?.canEvaluate || evaluating.value) return;
   evaluating.value = true;
   evalError.value = '';
+  evalResult.value = null;
   try {
     evalResult.value = await evaluateBusinessAlerts(day.value);
     const d = new Date();
@@ -151,17 +181,15 @@ async function doEvaluate() {
   }
 }
 
-onMounted(async () => {
-  await loadRows();
-  // 让主屏 3 份 bootstrap 先落地，再触发核算（避免首屏并发把评估请求挤掉）
-  if (autoEval) window.setTimeout(() => void doEvaluate(), 1200);
+onMounted(() => {
+  void loadRules();
+  void loadRows();
 });
 </script>
 
 <template>
   <div class="alt">
-    <!-- 顶部：核算日 + 今日评估 + 场景说明 -->
-    <div class="alt__bar">
+    <div v-if="published?.canEvaluate" class="alt__bar">
       <label class="alt__day">
         核算日
         <input v-model="day" type="date" :max="todayStr()" />
@@ -173,20 +201,45 @@ onMounted(async () => {
       <span v-if="evalAt" class="alt__evalat">最近评估 {{ evalAt }}</span>
     </div>
 
-    <!-- 四场景 -->
-    <div class="alt__scenes">
-      <div
-        v-for="s in ALERT_SCENES"
-        :key="s.scene"
-        class="alt__scene"
-        :class="{ 'is-unconfigured': s.scene === 'gas_three_piece' || unconfigured.has(s.scene) }"
-      >
-        <b>{{ s.label }}</b>
-        <span>{{ unconfigured.has(s.scene) ? '未发布规则 / 待业务确认' : s.note }}</span>
+    <section class="alt__block" aria-label="预警规则">
+      <header class="alt__blockhead">
+        <b>预警规则</b>
+        <span v-if="published">截至 {{ published.asOf }}</span>
+        <button type="button" class="alt__refresh" :disabled="rulesLoading" @click="loadRules">
+          {{ rulesLoading ? '加载中…' : '刷新规则' }}
+        </button>
+      </header>
+      <div v-if="rulesLoading" class="alt__skeleton" aria-busy="true">
+        <i v-for="n in 3" :key="n" :style="{ width: `${45 + n * 10}%` }"></i>
       </div>
-    </div>
-
-    <p class="alt__gap">{{ GAS_THREE_PIECE_NOTE }}</p>
+      <div v-else-if="rulesError" class="acc-empty acc-empty--error alt__state" role="status">
+        <b v-if="rulesError === 'login'">请登录后查看预警规则</b>
+        <b v-else-if="rulesError === 'denied'">当前账号无权限查看预警规则</b>
+        <b v-else>预警规则加载失败</b>
+      </div>
+      <div v-else class="alt__scenes">
+        <div
+          v-for="s in scenes"
+          :key="s.scene"
+          class="alt__scene"
+          :class="{ 'is-unconfigured': !s.rules.some((rule) => rule.state === 'enabled') }"
+        >
+          <b>{{ sceneLabel(s.scene) }}</b>
+          <span v-if="!s.rules.length">{{ s.hasDraft ? '仅有未发布草稿' : '未配置正式规则' }}</span>
+          <template v-else>
+            <div v-for="rule in s.rules" :key="rule.ruleId" class="alt__sceneRule">
+              <strong>{{ rule.name }}</strong>
+              <span>已发布 v{{ rule.ruleVersion }} · {{ RULE_STATE_LABELS[rule.state] }}</span>
+              <span>{{ rule.businessType === 'gas' ? '燃气' : '供水' }} · {{ SCOPE_LABELS[rule.scope] }}统计</span>
+              <span>窗口 {{ rule.windowDays }} 天 · 阈值 {{ rule.threshold }} 件</span>
+              <span v-if="ruleCategories(rule)">{{ ruleCategories(rule) }}</span>
+              <span>有效期 {{ rule.effectiveFrom }} 至 {{ rule.effectiveTo }}</span>
+            </div>
+            <span v-if="s.hasDraft" class="alt__draft">有未发布草稿</span>
+          </template>
+        </div>
+      </div>
+    </section>
 
     <div v-if="evalError" class="acc-empty acc-empty--error alt__state">
       <b>今日评估失败</b>
@@ -204,17 +257,17 @@ onMounted(async () => {
       <div v-if="evalCards.length" class="alt__cards">
         <article v-for="c in evalCards" :key="c.ruleId" class="alt__card" :class="statusTone(c.status)">
           <header>
-            <span class="alt__sceneTag">{{ sceneLabel(sceneOfRule(c.ruleId) ?? '', '—') }}</span>
+            <span v-if="c.scene" class="alt__sceneTag">{{ sceneLabel(c.scene) }}</span>
             <b>{{ c.name }}</b>
             <span class="alt__status" :class="statusTone(c.status)">{{ statusLabel(c.status) }}</span>
           </header>
           <p class="alt__ruleline">
-            <template v-if="presetOf(c.ruleId)">
-              {{ presetOf(c.ruleId)?.categoryLabel }} · 阈值 {{ presetOf(c.ruleId)?.threshold }} 件 ·
-              {{ presetOf(c.ruleId)?.windowText }}
+            <template v-if="c.ruleVersion !== undefined">
+              v{{ c.ruleVersion }} · 窗口 {{ c.windowDays }} 天 · 阈值 {{ c.threshold }} 件
+              <template v-if="ruleCategories(c)"> · {{ ruleCategories(c) }}</template>
             </template>
-            <template v-else>规则 {{ c.ruleId }}</template>
-            <span class="alt__scopeTag">{{ scopeText({ scope: c.scope }) }}</span>
+            <template v-else>本次评估未返回规则配置</template>
+            <span class="alt__scopeTag">{{ SCOPE_LABELS[scopeOf(c.scope)] }}统计</span>
           </p>
           <p class="alt__count">
             本窗口观测
@@ -230,12 +283,11 @@ onMounted(async () => {
             <span v-if="(coverageOf(c)?.rate ?? 1) < 0.6">覆盖不足，结论仅供参照</span>
           </p>
           <p v-if="c.reason" class="alt__reason">{{ c.reason }}</p>
-          <p v-else-if="presetOf(c.ruleId)?.thresholdBasis" class="alt__basis">阈值推导：{{ presetOf(c.ruleId)?.thresholdBasis }}</p>
         </article>
       </div>
       <div v-else class="acc-empty alt__state">
-        <b>无已发布的预警规则</b>
-        <span>规则未发布或已停用时，不参与核算；请在管理端「真实主账预警 → 配置预警规则」发布后再评估。</span>
+        <b>核算日没有可用的已发布预警规则</b>
+        <span>可在管理端「真实主账预警 → 配置预警规则」核对规则状态和有效期。</span>
       </div>
     </section>
 
@@ -258,8 +310,8 @@ onMounted(async () => {
         <i v-for="n in 3" :key="n" :style="{ width: `${46 + ((n * 16) % 40)}%` }"></i>
       </div>
       <div v-else-if="!rows.length" class="acc-empty alt__state">
-        <b>尚无以保存预警</b>
-        <span>当前没有达到阈值且证据齐全的预警；点击「今日评估」按已发布规则核算一次。资料不足不会写入预警。</span>
+        <b>暂无已保存预警</b>
+        <span>当前账号可查看的已保存预警为 0 条。</span>
       </div>
       <div v-else class="alt__savedlist">
         <article
@@ -330,6 +382,24 @@ onMounted(async () => {
           </template>
         </section>
 
+        <section v-if="detail.scene === 'planned_shutdown'" class="alt__dblock">
+          <h3>计划停供来源</h3>
+          <p v-if="detail.utilityEvidence === null" class="alt__dna">查看匹配记录需要停供和诉求查询权限。</p>
+          <p v-else-if="!detail.utilityEvidence?.length" class="alt__dna">该预警没有可追溯的申请匹配记录。</p>
+          <template v-else>
+            <ul class="alt__dlist">
+              <li v-for="(match, i) in detail.utilityEvidence.slice(0, DETAIL_IDS_LIMIT)" :key="i">
+                <b>{{ match.sourceApplicationNo }}</b>
+                <span>来源版本 {{ match.sourceRevision }} · 事件 {{ match.eventId }}（v{{ match.eventRevision }}）</span>
+                <em>诉求 {{ match.complaintId }}</em>
+              </li>
+            </ul>
+            <p v-if="detail.utilityEvidence.length > DETAIL_IDS_LIMIT" class="alt__dna">
+              另有 {{ detail.utilityEvidence.length - DETAIL_IDS_LIMIT }} 条匹配记录。
+            </p>
+          </template>
+        </section>
+
         <section class="alt__dblock">
           <h3>处理记录</h3>
           <div v-if="detailLoading" class="alt__dloading">加载处理记录…</div>
@@ -355,8 +425,7 @@ onMounted(async () => {
     </aside>
 
     <p class="alt__foot">
-      口径：真实诉求总账（来源明确办结）· 场景与分类按已发布规则（版本=2）· 资料截止以预警证据的 dataCutoffAt 为准；
-      三件套未确认定义前不落库、不参与核算。
+      数据来源为真实诉求总账（来源明确办结）。统计场景和分类以已发布版本为准，资料截止见预警详情。
     </p>
   </div>
 </template>
@@ -454,15 +523,18 @@ onMounted(async () => {
 .alt__scene.is-unconfigured b {
   color: #ffd67c;
 }
-.alt__gap {
-  flex: none;
-  margin: 0;
-  padding: 5px 8px;
-  font-size: 9.5px;
-  line-height: 1.45;
+.alt__sceneRule {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(52, 139, 124, 0.42);
+  overflow-wrap: anywhere;
+}
+.alt__sceneRule strong {
+  font-size: 10.5px;
+  color: #c5e4dd;
+}
+.alt__scene .alt__draft {
   color: #ffd67c;
-  background: rgba(61, 48, 12, 0.36);
-  border: 1px dashed rgba(255, 214, 124, 0.4);
 }
 .alt__block {
   flex: none;

@@ -1,12 +1,12 @@
 import {chineseLabel,namedLabel,fieldLabel} from '../utils/chineseDisplay';
 import ReportingResultPanel from '../components/ReportingResultPanel';
+import DispatchFormFields, { type DispatchFormValues } from '../components/DispatchFormFields';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
   Card,
   Descriptions,
-  DatePicker,
   Empty,
   Form,
   Input,
@@ -45,7 +45,6 @@ import { listComplaints } from '../api/complaints';
 import { createDispatch } from '../api/dispatch';
 import { listEnterpriseOptions } from '../api/enterprises';
 import { getDictItems } from '../api/dicts';
-import type { Dayjs } from 'dayjs';
 import { useWriteAccess, WriteGate } from '../stores/roleAccess';
 import type {
   ApiError,
@@ -215,13 +214,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
   const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
   const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseOption[]>([]);
   const [enterpriseLoading, setEnterpriseLoading] = useState(false);
-  const [dispatchForm] = Form.useForm<{
-    targetEnterpriseCode: string;
-    targetEnterpriseName: string;
-    deadline?: Dayjs;
-    requirement?: string;
-    reason?: string;
-  }>();
+  const [dispatchForm] = Form.useForm<DispatchFormValues>();
   const writeAccess = useWriteAccess('dispatch.create');
 
   const params = useMemo(
@@ -270,7 +263,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
 
   const handleCreateDispatch = async () => {
     if (!dispatchTarget) return;
-    let values: { targetEnterpriseCode: string; targetEnterpriseName: string; deadline?: Dayjs; requirement?: string; reason?: string };
+    let values: DispatchFormValues;
     try {
       values = await dispatchForm.validateFields();
     } catch {
@@ -282,9 +275,9 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
         complaintId: dispatchTarget.complaintId,
         targetEnterpriseCode: values.targetEnterpriseCode.trim(),
         targetEnterpriseName: values.targetEnterpriseName.trim(),
-        requirement: values.requirement?.trim() || undefined,
+        requirement: values.requirement.trim(),
         reason: values.reason?.trim() || undefined,
-        deadline: values.deadline ? values.deadline.format('YYYY-MM-DDTHH:mm:ssZ') : undefined,
+        deadline: values.deadline.format('YYYY-MM-DDTHH:mm:ssZ'),
         dispatchType: 'manual',
         triggerType: 'sensitive_word',
       });
@@ -510,8 +503,7 @@ const SensitiveComplaintMatches: React.FC<SensitiveComplaintMatchesProps> = ({ o
           <Form.Item name="targetEnterpriseName" label="交办企业名称（自动带出）" rules={[{ required: true, message: '请先选择交办企业' }]}>
             <Input disabled placeholder="选择交办企业后自动带出" />
           </Form.Item>
-          <Form.Item name="deadline" label="截止时间"><DatePicker showTime style={{ width: '100%' }} placeholder="可选" /></Form.Item>
-          <Form.Item name="requirement" label="交办要求"><Input.TextArea rows={2} placeholder="可选，例如：请核实情况并填报企业处置结果。" /></Form.Item>
+          <DispatchFormFields />
           <Form.Item name="reason" label="交办原因"><Input.TextArea rows={2} placeholder="可选" /></Form.Item>
         </Form>
       </Modal>
@@ -1210,8 +1202,8 @@ const DispatchOrders: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="交办原因">{detail.reason ?? DASH}</Descriptions.Item>
             <Descriptions.Item label="截止时间">{fmtDateTime(detail.deadline)}</Descriptions.Item>
-            <Descriptions.Item label="交办要求" span={2}>
-              {detail.requirement ?? DASH}
+            <Descriptions.Item label="企业处置说明" span={2}>
+              {detail.requirement || DASH}
             </Descriptions.Item>
             <Descriptions.Item label="请求号" span={2}>
               {detail.requestId ?? DASH}

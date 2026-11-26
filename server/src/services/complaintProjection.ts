@@ -14,7 +14,9 @@ export function projectComplaintDetail(row:ComplaintRow,_ctx:AccessContext):Comp
  const sourceSnapshotAt=typeof _fields?._receivedAt==='string'?toIso(_fields._receivedAt):null;
  const summary=sourceSummary(_payload,{districtName:detail.districtName,address:detail.address});
  const hasProcessSnapshot=row.source_process_received_at!=null;
- const sourceDeadlineAt=hasProcessSnapshot?toIso(row.source_deadline_at):sourceExportTime(summary.deadlineRaw),sourceCompletedAt=hasProcessSnapshot?toIso(row.source_completed_at):sourceExportTime(summary.completedRaw);
+ const dbDeadline=toIso(row.source_deadline_at),dbCompleted=toIso(row.source_completed_at);
+ const sourceDeadlineAt=dbDeadline??(hasProcessSnapshot?null:sourceExportTime(summary.deadlineRaw));
+ const sourceCompletedAt=dbCompleted??(hasProcessSnapshot?null:sourceExportTime(summary.completedRaw));
  return {...detail,effectiveFieldState,sourceAddress,effectiveAddress:detail.address,
   sourceSummary:summary,sourceDeadlineAt,sourceCompletedAt,sourceSnapshotAt,
   businessTimeSource:detail.sourceReportedAt?'source_reported_at':detail.receivedAt?'platform_received_at':'unavailable',

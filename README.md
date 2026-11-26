@@ -55,6 +55,10 @@ npm run dev
 ```
 服务地址: http://localhost:3100
 
+### 住新统一登录
+
+本机门户通过 `http://127.0.0.1:8099/api/v1/auth/oidc/start` 打开诉求后台，通过 `?view=screen` 打开大屏。后端从 `GQXQ_OIDC_CLIENT_CREDENTIALS_FILE` 读取客户端配置，仅接受已开通并完成既有账号绑定的住新身份。OIDC 回调为 `http://127.0.0.1:8099/api/v1/auth/oidc/callback`。业务账号 ID、角色和历史经办记录来自诉求库，本地账号密码登录仍可使用。启用 OIDC 的部署通过标准登录入口接收门户用户。统一登录的业务请求逐次向 UCenter 核验，应用停用或撤销后旧会话失效。
+
 ### 2. 启动数据大屏Demo
 直接在浏览器中打开 `packages/web-dashboard/index.html`
 

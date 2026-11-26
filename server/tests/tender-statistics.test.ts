@@ -100,10 +100,24 @@ test('demo counts are explicit and a type absent this year retains the real prio
 test('service enforces permission before SQL and both captures inherit enterprise scope',async()=>{
  const access:AccessContext={userId:'u1',roles:['readonly'],scopeVersion:1,rules:[{kind:'restricted',enterpriseCodes:['E1'],districtCodes:[]}],canReadSource:false};
  const calls:{sql:string;values:unknown[]}[]=[];
- const db:SqlExecutor={query:async(sql,values=[])=>{calls.push({sql,values});if(sql.includes(' from complaint c')){assert.ok(sql.includes('c.enterprise_code in (?)'));assert.deepEqual(values,['E1']);return [[{id:1,complaint_id:'1',complaint_no:'C1',business_type:'water',complaint_type:'complaint',enterprise_code:'E1',source_reported_at:new Date('2026-11-10T04:00:00Z'),received_at:new Date('2026-11-10T04:00:00Z'),edit_version:1}],[]];}return [[],[]];}};
+ const db:SqlExecutor={query:async(sql,values=[])=>{
+  calls.push({sql,values});
+  if(!sql.includes(' from complaint c'))return [[],[]];
+  return [[{id:1,complaint_id:'1',complaint_no:'C1',business_type:'water',complaint_type:'complaint',enterprise_code:'E1',source_reported_at:new Date('2026-11-10T04:00:00Z'),received_at:new Date('2026-11-10T04:00:00Z'),edit_version:1}],[]];
+ }};
  await assert.rejects(()=>captureTenderStatisticsIn(db,query,access,['dashboard.read']));assert.equal(calls.length,0);
  const result=await captureTenderStatisticsIn(db,query,access,['statistics.read','dashboard.read']);
- assert.equal(calls.filter(c=>c.sql.includes(' from complaint c')).length,2);
+ const captures=calls.filter(c=>c.sql.includes(' from complaint c'));
+ assert.equal(captures.length,2);
+ for(const {sql,values} of captures){
+  assert.match(sql,/c\.enterprise_code in \(\?\)/);
+  assert.match(sql,/c\.source_reported_at >= \? and c\.source_reported_at < \?/);
+  assert.equal(values.length,(sql.match(/\?/g)??[]).length);
+ }
+ assert.deepEqual(captures.map(({values})=>values.slice(0,3)),[
+  ['E1',new Date('2026-10-31T16:00:00Z'),new Date('2026-11-10T16:00:00Z')],
+  ['E1',new Date('2024-12-31T16:00:00Z'),new Date('2026-11-10T16:00:00Z')],
+ ]);
  assert.equal(result.services[0].total,1);assert.equal(result.services[1].total,0);
  assert.equal(result.services[0].enterpriseRates[0].value,null);
  assert.match(result.services[0].enterpriseRates[0].reason!,/权限/);

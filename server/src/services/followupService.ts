@@ -10,17 +10,18 @@ import {parseCreate,parseRevision,parseConclusion,sourceEvaluation,formalEvaluat
 import {AppError} from '../http/errors';
 import type {FollowupInput,FollowupView,ComplaintFollowupsView} from '../types/api';
 export interface FollowupContext {userId:string|null;clientIp?:string|null}
-interface CurrentActor {userId:string;name:string;access:AccessContext}
+interface CurrentActor {userId:string;realName:string;username:string;access:AccessContext}
 /** All reads/writes load current DB grants/identity/scope under the A5 singleton.
  * The caller must be bound to authenticated ALS; no token/supplied roles authorize. */
 async function currentActor(tx:Tx,ctx:FollowupContext,permission:string):Promise<CurrentActor> {
  if(!ctx.userId||currentAccessContext().userId!==ctx.userId)throw AppError.forbidden();
  await lockAuthorization(tx);
- const [rows]=await tx.query('select user_id from app_user where user_id=? for update',[ctx.userId]);if(!(rows as unknown[]).length)throw AppError.forbidden();
+ const [rows]=await tx.query('select real_name from app_user where user_id=? for update',[ctx.userId]) as [Array<{real_name:string|null}>,unknown];
+ const lockedUser=rows[0];if(!lockedUser)throw AppError.forbidden();
  const identity=await findAuthIdentity(tx,ctx.userId);const auth=await resolveAuthorizationFrom(tx,ctx.userId);
  if(!identity||identity.status!==1||identity.mustChangePassword||!auth.permissionCodes.includes(permission as any)||(permission!=='complaint.read'&&auth.roleCodes.includes('readonly')))throw AppError.forbidden();
  if(permission==='followup.conclude'&&identity.accountType!=='internal')throw AppError.forbidden('主管结论需要已确认的内部账号身份');
- const scope=await readUserScope(tx,ctx.userId);return {userId:ctx.userId,name:identity.username,access:{userId:ctx.userId,roles:auth.roleCodes,scopeVersion:scope.scopeVersion,rules:auth.roleCodes.length?scope.rules:[],canReadSource:false}};
+ const scope=await readUserScope(tx,ctx.userId);return {userId:ctx.userId,realName:lockedUser.real_name?.trim()??'',username:identity.username,access:{userId:ctx.userId,roles:auth.roleCodes,scopeVersion:scope.scopeVersion,rules:auth.roleCodes.length?scope.rules:[],canReadSource:false}};
 }
 export async function getFollowups(idOrNo:string,ctx:FollowupContext):Promise<ComplaintFollowupsView> {return withTransaction(async tx=>{
  const actor=await currentActor(tx,ctx,'complaint.read');const complaint=await repo.lockComplaint(tx,idOrNo,actor.access);const complaintId=String(complaint.complaint_id);
@@ -32,7 +33,7 @@ export async function createFollowup(input:FollowupInput,ctx:FollowupContext):Pr
   const actor=await currentActor(tx,ctx,'followup.create');const complaint=await repo.lockComplaint(tx,complaintId,actor.access);const canonicalId=String(complaint.complaint_id);
   const hash=hashPayload({operation:'create',complaintId:canonicalId,...parsed});const retry=await replay(tx,actor,canonicalId,'create',parsed.requestId,hash);if(retry)return retry;
   const now=new Date();const id='FUP-'+randomUUID();await repo.insertHeader(tx,id,canonicalId,actor.userId,now);const h=await repo.readHeader(tx,id,actor.access,true);
-  const {requestId,...facts}=parsed;const view:FollowupView={...facts,...h,version:1,action:'create',operatorId:actor.userId,operatorName:actor.name,reason:null,revisedAt:now.toISOString(),conclusion:null,concludedBy:null,concludedAt:null};
+  const {requestId,...facts}=parsed;const view:FollowupView={...facts,...h,version:1,action:'create',operatorId:actor.userId,operatorName:actor.realName,operatorAccount:actor.username,reason:null,revisedAt:now.toISOString(),conclusion:null,concludedBy:null,concludedAt:null};
   return persist(tx,actor,ctx,view,'create',requestId,hash);
  });
 }
@@ -49,7 +50,7 @@ async function change(id:string,input:ReturnType<typeof parseRevision>|ReturnTyp
   const old=await repo.readRevision(tx,id,h.version,actor.access);const now=new Date().toISOString();let view:FollowupView;
   if(operation==='conclude'){const p=input as ReturnType<typeof parseConclusion>;view={...old,conclusion:p.conclusion,concludedBy:actor.userId,concludedAt:now};}
   else {const {requestId:_request,expectedVersion:_version,reason:_reason,...facts}=input as ReturnType<typeof parseRevision>;view={...old,...facts};}
-  view={...view,version:h.version+1,action:operation,operatorId:actor.userId,operatorName:actor.name,reason:input.reason,revisedAt:now};
+  view={...view,version:h.version+1,action:operation,operatorId:actor.userId,operatorName:actor.realName,operatorAccount:actor.username,reason:input.reason,revisedAt:now};
   return persist(tx,actor,ctx,view,operation,input.requestId,hash);
  });
 }

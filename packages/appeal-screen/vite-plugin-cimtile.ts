@@ -57,24 +57,45 @@ export function cimTileCachePlugin(): Plugin {
         /* 未命中 */
       }
       misses += 1;
-      try {
-        const upstream = await fetch(`${TILE_UPSTREAM}${TILE_PATH}?${qs.toString()}`, {
-          signal: AbortSignal.timeout(20_000),
-        });
-        const buf = Buffer.from(await upstream.arrayBuffer());
-        if (upstream.status === 200 && buf.length > 0) {
-          await mkdir(cacheDir, { recursive: true });
-          await writeFile(file, buf).catch(() => undefined);
-          return serve(buf);
+      // 网关 59.208.236.145 实测有响应波动：同一瓦片会在 200+图片 / 200+空 / 204 之间跳。
+      // 单次失败不判定「无瓦片」，重试 3 次；仍无图才如实 204（ol 留白，不伪造）。
+      const MAX_ATTEMPTS = 3;
+      let lastBuf = Buffer.alloc(0);
+      let lastStatus = 0;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+        try {
+          const upstream = await fetch(`${TILE_UPSTREAM}${TILE_PATH}?${qs.toString()}`, {
+            signal: AbortSignal.timeout(20_000),
+          });
+          const buf = Buffer.from(await upstream.arrayBuffer());
+          lastStatus = upstream.status;
+          lastBuf = buf;
+          const ctype = upstream.headers.get('content-type') ?? '';
+          // 网关波动时返回 200 + 876B 纯白 JPEG；不缓存白块，重试取真实影像
+          const isLikelyBlank = buf.length < 1200;
+          if (upstream.status === 200 && buf.length > 500 && /^image\//i.test(ctype) && !isLikelyBlank) {
+            await mkdir(cacheDir, { recursive: true });
+            await writeFile(file, buf).catch(() => undefined);
+            return serve(buf);
+          }
+          if (upstream.status >= 400 && upstream.status < 500) break;
+          if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, 180 * attempt));
+        } catch (e) {
+          if (attempt === MAX_ATTEMPTS) {
+            res.statusCode = 504;
+            res.setHeader('content-type', 'text/plain; charset=utf-8');
+            return res.end(`cimtile upstream error: ${(e as Error).message}`);
+          }
+          await new Promise((r) => setTimeout(r, 180 * attempt));
         }
-        res.statusCode = upstream.status || 502;
-        res.setHeader('content-type', upstream.headers.get('content-type') ?? 'text/plain');
-        res.end(buf);
-      } catch (e) {
-        res.statusCode = 504;
-        res.setHeader('content-type', 'text/plain; charset=utf-8');
-        res.end(`cimtile upstream error: ${(e as Error).message}`);
       }
+      if (lastStatus === 204 || lastBuf.length === 0) {
+        res.statusCode = 204;
+        return res.end();
+      }
+      res.statusCode = lastStatus || 502;
+      res.setHeader('content-type', 'text/plain; charset=utf-8');
+      res.end('cimtile upstream returned non-image');
     })();
   };
 

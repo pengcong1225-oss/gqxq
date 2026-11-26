@@ -1,3 +1,4 @@
+import { authStorage } from '../stores/sessionStorage';
 import {systemMessage} from '../utils/chineseDisplay';
 import axios from 'axios';
 import { message } from 'antd';
@@ -16,6 +17,7 @@ import { qiankunWindow } from 'vite-plugin-qiankun/dist/helper';
 declare global {
   interface ImportMetaEnv {
     readonly VITE_API_BASE_URL?: string;
+    readonly VITE_PLATFORM_PORTAL_ORIGINS?: string;
     /** Vite 内建：由 vite.config.ts 的 base 在构建期静态注入（dev 为 '/'） */
     readonly BASE_URL?: string;
   }
@@ -45,13 +47,15 @@ export const BASE_PATH: string = (import.meta.env.BASE_URL ?? '/').replace(/\/+$
 const embeddedByQiankun = Boolean(qiankunWindow.__POWERED_BY_QIANKUN__);
 const defaultApiBase = embeddedByQiankun && BASE_PATH ? `${BASE_PATH}/api/v1` : '/api/v1';
 
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? defaultApiBase;
+
 const request = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? defaultApiBase,
+  baseURL: API_BASE_URL,
   timeout: 15000,
 });
 
 request.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = authStorage.getItem('token');
   // Preserve a caller's originating session across asynchronous file reads.
   if(config.headers.Authorization&&config.headers.Authorization!==`Bearer ${token??''}`)throw new Error('登录身份已改变，请重新操作');
   if (token) {
@@ -107,7 +111,7 @@ request.interceptors.response.use(
     }
 
     if (status === 401 && !url.includes('/auth/login')) {
-      localStorage.removeItem('token');
+      authStorage.removeItem('token');
       window.location.href = `${BASE_PATH}/login`;
     }
     return Promise.reject(apiError);

@@ -11,3 +11,14 @@ export const dictionaryReferences=(typeCode:string,code?:string)=>request.get<ne
 export const getCategoryOptions=()=>request.get<never,{dictionaryVersion:string;items:DictionaryItem[]}>('/categories');
 export const saveComplaintCategory=(complaintId:string,category:CategoryRef,expectedVersion:number,basis:string)=>request.post<never,{editVersion:number;changed:boolean}>('/complaints/'+encode(complaintId)+'/category',{category,expectedVersion,basis});
 export const getCategoryHistory=(complaintId:string)=>request.get<never,CategoryRevision[]>('/complaints/'+encode(complaintId)+'/category-history');
+export interface SourceCategoryBackfillPreview {
+  digest: string;
+  dictionaryVersion: string;
+  candidates: number;
+  remaining: number;
+  skipped: { manualDecision: number; analysisRecord: number; noExactSourceCategory: number };
+  byCategory: { majorCode: string; minorCode: string; minorName: string; count: number }[];
+}
+export const previewSourceCategoryBackfill = () => request.post<never, SourceCategoryBackfillPreview>('/categories/source-backfill/preview');
+export const applySourceCategoryBackfill = (digest: string) =>
+  request.post<never, { revised: number; remaining: number; dictionaryVersion: string }>('/categories/source-backfill/apply', { digest });

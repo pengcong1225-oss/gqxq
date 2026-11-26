@@ -104,6 +104,18 @@ const DEMO_SUPPRESSIBLE_RULES = new Set([
 ]);
 const MAX_MATCHES_PER_RULE_FILE = 50;
 
+// 仅认可两条历史迁移中的同名普通二级索引原子替换，精确匹配表、索引名和完整键列。
+// 单独删除、其他文件或表、改动键列及新增其他 DDL 仍走 destructive-ddl 规则。
+const APPROVED_ATOMIC_INDEX_REPLACEMENTS = new Map([
+  ['server/migrations/20261120095000__complaint_stats_cover_fix_deleted.js', new Set([
+    "replacement: 'alter table complaint drop index idx_complaint_stats_cover, add index idx_complaint_stats_cover (source_reported_at, business_type, minor_category_code, major_category_code, admin_grid_code, deleted, source_system)',",
+    "replacement: 'alter table complaint drop index idx_complaint_stats_district, add index idx_complaint_stats_district (source_reported_at, business_type, district_code, deleted, source_system)',",
+  ])],
+  ['server/migrations/20261120100000__complaint_stats_cover_add_source_id.js', new Set([
+    "replacement: 'alter table complaint drop index idx_complaint_stats_cover, add index idx_complaint_stats_cover (source_reported_at, business_type, minor_category_code, major_category_code, admin_grid_code, deleted, source_system, source_id)',",
+  ])],
+]);
+
 /* ---------------- uppercase-enum-literal 的降噪表 ---------------- */
 
 const UPPER_QUOTED = /'([^'\\\n]*)'|"([^"\\\n]*)"/g;
@@ -295,6 +307,7 @@ for (const target of TARGETS) {
         }
 
         if (rule.pattern.test(line)) {
+          if (rule.id === 'destructive-ddl' && APPROVED_ATOMIC_INDEX_REPLACEMENTS.get(rel)?.has(line.trim())) continue;
           if (hits < MAX_MATCHES_PER_RULE_FILE) {
             hits++;
             violations.push({

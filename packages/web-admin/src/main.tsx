@@ -6,68 +6,78 @@ import zhCN from 'antd/locale/zh_CN';
 import { qiankunWindow, renderWithQiankun } from 'vite-plugin-qiankun/dist/helper';
 import App from './App';
 import { useAppStore } from './stores/appStore';
+import { authStorage } from './stores/sessionStorage';
 import { BASE_PATH } from './api/request';
+import { exchangePlatformToken, getOidcStatus } from './api/auth';
 import './assets/styles/global.css';
 
 
-/**
- * 统一退出：门户退出时清掉本应用会话并回到本应用登录页。
- *
- * 支持三种信号（与门户的 logoutBridge 约定一致）：
- *   postMessage（iframe/父窗口）、同窗口事件（qiankun）、storage 信号（同源页签）。
- */
-function installLogoutBridge() {
-  const clear = () => {
-    try {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-    } catch {
-      // 忽略：存储不可用时后端令牌已撤销，刷新即可。
+const portalOrigins = new Set([
+  'http://127.0.0.1:8080',
+  'https://zhuxin-service.sanxiacloud.net',
+  ...(import.meta.env.VITE_PLATFORM_PORTAL_ORIGINS ?? '').split(',').map((origin) => origin.trim()).filter(Boolean),
+]);
+let portalGeneration = 0;
+let pendingPlatformToken: string | undefined;
+let appliedPlatformToken: string | undefined;
+
+async function applyPlatformToken(token: string) {
+  if (!token || token === pendingPlatformToken || (token === appliedPlatformToken && useAppStore.getState().token)) return;
+  const status = await getOidcStatus().catch(() => null);
+  if (!status || status.enabled) return;
+  if (token === pendingPlatformToken || (token === appliedPlatformToken && useAppStore.getState().token)) return;
+  const generation = ++portalGeneration;
+  pendingPlatformToken = token;
+  useAppStore.getState().logout();
+  try {
+    const result = await exchangePlatformToken(token);
+    if (generation !== portalGeneration) return;
+    const state = useAppStore.getState();
+    state.setUserInfo(result.userInfo);
+    state.setToken(result.token);
+    state.setPortalError(null);
+    appliedPlatformToken = token;
+  } catch (error) {
+    if (generation === portalGeneration) {
+      useAppStore.getState().setPortalError(error instanceof Error ? error.message : '门户授权暂不可用');
     }
-    useAppStore.getState().logout();
-    if (!window.location.pathname.includes('/login')) {
-      window.location.reload();
-    }
-  };
-  window.addEventListener('message', (event) => {
-    const type = (event.data as { type?: string } | null)?.type;
-    if (type === 'zhuxin:logout') clear();
-  });
-  window.addEventListener('zhuxin:logout', clear);
-  window.addEventListener('storage', (event) => {
-    if (event.key === 'zhuxin_logout_at') clear();
-  });
+  } finally {
+    if (generation === portalGeneration) pendingPlatformToken = undefined;
+  }
 }
 
+function clearPortalSession() {
+  portalGeneration++;
+  pendingPlatformToken = undefined;
+  appliedPlatformToken = undefined;
+  authStorage.removeItem('user');
+  useAppStore.getState().logout();
+  if (!window.location.pathname.includes('/login')) window.location.reload();
+}
 
-/**
- * 跨域内嵌时的令牌握手。
- *
- * 独立域名后，本应用读不到门户的 localStorage，改由门户 postMessage 推送平台令牌：
- *   1. 挂载后先向父窗口要一次（zhuxin:token-request）；
- *   2. 收到 zhuxin:token 就存入本地并刷新登录态。
- * 独立打开（非内嵌）时这段逻辑不生效，仍按自己的登录流程走。
- */
-function installEmbeddedAuth() {
-  if (window.parent === window) return;
-
-  const apply = (token: string) => {
-    if (!token) return;
-    localStorage.setItem('token', token);
-    useAppStore.getState().setToken(token);
-  };
-
-  window.addEventListener('message', (event) => {
-    const data = event.data as { type?: string; token?: string } | null;
-    if (data?.type === 'zhuxin:token' && data.token) apply(data.token);
-  });
-
-  // 父窗口可能在我准备好之前就发过了，主动要一次
-  try {
-    window.parent.postMessage({ type: 'zhuxin:token-request' }, '*');
-  } catch {
-    // 极少数跨域策略下可能失败，不影响用户手工登录
+function installPortalBridge() {
+  if (window.parent !== window) {
+    void getOidcStatus().then(({ enabled }) => {
+      if (enabled) return;
+      window.addEventListener('message', (event) => {
+        if (event.source !== window.parent || !portalOrigins.has(event.origin)) return;
+        const data = event.data as { type?: string; token?: unknown } | null;
+        if (data?.type === 'zhuxin:logout') clearPortalSession();
+        if (data?.type === 'zhuxin:token' && typeof data.token === 'string') void applyPlatformToken(data.token);
+      });
+      if (document.referrer) {
+        const parentOrigin = new URL(document.referrer).origin;
+        if (portalOrigins.has(parentOrigin)) {
+          useAppStore.getState().logout();
+          window.parent.postMessage({ type: 'zhuxin:token-request' }, parentOrigin);
+        }
+      }
+    }).catch(() => {});
   }
+  window.addEventListener('zhuxin:logout', clearPortalSession);
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'zhuxin_logout_at') clearPortalSession();
+  });
 }
 
 /**
@@ -115,23 +125,28 @@ function render(props: any = {}) {
   );
 }
 
+/**
+ * 入口脚本在 <head> 里用内联 `import(...)` 动态加载，属于经典脚本、会**立即执行**；
+ * 而动态 import 在资源被缓存时几乎立刻 resolve —— 此时 <body> 还没解析完，
+ * document.getElementById('root') 为 null，render() 会抛
+ * 「诉求应用缺少挂载容器」。表现为：第一次打开正常，再进来白屏（缓存越快越容易踩到）。
+ * 所以必须等 DOM 就绪后再挂载。
+ */
+function whenDomReady(fn: () => void): void {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fn, { once: true });
+  } else {
+    fn();
+  }
+}
+
 // 作为子应用或被内嵌时，跟随门户退出。
-installLogoutBridge();
-installEmbeddedAuth();
+installPortalBridge();
 
 renderWithQiankun({
   bootstrap() {},
   mount(props: any) {
-    // 统一身份：平台已登录时把平台令牌写入本应用会话存储，
-    // 本应用随后的接口调用携带该令牌，由后端按 platform_identity 绑定解析身份。
-    // 平台令牌只用于证明"你是谁"，本应用的角色与权限仍由本地库决定。
-    if (props.accessToken) {
-      localStorage.setItem('token', props.accessToken);
-      if (props.user) localStorage.setItem('user', JSON.stringify(props.user));
-      // store 在模块加载时就从 localStorage 读了 token（此时平台还没注入），
-      // 这里必须回写一次，否则路由守卫仍判定为未登录、把用户挡在自己的登录页。
-      useAppStore.getState().setToken(props.accessToken);
-    }
+    if (typeof props.accessToken === 'string') void applyPlatformToken(props.accessToken);
     render(props);
   },
   unmount() {
@@ -146,5 +161,5 @@ renderWithQiankun({
 });
 
 if (!qiankunWindow.__POWERED_BY_QIANKUN__) {
-  render();
+  whenDomReady(() => render());
 }

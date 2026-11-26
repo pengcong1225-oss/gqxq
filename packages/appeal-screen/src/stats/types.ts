@@ -125,10 +125,14 @@ export interface ScreenFilters {
   period: PeriodKey;
   industry: IndustryFilter;
   snapshotId: string;
+  window?: { from: string; to: string };
   /** 地图下钻范围：选中行政网格后统计面板收窄到该网格（不传=全域） */
   gridCode?: string | null;
   /** 区县收窄：点击区域分布/筛选条区域后，面板收窄到该区（不传=全域） */
   districtCode?: string | null;
+  enterpriseCode?: string | null;
+  communityCode?: string | null;
+  categoryCode?: string | null;
 }
 
 /** 地图侧网格范围元数据（统计面板收窄时使用，真实项目由 /api/screen/grid/{code} 提供） */
@@ -202,6 +206,7 @@ export interface EnterpriseRatio {
   households: number | null;
   /** 件/万户；null + reason 时 UI 显示「不可计算：xxx」 */
   ratio: Computable<number>;
+  reasonText?: string;
   denominatorDate: string;
 }
 
@@ -438,8 +443,9 @@ export interface DemandDynamicData {
 
 export interface ResearchItem {
   rank: number;
-  /** 诉求类型编码（往年 TOP3 用；点击「查看证据」按该类型过滤明细；其他研报项可缺省） */
+  /** 诉求类型编码。 */
   typeId?: string;
+  evidence?: { contextId: string; key: string };
   /** 研判主题，例如「水压不足 × 网格投诉 可能属于同诉求」 */
   title: string;
   typeName: string;
@@ -455,6 +461,7 @@ export interface TopTypesData {
   period: PeriodKey;
   industry: IndustryFilter;
   items: ResearchItem[];
+  coverage?: string;
   /** 空列表时的解释文案 */
   emptyReason: string | null;
 }
@@ -543,6 +550,9 @@ export interface DrillQuery {
   title: string;
   period: PeriodKey;
   industry: IndustryFilter;
+  /** 打开明细时已生效的主屏筛选，后续分页沿用同一范围 */
+  filters?: ScreenFilters;
+  evidence?: ResearchItem['evidence'];
   typeId?: string;
   districtCode?: string;
   communityName?: string;
@@ -552,6 +562,8 @@ export interface DrillQuery {
   eventNo?: string;
   /** 地图下钻：网格编码 */
   gridCode?: string | null;
+  /** 使用当前地图快照中已核验的正式网格诉求。 */
+  formalHeatGrid?: boolean;
   /** 高频小区点击：小区编码（/screen/demands 的 communityCode；中文名不参与过滤） */
   communityCode?: string | null;
   /** 月度趋势点击：指定月份（1-12），用于同月明细（真实接口按 month 过滤 MVT/明细） */
@@ -567,6 +579,7 @@ export interface DemandListData {
   pageSize: number;
   total: number;
   items: DemandItem[];
+  evidenceWindow?: { from: string; to: string };
 }
 
 /* ---------------------------------------------------------------- 工具类型 */

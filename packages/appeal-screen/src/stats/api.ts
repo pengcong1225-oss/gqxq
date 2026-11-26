@@ -29,12 +29,14 @@ import {
 import {
   RealApiError,
   fetchBundle,
+  invalidateBundleCache,
   mapDemandDynamic,
   mapOverview,
   mapResearch,
   mapSupply,
   mapTopTypes,
   mapWarnings,
+  pickIndustryBundle,
   realFetchDemands,
 } from './realSource';
 
@@ -156,7 +158,7 @@ export async function fetchDemandDynamic(filters: ScreenFilters): Promise<ApiRes
 export async function fetchTopTypes(filters: ScreenFilters): Promise<ApiResponse<TopTypesData>> {
   try {
     const bs = await fetchBundle(filters);
-    return wrap(mapTopTypes(bs, filters), bs.all.contextId);
+    return wrap(mapTopTypes(bs, filters), pickIndustryBundle(bs, filters.industry).contextId);
   } catch (e) {
     toScreenError(e);
   }
@@ -180,16 +182,37 @@ export async function fetchResearchTop(filters: ScreenFilters): Promise<ApiRespo
   }
 }
 
+/**
+ * 下钻明细。
+ *
+ * contextId 是后端 bootstrap 时签发、**有有效期**的查询上下文（服务端还带 LRU 淘汰）。
+ * 大屏长时间挂着、或用户在别的面板反复筛选，都可能导致点「明细」时上下文已经过期，
+ * 后端返回 409「查询上下文已过期，请刷新」—— 用户看到的就是抽屉里一条报错。
+ *
+ * 所以这里做一次**透明自愈**：命中 409 就丢弃本地 bundle 缓存、重新 bootstrap 拿新
+ * contextId，再重试一次。用户无感知，也不会看到「请刷新」这种把问题推回去的提示。
+ */
 export async function fetchDemands(query: DrillQuery): Promise<ApiResponse<DemandListData>> {
+  const filters: ScreenFilters = query.filters ?? {
+    period: query.period,
+    industry: query.industry,
+    snapshotId: SNAPSHOT_ID,
+    districtCode: query.districtCode ?? null,
+  };
   try {
-    const bs = await fetchBundle({
-      period: query.period,
-      industry: query.industry,
-      snapshotId: SNAPSHOT_ID,
-      districtCode: query.districtCode ?? null,
-    });
+    const bs = await fetchBundle(filters);
     return await realFetchDemands(bs, query);
   } catch (e) {
+    const code = (e as { code?: number })?.code;
+    if (code === 409 && !query.evidence) {
+      try {
+        invalidateBundleCache(filters);
+        const fresh = await fetchBundle(filters);
+        return await realFetchDemands(fresh, query);
+      } catch (e2) {
+        toScreenError(e2);
+      }
+    }
     toScreenError(e);
   }
 }

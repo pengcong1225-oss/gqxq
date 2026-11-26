@@ -3,6 +3,7 @@ import { dictionaryService, saveTypeSchema, saveItemSchema, parseDictionaryInput
 import { readDictionaryType } from '../services/dictService';
 import { pool } from '../db/pool';
 import { categoryOptions, reviseCategory, categoryHistory } from '../services/categoryService';
+import { applyCategoryBackfill, previewCategoryBackfill } from '../services/categoryBackfillService';
 import type { MasterDataContext } from '../types/masterData';
 import { assertAllScope } from '../auth/accessScope';
 import { Router } from 'express';
@@ -129,6 +130,15 @@ dictsRouter.delete('/dict-types/:code/items/:itemCode',requirePermission('system
 dictsRouter.get('/dict-types/:code/references',requirePermission('system.dict.manage'),async(req,res,next)=>{try{ok(res,await dictionaryService.references(String(req.params.code),null,masterContext(req)));}catch(e){next(e);}});
 dictsRouter.get('/dict-types/:code/items/:itemCode/references',requirePermission('system.dict.manage'),async(req,res,next)=>{try{ok(res,await dictionaryService.references(String(req.params.code),String(req.params.itemCode),masterContext(req)));}catch(e){next(e);}});
 dictsRouter.get('/categories',async(_req,res,next)=>{try{ok(res,await categoryOptions());}catch(e){next(e);}});
+dictsRouter.post('/categories/source-backfill/preview',requirePermission('complaint.correct'),async(req,res,next)=>{
+  try { ok(res,await previewCategoryBackfill(masterContext(req))); } catch(e) { next(e); }
+});
+dictsRouter.post('/categories/source-backfill/apply',requirePermission('complaint.correct'),async(req,res,next)=>{
+  try {
+    const {digest}=parseOrThrow(z.object({digest:z.string().regex(/^[0-9a-f]{64}$/)}).strict(),req.body,'须提交有效的分类补齐预览');
+    ok(res,await applyCategoryBackfill(masterContext(req),digest));
+  } catch(e) { next(e); }
+});
 dictsRouter.post('/complaints/:complaintId/category',requirePermission('complaint.correct'),async(req,res,next)=>{try{const body=parseOrThrow(z.object({category:z.unknown(),expectedVersion:z.number().int().positive(),basis:z.string().trim().min(1).max(500)}).strict(),req.body,'分类纠偏参数不合法');ok(res,await reviseCategory({complaintId:String(req.params.complaintId),...body,category:body.category as any},masterContext(req)));}catch(e){next(e);}});
 dictsRouter.get('/complaints/:complaintId/category-history',async(req,res,next)=>{try{ok(res,await categoryHistory(String(req.params.complaintId),masterContext(req)));}catch(e){next(e);}});
 

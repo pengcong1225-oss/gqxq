@@ -1,5 +1,6 @@
 import {startLocationInitializer} from './services/locationInitializationService';
 import { runAsTrustedSystem } from './auth/accessScope';
+import { startSubjectAssignmentSync } from './auth/managedIdentity';
 import { createApp } from './app';
 import { env } from './config/env';
 import { reconcilePendingEvents } from './services/callbackService';
@@ -11,6 +12,7 @@ import {pruneExpiredComplaintImports} from './services/complaintImportService';
 import {startBusinessAlertWorker} from './services/businessAlertWorker';
 import {startReportWorker} from './services/reportService';
 import {startUtilityIntegrationWorker} from './services/utilityIntegrationService';
+import {startPendingSummaryWorker} from './services/pendingSummaryWorker';
 
 /**
  * 判定监听地址是否为回环（M1 的默认值）。
@@ -39,6 +41,14 @@ async function main(): Promise<void> {
     console.error('[startup] 凭据拉取模块异常，继续使用环境变量：', err instanceof Error ? err.message : err);
   }
 
+  let stopSubjectAssignmentSync: () => void;
+  try {
+    stopSubjectAssignmentSync = await startSubjectAssignmentSync();
+  } catch {
+    console.error('[startup] 统一身份配置或迁移不可用');
+    process.exit(1);
+  }
+
   let reconciling=false;
   const reconcile=async()=>{if(reconciling)return;reconciling=true;try{await runAsTrustedSystem(async()=>{await reconcilePendingEvents();await reconcileOpenReporting();});}catch{console.error('[integration] pending event reconciliation failed; retained for retry');}finally{reconciling=false;}};
   const replayTimer=setInterval(()=>void reconcile(),Math.max(30_000,env.pu.reconciliationIntervalMs));replayTimer.unref();void reconcile();
@@ -50,6 +60,7 @@ async function main(): Promise<void> {
   const stopBusinessAlertWorker=startBusinessAlertWorker();
   const stopUtilityIntegrationWorker=runAsTrustedSystem(()=>startUtilityIntegrationWorker());
   const stopLocationInitializer=runAsTrustedSystem(()=>startLocationInitializer());
+  const stopPendingSummaryWorker=startPendingSummaryWorker();
   let pruning=false;
   const prune=async()=>{if(pruning)return;pruning=true;try{await pruneExpiredImports();await pruneExpiredComplaintImports();}catch{console.error('[import] expired resource cleanup failed; retained for retry');}finally{pruning=false;}};
   const importRetentionTimer=setInterval(()=>void prune(),60_000);importRetentionTimer.unref();void prune();
@@ -75,6 +86,8 @@ async function main(): Promise<void> {
     stopBusinessAlertWorker();
     stopUtilityIntegrationWorker();
     stopLocationInitializer();
+    stopPendingSummaryWorker();
+    stopSubjectAssignmentSync();
     clearInterval(replayTimer);
     clearInterval(deliveryTimer);
     clearInterval(importRetentionTimer);

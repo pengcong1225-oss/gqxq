@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {DatabaseSync,type SQLInputValue} from 'node:sqlite';
 import JSZip from 'jszip';
 import ExcelJS from 'exceljs';
 import {calculateSourceSatisfaction,procurementExclusion,PROCUREMENT_POLICY_ID,type FollowupFact} from '../src/domain/procurementFacts';
@@ -7,7 +8,7 @@ import {snapshotFactsFromComplaint,readStatisticsSnapshot} from '../src/domain/s
 import {captureStatisticsIn} from '../src/services/statisticsService';
 import {aggregateTenderStatistics} from '../src/domain/tenderStatistics';
 import {freezeReportSnapshot,parseReportInput,canonical,digest,parseStoredSnapshot,PROCUREMENT_RENDER_PLAN} from '../src/domain/reportSnapshot';
-import {renderReport,reportSections} from '../src/services/reportRenderer';
+import {renderReport,reportChartValues,reportSections} from '../src/services/reportRenderer';
 import type {StatisticsQuery} from '../src/types/statistics';
 import type {SqlExecutor} from '../src/repositories/userRepo';
 import type {AccessContext} from '../src/auth/accessScope';
@@ -18,31 +19,109 @@ const permissions=['statistics.read','dashboard.read','analysis.read'];
 const clock=()=>new Date('2026-11-11T00:00:00Z');
 function complaint(id:string,patch:Record<string,unknown>={}){return {id:Number(id),complaint_id:id,complaint_no:'C'+id,title:'测试',business_type:'water',complaint_type:'complaint',enterprise_code:'E1',source_system:'宜接就办',source_id:'SRC-'+id,source_event_status:'completed',source_synced_at:'2026-11-10T04:00:00Z',source_reported_at:'2026-11-09T04:00:00Z',received_at:'2026-11-09T04:00:00Z',edit_version:1,...patch};}
 function followup(complaintId='1',patch:Partial<FollowupFact>={}):FollowupFact{return {eventId:'F-'+complaintId,sourceId:'trusted',sourceObjectId:'FU-'+complaintId,sourceVersion:1,sourceUpdatedAt:'2026-11-10T05:00:00Z',bindingTrusted:true,payload:{complaintId,occurredAt:'2026-11-10T04:00:00Z',contacted:true,evaluation:'satisfied'},...patch};}
-function database(rows:Record<string,unknown>[],heads:Record<string,unknown>[]=[]){const calls:{sql:string;values:unknown[]}[]=[];const db:SqlExecutor={query:async(sql,values=[])=>{calls.push({sql,values});if(sql.includes(' from complaint c')){assert.match(sql,/c.enterprise_code in \(\?\)/);assert.deepEqual(values,['E1']);assert.match(sql,/c.source_synced_at/);return [rows,[]];}if(sql.includes('from source_business_head')){assert.ok(values.every(id=>rows.some(r=>r.complaint_id===id)));return [heads.filter(h=>values.includes((h.content as any).payload.complaintId)),[]];}return [[],[]];}};return {db,calls};}
+function database(rows:Record<string,unknown>[],heads:Record<string,unknown>[]=[]){
+ const calls:{sql:string;values:unknown[]}[]=[];
+ const byId=new Map(rows.map(row=>[row.complaint_id,row]));
+ const db:SqlExecutor={query:async(sql,values=[])=>{
+  calls.push({sql,values});
+  const from=sql.indexOf(' from complaint c');
+  if(from!==-1){
+   assert.match(sql,/c.source_synced_at/);
+   // Run the repository's actual scope, join and date predicates on synthetic rows.
+   const memory=new DatabaseSync(':memory:');
+   try{
+    memory.exec(`create table complaint (id integer, complaint_id text, enterprise_code text, deleted integer,
+      source_system text, source_id text, source_reported_at text, received_at text, business_type text,
+      major_category_code text, minor_category_code text);
+      create table analysis_record (analysis_id text, complaint_id text);`);
+    const insert=memory.prepare('insert into complaint values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const insertAnalysis=memory.prepare('insert into analysis_record values (?, ?)');
+    const bind=(value:unknown)=>(value instanceof Date?value.toISOString():value??null) as SQLInputValue;
+    for(const row of rows){
+     insert.run(...['id','complaint_id','enterprise_code','deleted','source_system','source_id','source_reported_at',
+       'received_at','business_type','major_category_code','minor_category_code'].map(key=>bind(row[key])));
+     if(row.analysis_id)insertAnalysis.run(bind(row.analysis_id),bind(row.complaint_id));
+    }
+    const selected=memory.prepare('select c.complaint_id'+sql.slice(from)).all(...values.map(bind));
+    return [selected.map(row=>byId.get(row.complaint_id)),[]];
+   }finally{memory.close();}
+  }
+  if(sql.includes('from source_business_head')){
+   assert.ok(values.every(id=>byId.has(id)));
+   return [heads.filter(h=>values.includes((h.content as FollowupFact).payload.complaintId)),[]];
+  }
+  return [[],[]];
+ }};
+ return {db,calls};
+}
 function head(f=followup(),binding:unknown={sourceId:'trusted',complaintId:'1',sourceSystem:'宜接就办',sourceObjectId:'SRC-1'}){return {event_id:f.eventId,content:f,followup_binding:binding};}
 
 test('procurement excludes closed/platform closure, missing provenance/date and non-water/gas; default still counts ledger',async()=>{
- const rows=[complaint('1'),complaint('2',{source_event_status:'closed',closed_in_system:1}),complaint('3',{source_event_status:'processing',closed_in_system:1}),complaint('4',{source_synced_at:null}),complaint('5',{source_system:'other'}),complaint('6',{business_type:'lpg'}),complaint('7',{source_reported_at:null})];
+ const rows=[complaint('1'),complaint('2',{source_event_status:'closed',closed_in_system:1}),complaint('3',{source_event_status:'processing',closed_in_system:1}),complaint('4',{source_synced_at:null}),complaint('5',{source_system:'other'}),complaint('6',{business_type:'lpg'}),complaint('7',{source_reported_at:null}),complaint('8',{source_reported_at:null,received_at:'2024-01-01T00:00:00Z'})];
  const {db,calls}=database(rows);
  const procurement=await captureStatisticsIn(db,query,access,permissions,clock);
  assert.deepEqual(procurement.rows.map(r=>r.complaintId),['1']);
  assert.equal(procurement.summary.sourceTimeFallbackCount,0);
- assert.equal(Object.values(procurement.summary.excludedByReason).reduce((a,b)=>a+b,0),6);
+ assert.equal(Object.values(procurement.summary.excludedByReason).reduce((a,b)=>a+b,0),7);
  assert.equal(procurement.summary.excludedByReason['来源未明确办结（关闭不等于办结）'],2);
- assert.ok(calls.filter(c=>c.sql.includes('source_business_head')).every(c=>JSON.stringify(c.values)==='["1"]'));
+ assert.equal(procurement.summary.dateFilterUnavailableCount,2);
+ assert.deepEqual(calls.filter(c=>c.sql.includes('source_business_head')).map(c=>c.values),[['1']]);
  calls.length=0;
  const legacy=await captureStatisticsIn(db,{...query,comparisonPolicyId:'candidate-calendar-v1'},access,permissions,clock);
  assert.equal(legacy.summary.total,7);assert.equal(legacy.summary.sourceTimeFallbackCount,1);
  assert.equal(calls.some(c=>c.sql.includes('source_business_head')),false);
 });
 
+test('procurement counts current and comparison cases using Shanghai calendar boundaries and enterprise scope',async()=>{
+ const rows=[
+  complaint('1',{source_reported_at:'2026-10-31T16:00:00Z'}),
+  complaint('2',{source_reported_at:'2026-11-10T15:59:59Z'}),
+  complaint('3',{source_reported_at:'2026-11-10T16:00:00Z'}),
+  complaint('4',{source_reported_at:'2025-10-31T16:00:00Z'}),
+  complaint('5',{source_reported_at:'2025-10-31T15:59:59Z'}),
+  complaint('6',{source_reported_at:'2026-10-25T04:00:00Z'}),
+  complaint('7',{enterprise_code:'E2'}),
+ ];
+ const result=await captureStatisticsIn(database(rows).db,query,access,permissions,clock);
+ assert.deepEqual(result.rows.map(row=>row.complaintId).sort(),['1','2']);
+ assert.deepEqual(result.periodFacts.find(period=>period.kind==='yoy')!.rows.map(row=>row.complaintId),['4']);
+ assert.deepEqual(result.periodFacts.find(period=>period.kind==='mom')!.rows.map(row=>row.complaintId),['6']);
+});
+
+test('procurement annual summary and frozen report chart use the tender year-to-date baseline',async()=>{
+ const annual:StatisticsQuery={...query,periodKind:'year',from:'2026-01-01'};
+ const {db}=database([complaint('1'),complaint('2'),complaint('3',{source_reported_at:'2025-11-09T04:00:00Z'})]);
+ const capture=await captureStatisticsIn(db,annual,access,permissions,clock);
+ const annualMom=capture.summary.comparisons.find(comparison=>comparison.kind==='mom')!;
+ assert.deepEqual([annualMom.from,annualMom.to,annualMom.baselineCount,annualMom.changePercent],['2025-01-01','2025-11-10',1,100]);
+ assert.equal(annualMom.label,'年度环比（上年同期累计）');
+ const annualMomFacts=capture.periodFacts.find(period=>period.kind==='mom')!;
+ assert.deepEqual(annualMomFacts.rows.map(row=>row.complaintId),['3']);
+
+ const extended=await captureStatisticsIn(db,{...annual,from:'2025-01-01',periodKind:'custom'},access,permissions,clock);
+ const input=parseReportInput({requestId:'annual',templateCode:'procurement-statistics',templateVersion:'v1',format:'docx',query:annual});
+ const frozen=freezeReportSnapshot(input,capture,access.rules,null,[],extended);
+ assert.deepEqual(reportChartValues(frozen),[{label:'本期',value:2},{label:'同比',value:1},{label:'年度环比（上年同期累计）',value:1}]);
+ const annualCard=frozen.tenderStatistics!.periods.find(period=>period.key==='year')!;
+ assert.deepEqual(annualCard.comparisons.find(comparison=>comparison.kind==='mom'),annualMom);
+
+ const candidate=await captureStatisticsIn(db,{...annual,comparisonPolicyId:'candidate-calendar-v1'},access,permissions,clock);
+ const candidateMom=candidate.summary.comparisons.find(comparison=>comparison.kind==='mom')!;
+ assert.equal(candidateMom.baselineCount,null);
+ assert.equal(candidateMom.reason,'年度环比未定义');
+});
+
 test('snapshot v2 freezes source completion; v1 never borrows current completion evidence',async()=>{
- const live=complaint('1'),v2=snapshotFactsFromComplaint(live);
+ const live=complaint('1',{major_category_code:'pressure'}),v2=snapshotFactsFromComplaint(live);
  assert.equal(readStatisticsSnapshot(2,JSON.stringify(v2))?.sourceEventStatus,'completed');
  const {sourceId,sourceSystem,sourceEventStatus,sourceSyncedAt,...v1}=v2;
  assert.ok(readStatisticsSnapshot(1,v1));assert.equal(readStatisticsSnapshot(1,v1)?.sourceEventStatus,undefined);
- const rows=[{...live,analysis_id:'A1',statistics_snapshot_version:1,statistics_snapshot:v1}, {...complaint('2',{source_event_status:'closed'}),analysis_id:'A2',statistics_snapshot_version:2,statistics_snapshot:{...v2,complaintId:'2',sourceId:'SRC-2'}}];
- const result=await captureStatisticsIn(database(rows).db,{...query,dataset:'analysis',projection:'entry_snapshot'},access,permissions,clock);
+ const rows=[
+  {...live,analysis_id:'A1',statistics_snapshot_version:1,statistics_snapshot:v1},
+  {...complaint('2',{source_event_status:'closed',source_reported_at:'2023-01-01T00:00:00Z',business_type:'gas',major_category_code:'leak'}),analysis_id:'A2',statistics_snapshot_version:2,statistics_snapshot:{...v2,complaintId:'2',sourceId:'SRC-2'}},
+  {...complaint('3',{enterprise_code:'E2'}),analysis_id:'A3',statistics_snapshot_version:2,statistics_snapshot:{...v2,complaintId:'3',sourceId:'SRC-3'}},
+ ];
+ const result=await captureStatisticsIn(database(rows).db,{...query,dataset:'analysis',projection:'entry_snapshot',businessType:'water',majorCode:'pressure'},access,permissions,clock);
  assert.deepEqual(result.rows.map(r=>r.complaintId),['2']);
  assert.equal(result.rows[0].sourceEventStatus,'completed');
  assert.equal(result.summary.excludedByReason['非宜接就办来源或缺来源证据'],1);

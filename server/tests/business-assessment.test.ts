@@ -16,6 +16,7 @@ import {matchRule} from '../src/auth/rolePolicy';
 import type {BusinessEventContext} from '../src/types/businessEvents';
 import type {Tx} from '../src/db/tx';
 const actor:BusinessEventContext={userId:'u',permissionCodes:['statistics.read','dashboard.read','alert.handle','alert.read','shutdown.read'],access:{userId:'u',roles:['handler'],scopeVersion:1,rules:[{kind:'restricted',enterpriseCodes:['E1'],districtCodes:[]}],canReadSource:false}};
+const cityActor: BusinessEventContext = { ...actor, access: { ...actor.access, rules: [{ kind: 'all' }] } };
 const rule={ruleId:'gas-rule',kind:'alert',expectedVersion:0,name:'正式燃气分类预警',businessType:'gas',dictionaryVersion:'1',majorCodes:['pressure'],minorCodes:[],effectiveFrom:'2020-01-01',effectiveTo:'2030-12-31',scene:'gas_three_piece',startMonth:null,endMonth:null,threshold:2,windowDays:10,definitionBasis:'已确认安装分类定义',definitionConfirmed:true,enabled:true};
 const fact=(id:string)=>({complaintId:id,enterpriseCode:'E1',districtCode:'D1',adminGridCode:'G1',businessType:'gas',businessAt:'2026-11-09T04:00:00Z'});
 test('alert identities are stable, deduplicate facts and separate rule versions and grid ownership',()=>{
@@ -37,12 +38,13 @@ test('published rule input requires formal mapping, confirmed gas definition, bo
 });
 function dbFixture(incomplete=false){const saved=new Map<string,unknown[]>();const queried:string[]=[];const db={query:async(sql:string,params:unknown[]=[])=>{queried.push(sql);
  if(sql.includes('from business_rule_version'))return [params[0]==='alert'?[{content:{...rule,scope:incomplete?'grid':'city'},version:1}]:[],[]];
- if(sql.includes(' from complaint c')){assert.match(sql,/c.enterprise_code in \(\?\)/);return [[1,2].map(id=>({id,complaint_id:String(id),complaint_no:'C'+id,business_type:'gas',complaint_type:'complaint',source_system:'宜接就办',source_id:'S'+id,source_event_status:'completed',source_synced_at:'2026-11-10T00:00:00Z',source_reported_at:'2026-11-09T04:00:00Z',enterprise_code:'E1',district_code:'D1',admin_grid_code:incomplete?null:'G1',major_category_code:'pressure',category_dictionary_version:'1',edit_version:1})),[]];}
+ if(sql.includes(' from complaint c')){if(incomplete)assert.match(sql,/c.enterprise_code in \(\?\)/);return [[1,2].map(id=>({id,complaint_id:String(id),complaint_no:'C'+id,business_type:'gas',complaint_type:'complaint',source_system:'宜接就办',source_id:'S'+id,source_event_status:'completed',source_synced_at:'2026-11-10T00:00:00Z',source_reported_at:'2026-11-09T04:00:00Z',enterprise_code:'E1',district_code:'D1',admin_grid_code:incomplete?null:'G1',major_category_code:'pressure',category_dictionary_version:'1',edit_version:1})),[]];}
  return [[],[]];},execute:async(sql:string,params:unknown[]=[])=>{if(sql.startsWith('insert ignore into business_alert')){const existed=saved.has(String(params[0]));if(!existed)saved.set(String(params[0]),params);return [{affectedRows:existed?0:1},[]];}return [{affectedRows:1},[]];}} as unknown as Tx;return {db,saved,queried};}
 test('real alert service persists frozen trigger evidence, remains idempotent, and incomplete location cannot report normal',async()=>{
- const {db,saved,queried}=dbFixture();const a=await evaluateBusinessAlertsIn(db,'2026-11-10',actor);assert.equal(a.created,1);assert.equal(a.statuses[0].status,'triggered');
+ const {db,saved,queried}=dbFixture();const a=await evaluateBusinessAlertsIn(db,'2026-11-10',cityActor);assert.equal(a.created,1);assert.equal(a.statuses[0].status,'triggered');
+ assert.deepEqual({scene:a.statuses[0].scene,version:a.statuses[0].ruleVersion,threshold:a.statuses[0].threshold,windowDays:a.statuses[0].windowDays},{scene:'gas_three_piece',version:1,threshold:2,windowDays:10});
  const evidence=JSON.parse([...saved.values()][0][11] as string);assert.deepEqual(evidence.complaintIds,['1','2']);assert.equal(evidence.facts[0].editVersion,1);
- assert.equal((await evaluateBusinessAlertsIn(db,'2026-11-10',actor)).created,0);
+ assert.equal((await evaluateBusinessAlertsIn(db,'2026-11-10',cityActor)).created,0);
  assert.equal(queried.some(sql=>sql.includes('shutdown_complaint_link')),false);
  const insufficient=await evaluateBusinessAlertsIn(dbFixture(true).db,'2026-11-10',actor);assert.equal(insufficient.created,0);assert.equal(insufficient.statuses[0].status,'insufficient');
  await assert.rejects(()=>evaluateBusinessAlertsIn(db,'2026-11-10',{...actor,permissionCodes:['alert.read']}));
@@ -57,4 +59,68 @@ test('new feature routes have exact permissions and no legacy feedback worker ro
  assert.equal(matchRule('POST','/business-rules/R/publish')?.permissionCode,'business.rules.manage');
  assert.equal(matchRule('POST','/business-alerts/evaluate')?.permissionCode,'alert.handle');
  assert.equal(matchRule('POST','/shutdown-feedback/recompute'),null);
+});
+
+test('seasonal details use the summary rule coverage before reading complaints', async (t) => {
+ const { pool } = await import('../src/db/pool');
+ const { seasonalAssessment, seasonalDetails } = await import('../src/services/businessAssessmentService');
+ const seasonalRule = {
+  ...rule, name: '冬季保障', kind: 'seasonal', scene: 'winter', startMonth: 11, endMonth: 3,
+  effectiveFrom: '2022-01-01', majorCodes: [], minorCodes: ['g08'],
+ };
+ const connection = {
+  beginTransaction: async () => {}, commit: async () => {}, rollback: async () => {}, release: () => {},
+  query: async (sql: string) => {
+   if (sql.includes('business_rule_version')) return [[{ content: JSON.stringify(seasonalRule), version: 2 }], []];
+   if (sql.includes('admin_grid audit_ag')) return [[], []];
+   if (sql.includes('select c.source_reported_at')) return [[{ source_reported_at: '2022-02-10 12:00:00', business_type: 'gas', minor_category_code: 'g08' }], []];
+   if (sql.includes('select count(*) n')) return [[{ n: 42 }], []];
+   if (sql.includes('c.complaint_id complaintId')) return [[{ complaintId: 'outside-coverage' }], []];
+   throw new Error(`Unexpected seasonal SQL: ${sql}`);
+  },
+ } as unknown as Tx;
+ t.mock.method(pool, 'getConnection', async () => connection);
+ const ctx = { ...actor, permissionCodes: ['assessment.read', 'complaint.read', 'grid.read'] };
+ const query = { scene: 'winter', businessType: 'gas', year: 2021 };
+ const summary = await seasonalAssessment(query, ctx);
+ const details = await seasonalDetails(query, ctx);
+ assert.equal(summary.seasons?.[0]?.status, 'outside_rule_period');
+ assert.equal(summary.seasons?.[0]?.count, null);
+ assert.equal(details.status, 'outside_rule_period');
+ assert.equal(details.total, null);
+ assert.deepEqual(details.items, []);
+});
+
+test('seasonal rankings skip district fallback codes and report their cases as lacking a grid link', async (t) => {
+ const { pool } = await import('../src/db/pool');
+ const { seasonalAssessment } = await import('../src/services/businessAssessmentService');
+ const seasonalRule = {
+  ...rule, name: '冬季保障', kind: 'seasonal', scene: 'winter', startMonth: 11, endMonth: 3,
+  effectiveFrom: '2022-01-01', majorCodes: [], minorCodes: ['g08'],
+ };
+ const source = [
+  { source_reported_at: '2025-11-05 12:00:00', admin_grid_code: '420502' },
+  { source_reported_at: '2025-11-06 12:00:00', admin_grid_code: '420502' },
+  { source_reported_at: '2025-11-06 12:00:00', admin_grid_code: '420502001' },
+  { source_reported_at: '2025-11-06 12:00:00', admin_grid_code: 'no-longer-in-directory' },
+ ];
+ const grids = [
+  { code: '420502', district_code: '420502', name: '西陵区' },
+  { code: '420502001', district_code: '420502', name: '西陵街道' },
+ ];
+ const connection = {
+  beginTransaction: async () => {}, commit: async () => {}, rollback: async () => {}, release: () => {},
+  query: async (sql: string) => {
+   if (sql.includes('business_rule_version')) return [[{ content: JSON.stringify(seasonalRule), version: 3 }], []];
+   if (sql.includes('admin_grid audit_ag')) return [sql.includes('audit_ag.code<>audit_ag.district_code')?grids.filter(g=>g.code!==g.district_code):grids, []];
+   if (sql.includes('select c.source_reported_at')) return [source, []];
+   throw new Error(`Unexpected seasonal SQL: ${sql}`);
+  },
+ } as unknown as Tx;
+ t.mock.method(pool, 'getConnection', async () => connection);
+ const ctx = { ...actor, permissionCodes: ['assessment.read', 'complaint.read', 'grid.read'] };
+ const summary = await seasonalAssessment({ scene: 'winter', businessType: 'gas', year: 2025 }, ctx);
+ assert.equal(summary.seasons?.[0]?.count, 4);
+ assert.deepEqual(summary.top6?.map(({ code, count })=>({code,count})), [{code:'420502001',count:1}]);
+ assert.equal(summary.unlocatedCount, 3);
 });

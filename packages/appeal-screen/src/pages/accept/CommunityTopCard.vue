@@ -27,6 +27,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'retry'): void;
   (e: 'drill', q: DrillQuery): void;
+  /**
+   * 定位到小区（用户点行主体时触发）。
+   * 只移动地图视野 + 高亮，**不改筛选、不开明细** —— 用户明确要求「点小区就是到具体位置」。
+   */
+  (e: 'locate', q: DrillQuery): void;
+  /** 看该小区的诉求明细（用户点行尾「明细」按钮时触发，显式动作才展开） */
+  (e: 'detail', q: DrillQuery): void;
 }>();
 
 const loading = computed(() => props.supply.status === 'loading' || props.supply.status === 'idle');
@@ -83,16 +90,31 @@ function satAvailable(row: CommunityRow): boolean {
   return !!row.satisfactionRate && row.satisfactionRate.value !== null;
 }
 
-function drillRow(row: CommunityRow) {
-  /** 标书 1.2.2 ④：按小区编码过滤明细（/screen/demands?communityCode=C-…）；
-   *  中文小区名只用于抽屉条件展示，不作为后端过滤条件（传中文名会 400）。 */
-  emit('drill', {
+/** 行数据的查询描述（定位与明细共用同一份条件，避免两处拼参数走样） */
+function rowQuery(row: CommunityRow): DrillQuery {
+  return {
     source: '验收大屏 · 高频诉求小区 Top10',
     title: `${row.communityName} · 同小区诉求明细`,
     period: props.periodMeta.key,
     industry: props.industry,
     ...(row.communityCode ? { communityCode: row.communityCode } : {}),
-  });
+    ...(row.communityName ? { communityName: row.communityName } : {}),
+  };
+}
+
+/**
+ * 点击行主体 → **只定位**到该小区在地图上的具体位置并高亮。
+ *
+ * 原实现直接 emit('drill') 打开明细、并把 communityFilter 落到筛选条，
+ * 效果是整屏数据被收窄成一个小区 —— 用户反馈这不是「定位」而是「筛选」，已按此修正。
+ */
+function locateRow(row: CommunityRow) {
+  emit('locate', rowQuery(row));
+}
+
+/** 点击行尾「明细」按钮 → 打开该小区诉求明细（显式动作，不会误触） */
+function detailRow(row: CommunityRow) {
+  emit('detail', rowQuery(row));
 }
 </script>
 
@@ -119,17 +141,20 @@ function drillRow(row: CommunityRow) {
 
       <div v-else class="ct__list">
         <div class="ct__head-row">
+          <span aria-hidden="true"></span>
           <span>小区 / 网格</span>
           <span>件数</span>
-          <span>满意率</span>
+          <span title="满意率 = 有效评价数 / 已评价件数；无有效评价时显示 —">满意率</span>
         </div>
-        <button
+        <div
           v-for="row in rows"
           :key="`${row.rank}-${row.communityName}`"
-          type="button"
           class="ct__row"
-          :title="`${row.communityName} / ${row.gridName} · ${row.count} 件；点击 → 地图定位 + 同小区明细`"
-          @click="drillRow(row)"
+          role="button"
+          tabindex="0"
+          @keydown.enter.prevent="locateRow(row)"
+          :title="`${row.communityName} / ${row.gridName} · ${row.count} 件；点击行 → 地图定位到该小区`"
+          @click="locateRow(row)"
         >
           <i class="ct__rank" :class="{ 'is-top3': row.rank <= 3 }">{{ row.rank }}</i>
           <span class="ct__name-wrap">
@@ -138,8 +163,13 @@ function drillRow(row: CommunityRow) {
           </span>
           <span class="ct__count">{{ row.count }}</span>
           <span v-if="satAvailable(row)" class="ct__sat">{{ satText(row) }}</span>
-          <span v-else class="st-uncomputable ct__sat-na">不可计算：无有效评价</span>
-        </button>
+          <!-- 满意率不可计算时只显示「—」，原因放 title（原 9 字长文案在 76px 列里被挤成两行） -->
+          <span
+            v-else
+            class="st-uncomputable ct__sat-na"
+            title="不可计算：该小区在当前窗口内无有效评价"
+          >—</span>
+        </div>
       </div>
     </div>
     <CardFooter v-if="!loading && !error && !empty" :items="footItems" drill-label="明细" @drill="drillAll" />
@@ -163,7 +193,8 @@ function drillRow(row: CommunityRow) {
 .ct__head-row {
   flex: none;
   display: grid;
-  grid-template-columns: 1fr 34px 78px;
+  /* 与 .ct__row 一致的 4 列，否则表头与数据错位 */
+  grid-template-columns: 16px minmax(0, 1fr) 34px 76px;
   gap: 5px;
   padding: 0 4px 2px;
   margin-bottom: 1px;
@@ -171,8 +202,8 @@ function drillRow(row: CommunityRow) {
   color: #7fa9a0;
   border-bottom: 1px solid rgba(83, 191, 173, 0.28);
 }
-.ct__head-row span:nth-child(2),
-.ct__head-row span:nth-child(3) {
+.ct__head-row span:nth-child(3),
+.ct__head-row span:nth-child(4) {
   text-align: right;
 }
 /* 行撑满列表高度（10 行时刚好铺满，不留大片空白），去掉每行小盒子边框，改用细分隔线 */
@@ -181,7 +212,14 @@ function drillRow(row: CommunityRow) {
   min-height: 17px;
   max-height: 26px;
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) 34px 78px;
+  /*
+   * 4 列：序号 / 名称 / 件数 / 满意率。
+   *
+   * 历史坑：曾加过第 5 列「明细」按钮，但该列只有 34px，中文字被挤成竖排、
+   * 还溢出到卡片外压住地图（截图可见）。用户明确要求列表里不要明细按钮，已移除。
+   * 明细入口统一保留在「地图点击浮层」与卡片底部「明细」按钮。
+   */
+  grid-template-columns: 16px minmax(0, 1fr) 34px 76px;
   align-items: center;
   gap: 5px;
   padding: 2px 4px;
@@ -198,10 +236,12 @@ function drillRow(row: CommunityRow) {
 }
 .ct__rank {
   font-style: normal;
-  font-size: 9px;
+  font-size: 9.5px;
   text-align: center;
-  color: #a8d8ce;
-  background: rgba(52, 139, 124, 0.28);
+  color: #d8f4ee;
+  /* 原 0.28 alpha 在深底上几乎看不出，与前三名亮色块落差太大 */
+  background: rgba(52, 139, 124, 0.55);
+  border-radius: 2px;
   line-height: 14px;
 }
 .ct__rank.is-top3 {
@@ -247,9 +287,9 @@ function drillRow(row: CommunityRow) {
 }
 .ct__sat-na {
   justify-self: end;
-  font-size: 8px;
+  color: rgba(158, 198, 190, 0.55);
+  font-size: 11px;
   padding: 0 2px;
-  white-space: nowrap;
 }
 .ct__skeleton {
   flex: 1;

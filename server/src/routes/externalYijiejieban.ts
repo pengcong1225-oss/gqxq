@@ -32,6 +32,10 @@ const LOWER_CODE = /^[a-z][a-z0-9_]*$/;
 const BodySchema = z.object({
   sourceId: z.string().max(128).nullish(),
   appealId: z.string().max(128).nullish(),
+  /** 案件号（案件公文号 / 案件编码）：与流水号交叉去重用 */
+  caseNo: z.string().max(64).nullish(),
+  /** 流水号（新系统 14 位流水号）：与案件号交叉去重用 */
+  serialNo: z.string().max(64).nullish(),
   title: z.string().nullish(),
   // content 的上限不放在 zod 里：它要按 complaint.content 的**列容量**（TEXT = 65535 字节）折算，
   // 见下面 CONTENT_MAX；写在 zod 里只会得到一个与列宽无关的英文提示。
@@ -226,9 +230,23 @@ externalRouter.post(
       warnings.push('坐标已全部置空，落库 location_lng/location_lat 为 NULL');
     }
 
+    // 业务键：报文显式字段优先，其次从 metadata 的旧/新系统列名兜底
+    const meta = (isPlainObject(data.metadata) ? data.metadata : {}) as Record<string, unknown>;
+    const metaText = (keys: string[]): string | null => {
+      for (const key of keys) {
+        const v = meta[key];
+        if (typeof v === 'string' && v.trim() !== '') return v.trim().slice(0, 64);
+      }
+      return null;
+    };
+    const caseNo = optText(data.caseNo, 64) ?? metaText(['案件公文号', '案件编码', '案件号']) ?? (/^[A-Za-z]{2}\d{12,}$/.test(sourceId) ? sourceId : null);
+    const serialNo = optText(data.serialNo, 64) ?? metaText(['流水号']) ?? (/^\d{14}$/.test(sourceId) ? sourceId : null);
+
     const command: IntakeCommand = {
       sourceSystem: YIJIEJIEBAN_SYSTEM,
       sourceId,
+      caseNo,
+      serialNo,
       channel: optText(data.source, 64),
       title,
       content,

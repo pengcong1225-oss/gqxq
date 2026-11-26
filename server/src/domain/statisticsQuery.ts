@@ -33,20 +33,22 @@ export function normalizeStatisticsQuery(raw:Record<string,unknown>,_access:Acce
  return q;
 }
 export function toShanghaiHalfOpenRange(q:{from:string;to:string}){return {start:new Date(q.from+'T00:00:00+08:00').toISOString(),end:new Date(addDays(q.to,1)+'T00:00:00+08:00').toISOString()};}
-function previousYear(day:string){const year=Number(day.slice(0,4))-1;const prefix=String(year).padStart(4,'0')+day.slice(4);return day.slice(5)==='02-29'?String(year).padStart(4,'0')+'-02-28':prefix;}
-export function resolveComparisonPeriods(q:StatisticsQuery):ComparisonPeriod[]{
+export function previousYear(day:string){const year=Number(day.slice(0,4))-1;const prefix=String(year).padStart(4,'0')+day.slice(4);return day.slice(5)==='02-29'?String(year).padStart(4,'0')+'-02-28':prefix;}
+export function resolveComparisonPeriods(q:StatisticsQuery,options:{annualMom?:boolean}={}):ComparisonPeriod[]{
  const currentDays=dayCount(q.from,q.to);
  return (['yoy','mom'] as const).map(kind=>{
-  const label=kind==='yoy'?'同比':q.periodKind==='quarter'?'环比（上季度）':'环比';
-  if(kind==='mom'&&q.periodKind==='year')return {kind,label,from:null,to:null,currentDays,baselineDays:null,truncated:false,reason:'年度环比未定义'};
+  const annual=kind==='mom'&&q.periodKind==='year';
+  const annualMom=annual&&(q.comparisonPolicyId===PROCUREMENT_POLICY.id||options.annualMom===true);
+  const label=kind==='yoy'?'同比':annualMom?'年度环比（上年同期累计）':q.periodKind==='quarter'?'环比（上季度）':'环比';
+  if(annual&&!annualMom)return {kind,label,from:null,to:null,currentDays,baselineDays:null,truncated:false,reason:'年度环比未定义'};
   let from:string,to:string,truncated=false;
   if(q.periodKind==='custom'){
    from=kind==='yoy'?previousYear(q.from):addDays(q.from,-currentDays);to=kind==='yoy'?previousYear(q.to):addDays(q.from,-1);
   }else{
-   const current=calendarBounds(q.from,q.periodKind);const b=kind==='yoy'?calendarBounds(previousYear(q.from),q.periodKind):calendarBounds(q.from,q.periodKind,-1);
+   const current=calendarBounds(q.from,q.periodKind);const b=kind==='yoy'||annualMom?calendarBounds(previousYear(q.from),q.periodKind):calendarBounds(q.from,q.periodKind,-1);
    from=b.from;const requested=addDays(b.from,currentDays-1);to=q.to===current.to?b.to:requested>b.to?b.to:requested;truncated=q.to!==current.to&&requested>b.to;
   }
-  return {kind,label,from,to,currentDays,baselineDays:dayCount(from,to),truncated,reason:null};
+  return {kind,label,from,to,currentDays,baselineDays:dayCount(from,to),truncated,reason:annualMom?'年度环比按上年同期累计比较':null};
  });
 }
 export function computePeriodChange(current:number,baseline:number,partial=false):{changePercent:number|null;reason:string|null}{

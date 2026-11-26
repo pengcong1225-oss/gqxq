@@ -124,9 +124,23 @@ export const env = {
   },
   /** 小区定位（高德 Web 服务地理编码）与坐标抖动（数据服务中心异步任务）。
    * 抖动结果只用于地图展示，服务层绝不回写 location_*。 */
-  /** 高德地图 Web 服务 Key（标书 1.2.12 指定的地图服务商；优先于天地图）。 */
+  /** 高德地图 Web 服务 Key（标书 1.2.12 指定的地图服务商）。 */
   amapKey: optRaw('GQXQ_AMAP_KEY'),
   amapBaseUrl: opt('GQXQ_AMAP_BASE_URL', 'https://restapi.amap.com'),
+  /**
+   * 区县边界本地快照（高德不可用时的降级数据源）。
+   * 区县边界准静态，快照可长期使用；高德只回来一部分时按 code 补缺，不覆盖实时值。
+   * 生成/更新：npm run boundary:districts
+   */
+  districtSnapshot: opt('GQXQ_DISTRICT_SNAPSHOT', 'data/boundaries/yichang-districts-snapshot.geojson'),
+  /**
+   * 区县边界数据源模式：
+   *   snapshot（默认）—— 政务网形态：运行时只读本地快照，完全不访问高德（无外网出口也不等超时）；
+   *   live            —— 有外网的环境：实时优先，失败回退快照；
+   *   auto            —— 快照优先，快照缺失才打高德。
+   * 快照刷新走离线命令：npm run boundary:districts。
+   */
+  districtSource: opt('GQXQ_DISTRICT_SOURCE', 'snapshot'),
   jitter: {
     baseUrl: opt('GQXQ_JITTER_BASE_URL', ''),
     appId: opt('GQXQ_JITTER_APP_ID', ''),
@@ -137,6 +151,51 @@ export const env = {
     pollMs: Number(opt('GQXQ_JITTER_POLL_MS', '2000')),
     pollMax: Number(opt('GQXQ_JITTER_POLL_MAX', '120')),
   },
+  /**
+   * 地图落点用哪套坐标：
+   *   'original' —— community.location_lng/lat（高德 POI 原始坐标，已 GCJ-02→WGS84）
+   *   'jitter'   —— community.jitter_lng/lat（数据服务中心抖动结果，仅用于打散重叠点位）
+   *
+   * 为什么要有这个开关：抖动是"在同一小区内部微调"，实测最大偏移仅 27m
+   * （p50≈17.8m），对 420m 缓冲面不可能造成"跑到河里"；
+   * 但客户现场质疑位移来源，需要能一键切回原始数据做 A/B 对照，
+   * 用事实排除抖动嫌疑，而不是靠口头解释。
+   */
+  screenCoordSource: (opt('GQXQ_SCREEN_COORD_SOURCE', 'original') === 'jitter' ? 'jitter' : 'original') as
+    | 'jitter'
+    | 'original',
+  /**
+   * 街道缓冲近似面的半径（米）。留空=按网格点位密度自适应（推荐）；
+   * 填数字则所有街道统一用该固定半径，仅用于调参 / 验收截图对比。
+   */
+  streetBufferMeters: opt('GQXQ_STREET_BUFFER_METERS', ''),
+  /**
+   * 边界数据包（Boundary Pack）：街道/社区级边界的**可替换数据源**。
+   *
+   * 为什么做成文件而不是写死后端：
+   *   高德免费接口街道不返回 polyline、admin_grid.geometry 全 NULL；OSM 只是过渡底稿，
+   *   后续要换甲方 SHP 导出 / 高德企业智图 street&village / 天地图数据时，
+   *   只换文件 + 改这一个环境变量即可，路由与前端契约不变（见 boundaryPackService.ts）。
+   *
+   * 留空 = 不启用（退回 official → buffer 逻辑）。
+   * 相对路径按 server 根目录解析；产物由 scripts/fetch-osm-boundaries.mjs 生成。
+   */
+  boundaryPack: opt('GQXQ_BOUNDARY_PACK', ''),
+  /** 数据包大小上限（MB），防止误配超大文件把进程内存打爆 */
+  boundaryPackMaxMb: Number(opt('GQXQ_BOUNDARY_PACK_MAX_MB', '32')),
+  /**
+   * CIM 行政区划栅格服务（《CIM-配置2》给的 token + 内网网关）。
+   * 只用于「出图」的边界参考层：实测该网关没有要素/属性通道（queryable=false），
+   * 五色热力仍需 CIM 开数据服务或矢量瓦片 —— 详见 services/cimGridOverlayService.ts 顶部说明。
+   */
+  cimToken: optRaw('GQXQ_CIM_TOKEN'),
+  cimMapBase: opt('GQXQ_CIM_BASE', 'http://10.55.69.155:8885/gtis/map/rest'),
+  /** 边界图磁盘缓存目录（相对 server 根；留空用 .dev-logs/cim-overlay-cache） */
+  cimOverlayCacheDir: opt('GQXQ_CIM_CACHE_DIR', ''),
+  /** 缓存 TTL（毫秒），默认 6 小时 */
+  cimOverlayCacheTtlMs: Number(opt('GQXQ_CIM_CACHE_TTL_MS', '21600000')),
+  /** 上游出图超时（毫秒） */
+  cimOverlayTimeoutMs: Number(opt('GQXQ_CIM_TIMEOUT_MS', '20000')),
 } as const;
 
 if (missing.length > 0) {

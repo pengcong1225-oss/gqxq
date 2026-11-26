@@ -1,4 +1,5 @@
 import type { SupportGrid, SupportCommunity, SupportPipeline } from './tenderSupport';
+import type { BoundaryGeometry } from './serviceGrid';
 export type ScreenState = 'available' | 'partial' | 'unavailable';
 export interface ScreenSection<T> { state: ScreenState; reason: string | null; data: T }
 export interface ScreenTimeCount { date: string; count: number }
@@ -26,4 +27,14 @@ export interface ScreenSections {
   spatial: ScreenSection<{ grids: SupportGrid[]; communities: SupportCommunity[]; events: ScreenEvent[]; pipelines: SupportPipeline[] }>;
 }
 
-export interface ScreenHeat {days:number|null;thresholds:number[]|null;coefficients:string[]|null;policyId:string|null;ruleVersion:string|null;rules:ScreenHeatRuleRef[];grids:{code:string;count:number;level:string|null;reason:string|null;ruleVersion:string|null}[]}
+export interface ScreenHeat {
+ days:number|null;
+ thresholds:number[]|null;
+ coefficients:string[]|null;
+ policyId:string|null;
+ ruleVersion:string|null;
+ rules:ScreenHeatRuleRef[];
+ categories:{code:string;name:string;parentCode:string|null}[];
+ unmappedCount:number|null;
+ grids:{code:string;count:number;level:string|null;reason:string|null;ruleVersion:string|null;name?:string;geometry?:BoundaryGeometry;geometrySource?:string;geometryVersion?:string;communities?:string[]}[];
+}

@@ -44,6 +44,10 @@ class IntakeRaceRetry extends Error {}
 export interface IntakeCommand {
   sourceSystem: string;
   sourceId: string;
+  /** 来源案件号（案件公文号 / 案件编码）；用于与流水号交叉去重 */
+  caseNo: string | null;
+  /** 来源流水号（新系统 14 位流水号） */
+  serialNo: string | null;
   /** 报文里的 source（渠道），落 source_channel */
   channel: string | null;
   title: string;
@@ -284,6 +288,56 @@ async function selectForUpdate(tx: Tx, sourceSystem: string, sourceId: string): 
   return list.length > 0 ? list[0] : null;
 }
 
+/**
+ * 按来源业务键（案件号 / 流水号）查已入库诉求。
+ * 目的：同一件诉求在旧系统是「案件公文号」、新系统是「流水号」，只用 source_id 去重会重复入库。
+ */
+async function selectForUpdateByBusinessKey(tx: Tx, caseNo: string | null, serialNo: string | null): Promise<Record<string, unknown> | null> {
+  const where = SELECT_ROW.replace('where c.source_system = ? and c.source_id = ?', 'where');
+  // ① 流水号是强键：同一流水号必然同一件诉求
+  if (serialNo) {
+    const [rows] = await tx.query(where + ' and coalesce(c.deleted,0)=0 and (c.source_serial_no = ? or c.source_id = ?) for update', [serialNo, serialNo]);
+    const list = rows as Array<Record<string, unknown>>;
+    if (list.length > 0) return list[0];
+  }
+  // ② 案件号是弱键：老系统存在「一个案件号合并多个来电流水号」的情况，
+  //    因此只有双方流水号至少一侧为空（或相同）时才认定为同一件诉求。
+  if (caseNo) {
+    const [rows] = await tx.query(where + ' and coalesce(c.deleted,0)=0 and (c.source_case_no = ? or c.source_id = ?) for update', [caseNo, caseNo]);
+    const list = rows as Array<Record<string, unknown>>;
+    const hit = list.find((r) => !serialNo || !r.source_serial_no || String(r.source_serial_no) === serialNo);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * 重复来电标记：同一电话 + 同一内容，且更早存在同件诉求时，标记 repeat_flag/repeat_of。
+ * 只打标，不合并——重复来电仍是有效诉求，用于重复投诉率统计。
+ */
+async function markRepeatInTx(tx: Tx, complaintId: string, cmd: IntakeCommand): Promise<void> {
+  const phone = (cmd.citizenPhone ?? '').replace(/\D/g, '');
+  const content = (cmd.content ?? '').trim();
+  if (phone.length < 6 || content.length < 10) return;
+  try {
+    const [rows] = await tx.query<any[]>(
+      'select c.complaint_id, c.complaint_no from complaint c join complaint_citizen cc on cc.complaint_id = c.complaint_id ' +
+        'where cc.phone_raw = ? and c.content = ? and c.complaint_id <> ? and coalesce(c.deleted,0) = 0 ' +
+        'order by c.received_at asc limit 1',
+      [phone, content, complaintId]
+    );
+    const head = rows?.[0];
+    if (!head) return;
+    await tx.query("update complaint set repeat_flag = 1, repeat_of = ?, repeat_reason = ? where complaint_id = ?", [
+      String(head.complaint_id),
+      '同一电话+' + content.length + '字内容与首件「' + String(head.complaint_no ?? '') + '」完全相同',
+      complaintId,
+    ]);
+  } catch {
+    // 打标失败不影响入库
+  }
+}
+
 async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<IntakeResponse> {
   const isoDate = shanghaiDate(receivedAt);
   // 发号与插入同事务：插入失败（含并发撞唯一键）回滚时序号一并回滚
@@ -318,6 +372,8 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
     complaint_no: complaintNo,
     source_system: cmd.sourceSystem,
     source_id: cmd.sourceId,
+    source_case_no: cmd.caseNo,
+    source_serial_no: cmd.serialNo,
     source_channel: cmd.channel,
     title: cmd.title,
     content: cmd.content,
@@ -375,6 +431,7 @@ async function createNew(tx: Tx, cmd: IntakeCommand, receivedAt: Date): Promise<
   }
 
   await upsertCitizen(tx, complaintId, cmd, receivedAt);
+  await markRepeatInTx(tx, complaintId, cmd);
   await generateCorrectionsInTx(tx, { complaintId, assignmentId: null, operatorId: null, operatorName: null, now: receivedAt, source: 'intake' });
   await syncAddressCandidate(tx, complaintId, { title: cmd.title, content: cmd.content });
   await syncLocationClues(tx, complaintId, { title: cmd.title, content: cmd.content });
@@ -514,6 +571,8 @@ async function applyRedelivery(
   const keywords = keywordsToColumn(sensitive.keywords);
 
   const target: Record<string, unknown> = {
+    source_case_no: cmd.caseNo ?? row.source_case_no ?? null,
+    source_serial_no: cmd.serialNo ?? row.source_serial_no ?? null,
     title: cmd.title,
     content: cmd.content,
     source_channel: cmd.channel,
@@ -699,6 +758,14 @@ async function intakeOnce(cmd: IntakeCommand, receivedAt: Date): Promise<IntakeR
   return withTransaction(async (tx) => {
     const row = await selectForUpdate(tx, cmd.sourceSystem, cmd.sourceId);
     if (row === null) {
+      // 业务键去重：案件号 / 流水号任一命中，说明同一件诉求已入库（可能来自另一套系统）
+      const business = await selectForUpdateByBusinessKey(tx, cmd.caseNo, cmd.serialNo);
+      if (business !== null) {
+        const sameHash = String(business.source_payload_hash ?? '') === cmd.payloadHash;
+        return sameHash
+          ? recordDuplicateSame(tx, business, cmd, receivedAt)
+          : applyRedelivery(tx, business, cmd, receivedAt);
+      }
       return createNew(tx, cmd, receivedAt);
     }
     const storedHash = row.source_payload_hash === null || row.source_payload_hash === undefined ? '' : String(row.source_payload_hash);
@@ -727,7 +794,17 @@ export async function intakeAppeal(cmd: IntakeCommand, ctx?: Partial<IntakeConte
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
-      return await intakeOnce(cmd, receivedAt);
+      const accepted = await intakeOnce(cmd, receivedAt);
+      // 入库即触发自动定位（仅新入库且坐标缺失的诉求）；失败自动降级为人工纠偏，不阻塞入站。
+      if (accepted.result === 'created' && accepted.complaintId) {
+        void import('./locationInitializationService')
+          .then((m) => m.initializeLocations(1, accepted.complaintId as string))
+          .catch(() => undefined);
+        void import('../repositories/correctionRepo')
+          .then((m) => m.refreshPendingSummaryFor(pool, accepted.complaintId as string))
+          .catch(() => undefined);
+      }
+      return accepted;
     } catch (err) {
       lastError = err;
       const retryable = err instanceof IntakeRaceRetry || isRetryableLockError(err);
@@ -747,6 +824,8 @@ export async function intakeAppeal(cmd: IntakeCommand, ctx?: Partial<IntakeConte
 /** 允许出现在报文里的顶层字段（其余记入"未知字段已忽略"） */
 export const KNOWN_REQUEST_KEYS = [
   'sourceId',
+  'caseNo',
+  'serialNo',
   'appealId',
   'title',
   'content',

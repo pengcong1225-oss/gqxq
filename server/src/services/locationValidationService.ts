@@ -48,6 +48,20 @@ function polygonContains(p:number[],rings:number[][][]):boolean {
 function contains(p:number[],geometry:BoundaryGeometry):boolean {
  return geometry.type==='Polygon'?polygonContains(p,geometry.coordinates):geometry.coordinates.some(r=>polygonContains(p,r));
 }
+/** Automatic assignments require a strictly interior point. */
+export function classifyLocationBoundary(point: number[], geometry: BoundaryGeometry): 'inside' | 'edge' | 'outside' {
+ const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+ let inside = false;
+ for (const [shell, ...holes] of polygons) {
+  const exterior = ringContains(point, shell);
+  if (exterior === 'edge') return 'edge';
+  if (exterior === 'outside') continue;
+  const interior = holes.map(hole => ringContains(point, hole));
+  if (interior.includes('edge')) return 'edge';
+  if (!interior.includes('inside')) inside = true;
+ }
+ return inside ? 'inside' : 'outside';
+}
 function usableGeometry(coverage:GridCoverage):boolean {
  if(coverage.coordinateSystem!=='WGS84'||!coverage.geometrySources?.length||!coverage.geometry?.features?.length)return false;
  try{return coverage.adminGridCodes.every(code=>coverage.geometry!.features.some(f=>f.properties.adminGridCode===code&&validateGeometry(f.geometry)!==null));}catch{return false;}

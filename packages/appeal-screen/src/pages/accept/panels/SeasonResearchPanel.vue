@@ -13,7 +13,7 @@ import { computed, onMounted, ref } from 'vue';
 import EChart from '@/stats/components/EChart.vue';
 import type { EChartsCoreOption } from '@/stats/echarts';
 import { hashQuery } from '@/stats/useDesignScale';
-import { fetchSeasonal, FeatureApiError, type SeasonalResult, type SeasonalSeasonRow } from '@/stats/businessFeatures';
+import { fetchSeasonal, fetchSeasonalDetails, FeatureApiError, type SeasonalResult, type SeasonalSeasonRow, type SeasonalDetailRow } from '@/stats/businessFeatures';
 import { PRESET_RULES } from './presetRules';
 
 const qp = hashQuery();
@@ -40,11 +40,13 @@ const year = ref(Number.isInteger(initYear) && initYear >= currentYear - 4 && in
 const loading = ref(false);
 const error = ref('');
 const data = ref<SeasonalResult | null>(null);
+let summaryRequest = 0;
 
 const yearOptions = computed(() => Array.from({ length: 5 }, (_, i) => currentYear - i));
 
 const sceneMeta = computed(() => SCENES.find((s) => s.key === scene.value) ?? SCENES[0]);
 const preset = computed(() => PRESET_RULES.find((r) => r.ruleId === data.value?.rule?.ruleId) ?? null);
+const currentSeasonOutsideRule = computed(() => data.value?.seasons?.[0]?.status === 'outside_rule_period');
 
 const statusText = (s: string): string =>
   ({ observed: '已接入观测', insufficient: '无数据（资料不足）', outside_rule_period: '规则有效期未覆盖', truncated: '本期截至' })[s] ?? s;
@@ -60,15 +62,19 @@ const seasonNote = (s: SeasonalSeasonRow): string => {
 };
 
 async function load() {
+  const request = ++summaryRequest;
+  resetDetails();
   loading.value = true;
   error.value = '';
   data.value = null;
   try {
-    data.value = await fetchSeasonal({ scene: scene.value, businessType: sceneMeta.value.business, year: year.value });
+    const result = await fetchSeasonal({ scene: scene.value, businessType: sceneMeta.value.business, year: year.value });
+    if (request === summaryRequest) data.value = result;
   } catch (e) {
+    if (request !== summaryRequest) return;
     error.value = e instanceof FeatureApiError ? `${e.message}（code=${e.code}）` : e instanceof Error ? e.message : String(e);
   } finally {
-    loading.value = false;
+    if (request === summaryRequest) loading.value = false;
   }
 }
 
@@ -80,6 +86,85 @@ function switchScene(s: Scene) {
 }
 
 onMounted(() => void load());
+
+/* ------------------------------------------------------------ 明细（按需拉取） */
+
+/**
+ * 明细展开状态与数据。
+ *
+ * 为什么按需：一个保障季可能有上千条诉求，一次性拉回来会拖慢面板；
+ * 主接口通过覆盖索引查询统计列，案号和标题由明细接口返回。
+ * 这里做成「用户点开才请求」，默认收起，首屏零额外开销。
+ */
+const detailOpen = ref(false);
+const detailLoading = ref(false);
+const detailError = ref('');
+const detailReason = ref('');
+const detailRows = ref<SeasonalDetailRow[]>([]);
+const detailTotal = ref<number | null>(null);
+const detailPage = ref(1);
+let detailRequest = 0;
+const DETAIL_SIZE = 20;
+
+const detailPages = computed(() => Math.max(1, Math.ceil((detailTotal.value ?? 0) / DETAIL_SIZE)));
+
+async function loadDetails(page = 1) {
+  const request = ++detailRequest;
+  detailLoading.value = true;
+  detailError.value = '';
+  detailReason.value = '';
+  try {
+    const r = await fetchSeasonalDetails({
+      scene: scene.value,
+      businessType: sceneMeta.value.business,
+      year: year.value,
+      page,
+      size: DETAIL_SIZE,
+    });
+    if (request !== detailRequest) return;
+    detailRows.value = r.items;
+    detailTotal.value = r.total;
+    detailPage.value = r.page;
+    if (r.status !== 'available') detailReason.value = r.reason ?? statusText(r.status);
+  } catch (e) {
+    if (request !== detailRequest) return;
+    detailError.value = e instanceof FeatureApiError ? `${e.message}（code=${e.code}）` : e instanceof Error ? e.message : String(e);
+    detailRows.value = [];
+    detailTotal.value = null;
+  } finally {
+    if (request === detailRequest) detailLoading.value = false;
+  }
+}
+
+function toggleDetails() {
+  detailOpen.value = !detailOpen.value;
+  // 首次展开才拉数据；之后保留已取到的页
+  if (detailOpen.value && detailTotal.value === null && !detailReason.value && !detailLoading.value) void loadDetails(1);
+}
+
+function goDetailPage(p: number) {
+  const target = Math.min(Math.max(1, p), detailPages.value);
+  if (target !== detailPage.value) void loadDetails(target);
+}
+
+/** 切换季节/年份后清空明细，避免显示上一季的数据 */
+function resetDetails() {
+  detailRequest++;
+  detailOpen.value = false;
+  detailLoading.value = false;
+  detailRows.value = [];
+  detailTotal.value = null;
+  detailPage.value = 1;
+  detailError.value = '';
+  detailReason.value = '';
+}
+
+function fmtDetailTime(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.valueOf())) return '—';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 /* ---------------------------------------------------------------- ① 近 5 年年度量 */
 
@@ -421,20 +506,84 @@ const topOption = computed<EChartsCoreOption>(() => {
                   </tr>
                   <tr v-if="!topRows.length">
                     <td colspan="5" class="sea__emptyrow">
-                      本期保障季暂无满足条件的行政网格（当前季可能刚开始或已接入记录不足，不补 0、不凑数）
+                      {{ currentSeasonOutsideRule ? '规则有效期未覆盖所选保障季' : '本期保障季暂无满足条件的行政网格（已接入记录不足）' }}
                     </td>
                   </tr>
                 </tbody>
               </table>
-              <p class="sea__topnote">
+              <p v-if="!currentSeasonOutsideRule" class="sea__topnote">
                 共 {{ topRows.length }} 个网格（不足 6 个按实际数量展示）；上一保障季无记录显示「资料不足」，不据此计算降幅。
-                未定位诉求 {{ data.unlocatedCount ?? 0 }} 条（单列，不参与网格排名）。
+                <template v-if="data.unlocatedCount != null">缺少下级网格关联 {{ data.unlocatedCount }} 件。排名采用已登记的下级编码，正式社区网格目录待核验。</template>
               </p>
             </div>
             <div class="sea__chart sea__chart--top"><EChart :option="topOption" /></div>
           </div>
         </section>
       </div>
+
+    <!-- ④ 本季诉求明细（按需拉取，默认收起） -->
+    <section class="sea__block sea__block--detail">
+      <header class="sea__blockhead">
+        <b>④ 本季诉求明细</b>
+        <span v-if="!currentSeasonOutsideRule" class="sea__std">
+          <template v-if="detailOpen && !detailLoading && detailTotal !== null">共 {{ detailTotal }} 条 · 按录入时间倒序</template>
+          <template v-else-if="!detailOpen">默认收起，不占用首屏加载</template>
+        </span>
+        <button v-if="!currentSeasonOutsideRule" type="button" class="sea__toggle" :aria-expanded="detailOpen" @click="toggleDetails">
+          {{ detailOpen ? '收起' : '查看明细' }}
+        </button>
+      </header>
+      <p class="sea__cov">
+        口径：{{ sceneMeta.category }}；明细按需加载 —— 主接口为走覆盖索引只取统计列，
+        案号/标题由本区块单独分页获取，不拖慢面板首屏。
+      </p>
+
+      <div v-if="currentSeasonOutsideRule" class="sea__detailidle">规则有效期未覆盖所选保障季。</div>
+      <div v-else-if="!detailOpen" class="sea__detailidle">
+        点击「查看明细」加载本季诉求清单（每页 {{ DETAIL_SIZE }} 条）。
+      </div>
+      <div v-else-if="detailLoading" class="sea__detailidle">加载中…</div>
+      <div v-else-if="detailError" class="acc-empty acc-empty--error">
+        <b>明细加载失败</b>
+        <span>{{ detailError }}</span>
+        <button type="button" @click="loadDetails(detailPage)">重试</button>
+      </div>
+      <div v-else-if="detailReason" class="sea__detailidle">{{ detailReason }}</div>
+      <div v-else-if="!detailRows.length" class="sea__detailidle">当前页暂无明细记录。</div>
+      <template v-else>
+        <div class="sea__tablewrap sea__tablewrap--detail">
+          <table class="sea__table sea__table--detail">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>案件号</th>
+                <th>类型</th>
+                <th>标题</th>
+                <th>网格</th>
+                <th>企业</th>
+                <th>录入时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in detailRows" :key="r.complaintId">
+                <td class="sea__rank">{{ (detailPage - 1) * DETAIL_SIZE + i + 1 }}</td>
+                <td class="sea__mono" :title="r.complaintId">{{ r.complaintNo || r.complaintId }}</td>
+                <td class="sea__mono">{{ r.categoryCode }}</td>
+                <td class="sea__title" :title="r.title">{{ r.title }}</td>
+                <td class="sea__mono">{{ r.adminGridCode ?? '未定位' }}</td>
+                <td class="sea__mono">{{ r.enterpriseName ?? '—' }}</td>
+                <td class="sea__mono">{{ fmtDetailTime(r.reportedAt) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="sea__pager">
+          <button type="button" :disabled="detailPage <= 1" @click="goDetailPage(detailPage - 1)">上一页</button>
+          <span>第 {{ detailPage }} / {{ detailPages }} 页 · 共 {{ detailTotal }} 条</span>
+          <button type="button" :disabled="detailPage >= detailPages" @click="goDetailPage(detailPage + 1)">下一页</button>
+        </div>
+      </template>
+    </section>
 
       <p class="sea__foot">
         资料截止 {{ data.dataCutoffAt ?? '—' }} · 时间依据 {{ data.timeBasis ?? '宜接就办来源录入时间' }} · 快照
@@ -450,6 +599,84 @@ const topOption = computed<EChartsCoreOption>(() => {
 </template>
 
 <style scoped>
+/* ---- ④ 明细区块 ---- */
+.sea__block--detail {
+  flex: none;
+  max-height: 42vh;
+  overflow: hidden;
+}
+.sea__toggle {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 3px;
+  border: 1px solid rgba(134, 251, 231, 0.5);
+  background: rgba(134, 251, 231, 0.12);
+  color: #86fbe7;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sea__toggle:hover {
+  background: rgba(134, 251, 231, 0.22);
+  color: #eafffa;
+}
+.sea__detailidle {
+  padding: 10px 0;
+  color: #7ea8a0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.sea__block--detail .sea__tablewrap--detail {
+  max-height: 30vh;
+  overflow: auto;
+}
+.sea__table--detail {
+  font-size: 10.5px;
+}
+.sea__table--detail th,
+.sea__table--detail td {
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+/* 标题列限宽 + 省略号，避免长文本把表格撑爆 */
+.sea__table--detail .sea__title {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #d6f6ef;
+}
+.sea__mono {
+  font-variant-numeric: tabular-nums;
+  color: #9fe3d3;
+}
+.sea__pager {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0 2px;
+  color: #8ab9b0;
+  font-size: 11px;
+}
+.sea__pager button {
+  padding: 2px 9px;
+  border-radius: 2px;
+  border: 1px solid rgba(134, 251, 231, 0.4);
+  background: transparent;
+  color: #9fe3d3;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.sea__pager button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.sea__pager button:hover:not(:disabled) {
+  background: rgba(134, 251, 231, 0.16);
+}
 .sea {
   display: flex;
   flex-direction: column;
@@ -547,9 +774,9 @@ const topOption = computed<EChartsCoreOption>(() => {
 }
 .sea__blocks {
   flex: 1;
-  min-height: 0;
+  min-height: min(54vh, 540px);
   display: grid;
-  grid-template-rows: 1fr 1fr 1.3fr;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr);
   gap: 6px;
 }
 .sea__block {
@@ -599,6 +826,7 @@ const topOption = computed<EChartsCoreOption>(() => {
   flex: 1;
   min-height: 0;
   width: 100%;
+  overflow: hidden;
 }
 .sea__notes {
   flex: none;
@@ -710,9 +938,6 @@ const topOption = computed<EChartsCoreOption>(() => {
   font-size: 8.5px;
   line-height: 1.4;
   color: #7fa9a0;
-}
-.sea__chart--top {
-  min-height: 150px;
 }
 .sea__foot {
   flex: none;

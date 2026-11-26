@@ -26,6 +26,7 @@ const emit = defineEmits<{
 const el = ref<HTMLDivElement | null>(null);
 let chart: EChartsType | null = null;
 let dpr = 0;
+let resizeObserver: ResizeObserver | undefined;
 
 function init() {
   if (!el.value) return;
@@ -51,10 +52,15 @@ function onResize() {
 
 onMounted(() => {
   init();
+  if (el.value && typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(onResize);
+    resizeObserver.observe(el.value);
+  }
   window.addEventListener('resize', onResize);
 });
 
 onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
   window.removeEventListener('resize', onResize);
   chart?.dispose();
   chart = null;

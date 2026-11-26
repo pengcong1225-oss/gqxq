@@ -41,15 +41,11 @@ function periodQueries(q:StatisticsQuery,anchor:string):{key:TenderPeriod['key']
  ];
 }
 function compare(rows:StatisticsComplaint[],q:StatisticsQuery,current:number,partial:boolean,predicate?:(r:StatisticsComplaint)=>boolean):PeriodComparison[]{
- const periods=resolveComparisonPeriods(q),annual=periods.find(p=>p.kind==='yoy');
- return periods.map(original=>{
-  // Tender-specific explicit annual comparison; the old statistics API policy remains unchanged.
-  const annualMom=original.kind==='mom'&&q.periodKind==='year'&&annual;
-  const p=annualMom?{...annual,kind:'mom' as const,label:'年度环比（上年同期累计）'}:original;
+ return resolveComparisonPeriods(q,{annualMom:true}).map(p=>{
   if(!p.from||!p.to)return {...p,currentCount:current,baselineCount:null,changePercent:null};
   const baseline=inRange(rows,p.from,p.to).filter(r=>!predicate||predicate(r)).length;
   const change=computePeriodChange(current,baseline,partial);
-  return {...p,currentCount:current,baselineCount:baseline,...change,reason:change.reason??(annualMom?'年度环比按上年同期累计比较':null)};
+  return {...p,currentCount:current,baselineCount:baseline,...change,reason:change.reason??p.reason};
  });
 }
 function aggregatePeriods(q:StatisticsQuery,all:StatisticsComplaint[],anchorDate:string,names:Map<string,string>,partial:boolean):TenderPeriod[]{

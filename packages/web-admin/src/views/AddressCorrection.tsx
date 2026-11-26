@@ -608,6 +608,8 @@ const AddressCorrectionWorkbench: React.FC = () => {
 
   return (
     <div>
+      {/* 自动定位失败的诉求整行标红，便于人工优先处理 */}
+      <style>{`.correction-row-manual > td { background: #fff1f0 !important; } .correction-row-manual:hover > td { background: #ffe7e4 !important; }`}</style>
       {versionConflict && <Alert type="warning" showIcon message={CORRECTION_CONFLICT_MESSAGE}
         action={<Button onClick={() => void refreshConflict()}>刷新核对（保留草稿）</Button>} />}
       <h2 style={{ marginBottom: 8 }}>诉求核验</h2>
@@ -683,6 +685,7 @@ const AddressCorrectionWorkbench: React.FC = () => {
                     <span />
                   ),
                 }}
+                rowClassName={(record) => (record.needsManualLocation ? 'correction-row-manual' : '')}
                 onRow={(record) => ({ onClick: () => selectComplaint(record.complaintId, record) })}
                 pagination={{
                   current: page,
@@ -703,6 +706,20 @@ const AddressCorrectionWorkbench: React.FC = () => {
                     render: (value: string, row: PendingComplaintSummary) => value || row.complaintId,
                   },
                   { title: '诉求内容', dataIndex: 'title', ellipsis: true },
+                  {
+                    // 自动定位（入库即跑）失败的才需要人工补点：置顶 + 标红
+                    title: '定位状态',
+                    dataIndex: 'needsManualLocation',
+                    width: 132,
+                    render: (manual: boolean, row: PendingComplaintSummary) =>
+                      manual ? (
+                        <Tooltip title={row.manualLocationReason || '自动定位未取得坐标'}>
+                          <Tag color="error">位置待核验</Tag>
+                        </Tooltip>
+                      ) : (
+                        <Tag color="success">已自动定位</Tag>
+                      ),
+                  },
                   {
                     // 两条轴并行的交叉状态：交办与否不影响这条件不该进纠偏队列
                     title: '待核验项',

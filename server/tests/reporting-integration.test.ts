@@ -28,15 +28,20 @@ test('signing includes servlet context path and forbids redirects at transport',
 
 test('durable callback inbox replays missing association and reversed order, rejects relation drift and mutated duplicate', async()=>{
  const {handleCallback,reconcilePendingEvents}=await import('../src/services/callbackService');
+ const {reportingResult}=await import('../src/services/reportingEvidenceService');
  const {signCallback}=await import('../src/clients/callbackSignature');const {pool}=await import('../src/db/pool');const {env}=await import('../src/config/env');
  Object.assign(env.callback,{keyId:'test-key',keyVersion:'v1',secret:'local-test-callback-secret',ackMode:'BODY',ackValue:'ACCEPTED\n'});
  const entries=new Map<string,any>();let replayCursor=0;let associated=false;let supervisionStatus='pending';
  const ref:any={assignmentId:'A1',complaintId:'C1',status:'pending',requestId:'R1',subjectCode:'E1',taskId:null,lastEventSequence:0,reportingItemId:null};
  const query=async(sql:string,p:any[]=[])=>{
   if(sql==='select enterprise_code, district_code, deleted from complaint where complaint_id = ? for update')return [[{enterprise_code:'E1',district_code:null,deleted:0}],[]];
+  if(sql.includes('where d.assignment_id = ? and'))return [associated&&p[0]===ref.assignmentId?[{reporting_task_id:ref.taskId,complaint_id:ref.complaintId}]:[],[]];
   if(sql.includes('from dispatch_order'))return [associated&&p[0]==='A1'?[{...ref}]:[],[]];
   if(sql.includes('from integration_replay_cursor'))return [[{lastEventId:replayCursor}],[]];
   if(sql.includes("processed_result='pending'"))return [[...entries.values()].filter(e=>e.processedResult==='pending'&&(sql.includes('and task_id=?')?e.taskId===p[0]:(sql.includes('id>?')?e.id>Number(p[0]):true))).slice(0,500).map(e=>({id:e.id,eventId:e.eventId,payload:e.payload})),[]];
+  if(sql.includes('from business_event where task_id=? and source_business_id=?'))return [[...entries.values()]
+   .filter(e=>e.taskId===p[0]&&e.sourceBusinessId===p[1])
+   .map(e=>({eventId:e.eventId,state:e.processedResult,payload:e.payload})),[]];
   if(sql.includes('processed_result as state'))return [[{state:entries.get(p[0])?.processedResult}],[]];
   if(sql.includes('from business_event where event_id'))return [entries.has(p[0])?[entries.get(p[0])]:[],[]];
   throw new Error('unexpected query '+sql);
@@ -61,6 +66,10 @@ test('durable callback inbox replays missing association and reversed order, rej
   associated=true;await runAsTrustedSystem(() => reconcilePendingEvents());assert.equal(ref.status,'pending');
   const accepted={...base,eventId:'accepted',eventType:'TASK_ACCEPTED',approvalConclusion:'PENDING',eventSequence:1};
   await send(accepted);assert.equal(ref.status,'processing');assert.equal(ref.lastEventSequence,2);assert.equal(entries.get('submitted').processedResult,'applied');
+  const response=await runAsTrustedSystem(() => reportingResult('A1'));
+  const submittedResult=response.events.find(e=>e.eventId==='submitted');
+  assert.equal(submittedResult?.state,'applied');
+  assert.deepEqual(submittedResult?.payload.enterpriseDisposalResult,{result:'original'});
   const queuedProgress={...base,eventId:'progress',eventType:'TASK_PROGRESS',approvalConclusion:'PENDING',submissionVersion:1,eventSequence:3};entries.set('progress',{id:entries.size+1,eventId:'progress',sourceBusinessId:'C1',taskId:'T1',payload:queuedProgress,processedResult:'pending',ackBody:'ACCEPTED\n'});
   await runAsTrustedSystem(() => reconcilePendingEvents());assert.equal(ref.lastEventSequence,3);assert.equal(replayCursor,503);
   await send({...base,eventId:'progress',eventType:'TASK_PROGRESS',approvalConclusion:'PENDING',submissionVersion:1,eventSequence:3});assert.equal(ref.status,'processing');assert.equal(supervisionStatus,'processing');

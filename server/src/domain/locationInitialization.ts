@@ -8,7 +8,7 @@ export function locationQuery(row:Record<string,unknown>):string|null {
  const address=String(row.address??'').trim();const district=String(row.district_name??'').trim();
  if(!address||address.length>100||/[\r\n，。！？；]|\d{7,}|投诉|反映|联系|处理|解决|希望|电话|先生|女士/.test(address))return null;
  const specific=address.replace(/湖北省|宜昌市/g,'').replace(district,'').trim();
- if(specific.length<3||/^[\u4e00-\u9fff]{2,8}[区县市乡镇]$/.test(specific)||!/[路街巷号院楼苑园村小区广场大厦中心花城]/.test(specific))return null;
+ if(specific.length<3||/^[\u4e00-\u9fff]{2,8}[区县市乡镇]$/.test(specific)&&!/(?:小区|社区|住宅区|居民区)$/.test(specific)||!/[路街巷号院楼苑园村小区广场大厦中心花城]/.test(specific))return null;
  if(address.includes('宜昌市'))return address;
  return '湖北省宜昌市'+(district&&!address.includes(district)?district:'')+address;
 }

@@ -31,29 +31,21 @@ export function locationCandidates(row:Record<string,unknown>):LocationCandidate
  }
  return result.sort((a,b)=>['小区','道路','乡镇'].indexOf(a.level)-['小区','道路','乡镇'].indexOf(b.level)).slice(0,8);
 }
-import geocodes from '../data/yichangPlaceGeocodes.json';
 import {parseFieldState} from './effectiveFieldPolicy';
 import {mayInitialize} from './locationInitialization';
 import type {InitialPoint} from './locationFallback';
 export function mayRefineLocation(row:Record<string,unknown>):boolean {
  if(mayInitialize(row))return true;
  const states=parseFieldState(row.effective_field_state);
- return String(row.location_coordinate_source??'').startsWith('待纠偏：')&&/区县代表点|实际精度道路|实际精度乡镇街道|实际精度社区村落/.test(String(row.location_coordinate_source))&&['location_lng','location_lat','location_coordinate_system','location_coordinate_source'].every(k=>states[k]?.resolution==='unresolved');
+ return String(row.location_coordinate_source??'').startsWith('待纠偏：')&&/区县代表点|实际精度道路|实际精度乡镇街道|实际精度社区村落|高德近似地址定位|小区主数据匹配/.test(String(row.location_coordinate_source))&&['location_lng','location_lat','location_coordinate_system','location_coordinate_source'].every(k=>states[k]?.resolution==='unresolved');
 }
-export function cachedLocation(row:Record<string,unknown>):InitialPoint|null {
- const entries=locationCandidates(row).flatMap(c=>{
-  const key='湖北省宜昌市'+(c.districtName??'')+c.name;
-  const point=(geocodes as Record<string,unknown>)[key] as InitialPoint|undefined;
-  return point?[point]:[];
- }).sort((a,b)=>['小区','道路','乡镇'].indexOf(a.level)-['小区','道路','乡镇'].indexOf(b.level));
- return entries[0]??null;
-}
+
 
 export function shouldImproveLocation(row:Record<string,unknown>,point:Pick<InitialPoint,'longitude'|'latitude'|'level'|'score'>&{providerLevel?:string}):boolean {
  if(row.location_lng==null||row.location_lat==null)return true;
  const source=String(row.location_coordinate_source??'');
- const oldRank=/区县代表点|实际精度区县/.test(source)?5:/实际精度乡镇街道/.test(source)?4:/实际精度道路/.test(source)?3:/实际精度社区村落/.test(source)?2:1;
- const ranks:Record<string,number>={'区县代表点':5,'区县':5,'乡镇':4,'乡镇街道':4,'道路':3,'社区村落':2,'小区':1,'兴趣点':1};
+ const oldRank=/区县代表点|实际精度区县/.test(source)?5:/实际精度乡镇街道/.test(source)?4:/实际精度道路/.test(source)?3:/实际精度社区村落|小区主数据匹配/.test(source)?2:/高德近似地址定位/.test(source)?5:1;
+ const ranks:Record<string,number>={'区县代表点':5,'区县':5,'乡镇':4,'乡镇街道':4,'道路':3,'社区村落':2,'小区':2,'住宅区':1,'兴趣点':1,'门牌号':1,'门址':1,'建筑物':1,'门牌':1};
  const newRank=ranks[point.providerLevel||point.level];
  if(newRank==null)return false;
  if(newRank!==oldRank)return newRank<oldRank;

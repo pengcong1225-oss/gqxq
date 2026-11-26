@@ -20,7 +20,7 @@ export function alertScopeMissingFields(row:ScopeFactFields,scope:AlertScope):st
  if(row.timeSource!=='source_reported_at')missing.push('timeSource');
  if(!row.majorCode&&!row.minorCode)missing.push('major/minor');
  if(!row.dictionaryVersion)missing.push('dictionaryVersion');
- if(scope!=='city'&&!row.districtCode)missing.push('districtCode');
+ if((scope==='district'||scope==='grid')&&!row.districtCode)missing.push('districtCode');
  if((scope==='enterprise'||scope==='grid')&&!row.enterpriseCode)missing.push('enterpriseCode');
  if(scope==='grid'&&!row.adminGridCode)missing.push('adminGridCode');
  return missing;

@@ -16,7 +16,6 @@ import {
   Button,
   Card,
   Col,
-  DatePicker,
   Descriptions,
   Divider,
   Empty,
@@ -43,9 +42,9 @@ import {
 } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import LocationClues from '../components/LocationClues';
-import type { Dayjs } from 'dayjs';
 import { getComplaint, getComplaintTimeline, getComplaintSourceDocument } from '../api/complaints';
 import { createDispatch, getDispatchOrder } from '../api/dispatch';
+import DispatchFormFields, { type DispatchFormValues } from '../components/DispatchFormFields';
 import { listEnterpriseOptions } from '../api/enterprises';
 import { getSourceAdapterState, syncSource } from '../api/source';
 import type {
@@ -181,13 +180,7 @@ const ComplaintDetail: React.FC = () => {
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchOpen, setDispatchOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [dispatchForm] = Form.useForm<{
-    targetEnterpriseCode: string;
-    targetEnterpriseName: string;
-    deadline?: Dayjs;
-    requirement?: string;
-    reason?: string;
-  }>();
+  const [dispatchForm] = Form.useForm<DispatchFormValues>();
 
   /* ---------- 企业主数据：追加交办时的企业选择 ---------- */
   // 清单来自服务端 GET /enterprises，不做本地兜底：手抄编码与登记值不一致会导致交办匹配不到同一主体。
@@ -399,13 +392,7 @@ const ComplaintDetail: React.FC = () => {
 
   const handleCreateDispatch = useCallback(async () => {
     if (!detail) return;
-    let values: {
-      targetEnterpriseCode: string;
-      targetEnterpriseName: string;
-      deadline?: Dayjs;
-      requirement?: string;
-      reason?: string;
-    };
+    let values: DispatchFormValues;
     try {
       values = await dispatchForm.validateFields();
     } catch {
@@ -417,10 +404,10 @@ const ComplaintDetail: React.FC = () => {
         complaintId: detail.complaintId,
         targetEnterpriseCode: values.targetEnterpriseCode.trim(),
         targetEnterpriseName: values.targetEnterpriseName.trim(),
-        requirement: values.requirement?.trim() || undefined,
+        requirement: values.requirement.trim(),
         reason: values.reason?.trim() || undefined,
         // 契约要求带时区偏移的 ISO-8601，例如 2026-09-20T18:00:00+08:00
-        deadline: values.deadline ? values.deadline.format('YYYY-MM-DDTHH:mm:ssZ') : undefined,
+        deadline: values.deadline.format('YYYY-MM-DDTHH:mm:ssZ'),
         dispatchType: 'manual',
         triggerType: 'manual_flag',
       });
@@ -601,7 +588,13 @@ const ComplaintDetail: React.FC = () => {
           <Card title="基本信息">
             <Descriptions bordered size="small" column={2}>
               <Descriptions.Item label="诉求编号">{detail.complaintNo}</Descriptions.Item>
-              <Descriptions.Item label="平台交办状态">
+              {detail.repeatFlag ? (
+            <Descriptions.Item label="重复来电">
+              <Tag color="volcano">重复来电</Tag>
+              {detail.repeatReason ? <span style={{ marginLeft: 8, color: '#8c8c8c' }}>{detail.repeatReason}</span> : null}
+            </Descriptions.Item>
+          ) : null}
+          <Descriptions.Item label="平台交办状态">
                 <Tag color={SUPERVISION_COLOR[detail.supervisionStatusCode] ?? 'default'}>
                   {namedLabel(detail.supervisionStatusCode,detail.supervisionStatusName,'supervision_status')}
                 </Tag>
@@ -828,7 +821,7 @@ const ComplaintDetail: React.FC = () => {
                   {dispatch.targetEnterpriseName ?? '—'}
                 </Descriptions.Item>
                 <Descriptions.Item label="截止时间">{fmtDateTime(dispatch.deadline)}</Descriptions.Item>
-                <Descriptions.Item label="交办要求">{dispatch.requirement ?? '—'}</Descriptions.Item>
+                <Descriptions.Item label="企业处置说明">{dispatch.requirement || '—'}</Descriptions.Item>
                 <Descriptions.Item label="请求号">{dispatch.requestId ?? '—'}</Descriptions.Item>
                 <Descriptions.Item label="填报任务号">
                   {dispatch.reportingTaskId ?? (
@@ -1009,12 +1002,7 @@ const ComplaintDetail: React.FC = () => {
           >
             <Input disabled placeholder="选择交办企业后自动带出" />
           </Form.Item>
-          <Form.Item name="deadline" label="截止时间">
-            <DatePicker showTime style={{ width: '100%' }} placeholder="可选" />
-          </Form.Item>
-          <Form.Item name="requirement" label="交办要求">
-            <Input.TextArea rows={2} placeholder="可选，例如：请核实情况并填报企业处置结果。" />
-          </Form.Item>
+          <DispatchFormFields />
           <Form.Item name="reason" label="交办原因">
             <Input.TextArea rows={2} placeholder="可选" />
           </Form.Item>

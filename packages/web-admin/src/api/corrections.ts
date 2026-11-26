@@ -54,6 +54,10 @@ export interface PendingComplaintSummary {
   title: string;
   pendingCount: number;
   hasDispatch: boolean;
+  /** 尚未自动定位（无坐标），需人工纠偏补点；列表置顶并标红 */
+  needsManualLocation: boolean;
+  /** 自动定位失败原因 */
+  manualLocationReason: string | null;
 }
 
 function encode(value: ComplaintIdOrNo): string {

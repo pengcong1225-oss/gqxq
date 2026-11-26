@@ -53,6 +53,28 @@ test('期末有效户数按真实企业授权记录计算，区域筛选不借�
  const v=await screenHouseholdEvidence(db,q,all,['enterprise.read'],[{enterpriseCode:'E',count:4}],false,false);assert.equal(v[0].value,2);
  const restricted=await screenHouseholdEvidence(db,q,all,['enterprise.read'],[{enterpriseCode:'E',count:4}],false,true);assert.equal(restricted[0].value,null);
 });
+test('万户统计仅使用覆盖整个查询窗口的单份可核验户数', async () => {
+ const all:any={...access,rules:[{kind:'all'}]};
+ const q:any={dataset:'ledger',projection:'current',periodKind:'custom',from:'2025-12-31',to:'2026-01-10',comparisonPolicyId:'candidate-calendar-v1'};
+ const current={households:20000,valid_from:'2026-01-01',valid_to:null,version:'2'};
+ const previous={households:18000,valid_from:'2025-01-01',valid_to:'2026-01-01',version:'1'};
+ const collect=async (rows:unknown[], query=q)=>{
+  const db:any={query:async(sql:string)=>sql.includes('from enterprise where')?[[{enterprise_code:'E',district_code:'A'}]]:[rows]};
+  return (await screenHouseholdEvidence(db,query,all,['enterprise.read'],[{enterpriseCode:'E',count:4}],false,false))[0];
+ };
+ assert.equal((await collect([current])).value,null);
+ assert.equal((await collect([current,previous])).value,null);
+ assert.equal((await collect([current],{...q,from:'2026-01-01'})).value,2);
+ assert.equal((await collect([previous],{...q,to:'2025-12-31'})).value,4/18000*10000);
+ assert.equal((await collect([previous],{...q,to:'2026-01-01'})).value,null);
+ const imported={...current,version:'v20261116',households:500000,operator_id:'admin',created_on:'2026-11-16 14:06:05'};
+ const placeholder=await collect([imported],{...q,from:'2026-01-01'});
+ assert.equal(placeholder.value,null);
+ assert.equal(placeholder.households,null);
+ assert.match(placeholder.reason??'',/占位/);
+ assert.equal((await collect([{...current,households:500000}],{...q,from:'2026-01-01'})).value,0.08);
+ assert.equal((await collect([{...imported,created_on:'2026-11-16 14:06:06'}],{...q,from:'2026-01-01'})).value,0.08);
+});
 test('未知区划、企业、网格、小区均具有可下钻的稳定编码',()=>{
  const r=buildScreen({mode:'real',from:'2026-11-01',to:'2026-11-10'},{...access,rules:[{kind:'all'}]},[fact({district_code:null,enterprise_code:null,admin_grid_code:null,community_code:null})],[],null);
  const detail=r.details[0];for(const key of ['districtCode','enterpriseCode','adminGridCode','communityCode','categoryCode'] as const)assert.equal(detail[key],'__missing__');

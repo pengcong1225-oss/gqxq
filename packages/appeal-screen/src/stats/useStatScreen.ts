@@ -19,6 +19,7 @@ import {
   fetchWarningList,
   setForcedState,
 } from './api';
+import { currentRealWindow } from './realSource';
 import {
   PERIODS,
   type ApiResponse,
@@ -79,13 +80,6 @@ export interface UseStatScreenOptions {
   initialCategory?: string | null;
 }
 
-/** ScreenFilters 的运行时扩展（后端已支持 enterpriseCode/communityCode/categoryCode/adminGridCode） */
-type ExtendedFilters = ScreenFilters & {
-  enterpriseCode?: string | null;
-  communityCode?: string | null;
-  categoryCode?: string | null;
-};
-
 export function useStatScreen(options: UseStatScreenOptions = {}) {
   const period = ref<PeriodKey>(options.initialPeriod ?? '30d');
   const industry = ref<IndustryFilter>(options.initialIndustry ?? 'ALL');
@@ -100,6 +94,19 @@ export function useStatScreen(options: UseStatScreenOptions = {}) {
   const communityCode = ref<string | null>(options.initialCommunity ?? null);
   /** 分类筛选（categoryCode，字典小类 g01…w08） */
   const categoryCode = ref<string | null>(options.initialCategory ?? null);
+  const selectedWindow = ref<ScreenFilters['window']>(undefined);
+  const appliedWindow = computed(() => selectedWindow.value ?? currentRealWindow(period.value));
+  const appliedFilters = computed<ScreenFilters>(() => ({
+    period: period.value,
+    industry: industry.value,
+    snapshotId: SNAPSHOT_ID,
+    window: appliedWindow.value,
+    gridCode: gridCode.value,
+    districtCode: districtCode.value,
+    enterpriseCode: enterpriseCode.value,
+    communityCode: communityCode.value,
+    categoryCode: categoryCode.value,
+  }));
   /** 真实库缺行政网格主数据：网格范围元数据不可用，selectedGrid 恒为 null（不再依赖演示网格表） */
   const selectedGrid = computed<ScopeGrid | null>(() => null);
 
@@ -151,16 +158,7 @@ export function useStatScreen(options: UseStatScreenOptions = {}) {
   async function reload() {
     const token = ++seq;
     setForcedState(forcedState.value);
-    const filters: ExtendedFilters = {
-      period: period.value,
-      industry: industry.value,
-      snapshotId: SNAPSHOT_ID,
-      gridCode: gridCode.value,
-      districtCode: districtCode.value,
-      enterpriseCode: enterpriseCode.value,
-      communityCode: communityCode.value,
-      categoryCode: categoryCode.value,
-    };
+    const filters = appliedFilters.value;
 
     overview.value = loadingState(overview.value);
     supply.value = loadingState(supply.value);
@@ -214,11 +212,9 @@ export function useStatScreen(options: UseStatScreenOptions = {}) {
   }
 
   function openDrill(query: DrillQuery) {
-    // 联动：已选网格/区县时，下钻明细自动带上同一空间范围，保证与面板数字同口径
     const merged: DrillQuery = {
       ...query,
-      gridCode: query.gridCode ?? gridCode.value,
-      districtCode: query.districtCode ?? districtCode.value ?? undefined,
+      filters: query.filters ?? appliedFilters.value,
     };
     drill.value = {
       open: true,
@@ -231,6 +227,7 @@ export function useStatScreen(options: UseStatScreenOptions = {}) {
   }
 
   function closeDrill() {
+    drillSeq += 1;
     drill.value = { ...drill.value, open: false };
   }
 
@@ -266,7 +263,7 @@ export function useStatScreen(options: UseStatScreenOptions = {}) {
   }
 
   watch(
-    [period, industry, forcedState, gridCode, districtCode, enterpriseCode, communityCode, categoryCode],
+    [appliedFilters, forcedState],
     () => {
       if (drill.value.open) closeDrill();
       void reload();
@@ -285,6 +282,9 @@ export function useStatScreen(options: UseStatScreenOptions = {}) {
     industry,
     forcedState,
     periodMeta,
+    appliedWindow,
+    selectedWindow,
+    appliedFilters,
     gridCode,
     selectedGrid,
     setGrid,

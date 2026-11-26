@@ -37,6 +37,20 @@ const state = computed(() => props.supply.status);
 const allRows = computed<EnterpriseRatio[]>(() => data.value?.enterpriseRatio ?? []);
 const computable = computed(() => allRows.value.filter((r) => r.ratio.value !== null));
 const uncomputable = computed(() => allRows.value.filter((r) => r.ratio.value === null));
+/**
+ * 悬停展示的完整口径说明。
+ *
+ * 卡片下方原来铺两段长文（口径 + meta.missingNote，后者可达数百字），
+ * 1080 高的大屏上会把卡片下半截塞满小字 —— 用户反馈「说明文字太多」。
+ * 现在界面只留一行短口径 + 一个「有数据缺项」标记，完整内容放 title 悬停。
+ */
+const hintFullText = computed(() => {
+  const parts = ['万户占比 = 诉求件数 ÷ 企业服务户数 × 10000；缺户数 / 基期为零不画 0 柱'];
+  const note = data.value?.meta?.missingNote;
+  if (note) parts.push('数据缺项：' + note);
+  return parts.join('\n');
+});
+
 
 /** 可计算企业只有 1~2 家时，柱状图会把两根柱子摊在整张卡上（客户反馈「留空太多」）：
  *  改用紧凑行 + 细分隔线，行高固定、宽度按最大比值归一；企业多（>6）时仍用原柱状图。 */
@@ -70,7 +84,7 @@ const footItems = computed(() => {
   if (countMode.value) {
     const sum = countRows.value.reduce((s, r) => s + r.demandCount, 0);
     return [
-      { label: '口径', value: '企业诉求件数', title: '真实库未维护企业服务户数，每万户不可计算；改按件数展示，不画 0' },
+      { label: '口径', value: '企业诉求件数', title: '所选期间缺可用的服务户数分母，按诉求件数展示' },
       { label: '企业数', value: `${countRows.value.length} 家`, title: '本期有诉求记录的企业数' },
       { label: '合计', value: `${sum} 件`, title: '所选窗口内这些企业的诉求件数合计' },
     ];
@@ -166,7 +180,7 @@ function drillEnterprise(row: EnterpriseRatio) {
   <section class="acc-card">
     <header class="acc-card__head">
       <h2>{{ countMode ? '企业诉求量' : '企业万户诉求占比' }}</h2>
-      <small>{{ countMode ? '件 · 每万户口径缺服务户数' : '件/万户' }} · {{ periodMeta.label }}</small>
+      <small>{{ countMode ? '件 · 缺少可用的每万户分母' : '件/万户' }} · {{ periodMeta.label }}</small>
     </header>
     <div class="acc-card__body ent">
       <div v-if="!data || state === 'loading' || state === 'idle'" class="ent-skeleton" aria-busy="true">
@@ -197,7 +211,7 @@ function drillEnterprise(row: EnterpriseRatio) {
             <span class="ent-row__bar"><i :style="{ width: countBarWidth(row) }"></i></span>
             <span class="ent-row__val">{{ row.demandCount }}</span>
           </button>
-          <span class="ent-row__unit">单位：件（每万户口径缺服务户数，暂按诉求件数展示）· 点击企业行查看明细</span>
+          <span class="ent-row__unit">单位：件 · 点击企业行查看明细</span>
         </div>
         <!-- 全部不可计算：不画 0，直接给原因 -->
         <div v-else-if="!computable.length" class="acc-empty ent__all-na">
@@ -247,10 +261,14 @@ function drillEnterprise(row: EnterpriseRatio) {
           </button>
         </div>
 
-        <!-- 企业少时把剩余高度用于口径 / 数据质量说明（均取自 props，不造数） -->
-        <div v-if="!useChart && countRows.length < 8" class="ent__hint">
-          <span><b>口径</b>万户占比 = 诉求件数 ÷ 企业服务户数 × 10000；缺户数 / 基期为零不画 0 柱</span>
-          <span v-if="data?.meta.missingNote"><b>数据质量</b>{{ data.meta.missingNote }}</span>
+        <!-- 说明收成一行，完整内容见悬停提示（原两段长文会把卡片下半截塞满小字） -->
+        <div
+          v-if="!useChart && countRows.length < 8"
+          class="ent__hint ent__hint--compact"
+          :title="hintFullText"
+        >
+          <b>口径</b>诉求 ÷ 服务户数 × 10000
+          <span v-if="data?.meta.missingNote" class="ent__hint-tag">· 有数据缺项</span>
         </div>
       </template>
     </div>
@@ -259,6 +277,21 @@ function drillEnterprise(row: EnterpriseRatio) {
 </template>
 
 <style scoped>
+/* 压缩版口径说明：单行，不占半张卡片；完整说明走 title 悬停 */
+.ent__hint--compact {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: #7ea8a0;
+  cursor: help;
+}
+.ent__hint-tag {
+  color: #ffd67c;
+}
 .ent {
   display: flex;
   flex-direction: column;

@@ -66,7 +66,7 @@ function select(rows:StatisticsComplaint[],q:StatisticsQuery){
  });return {content,excluded,missingDates,excludedRows};
 }
 export async function householdRate(db: SqlExecutor, q: StatisticsQuery, enterpriseCode: string, count: number, access: AccessContext, permissions: readonly string[], partial: boolean, masterScopeFacts: StatisticsCapture['masterScopeFacts']): Promise<HouseholdEvidence> {
-    const evidence: HouseholdEvidence = { enterpriseCode, at: q.to, households: null, validFrom: null, validTo: null, version: null, value: null, reason: null, label: '候选期末户数：完整企业服务人口，每万户所选类别事件数（待业务确认）' };
+    const evidence: HouseholdEvidence = { enterpriseCode, at: q.to, households: null, validFrom: null, validTo: null, version: null, value: null, reason: null, label: '全期有效户数：完整企业服务人口，每万户所选类别事件数' };
     if (!permissions.includes('enterprise.read'))
         return { ...evidence, reason: '无企业主数据查询权限，户数不可用' };
     const enterprise = (await rowsIn(db, 'select enterprise_code,district_code from enterprise where enterprise_code=?', [enterpriseCode]))[0];
@@ -78,14 +78,23 @@ export async function householdRate(db: SqlExecutor, q: StatisticsQuery, enterpr
         return { ...evidence, reason: '当前范围或区划/网格筛选仅覆盖局部人口，不能使用整企业户数' };
     if (partial)
         return { ...evidence, reason: '统计存在业务日期未知记录，人口指标不完整' };
-    const h = (await rowsIn(db, 'select households,valid_from,valid_to,version from enterprise_household_version where enterprise_code=? and valid_from<=? and (valid_to is null or valid_to>?) order by valid_from desc limit 1', [enterpriseCode, q.to, q.to]))[0];
+    const history = await rowsIn(db, "select households,valid_from,valid_to,version,operator_id,date_format(created_at,'%Y-%m-%d %H:%i:%s') created_on from enterprise_household_version where enterprise_code=? and valid_from<=? and (valid_to is null or valid_to>?) order by valid_from desc", [enterpriseCode, q.to, q.from]);
+    const [h] = history;
     if (!h)
-        return { ...evidence, reason: '所选期末无有效历史户数区间' };
+        return { ...evidence, reason: '所选期间无有效历史户数区间' };
+    if (history.length > 1)
+        return { ...evidence, reason: '所选期间涉及多个户数版本，跨期分母待业务确认' };
     const day = (v: unknown) => v instanceof Date ? v.toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }) : String(v).slice(0, 10);
-    evidence.households = h.households == null ? null : Number(h.households);
     evidence.validFrom = day(h.valid_from);
     evidence.validTo = h.valid_to == null ? null : day(h.valid_to);
     evidence.version = String(h.version);
+    if (evidence.validFrom > q.from || (evidence.validTo !== null && evidence.validTo <= q.to))
+        return { ...evidence, reason: '历史户数的有效期未覆盖整个查询窗口' };
+    // 历史初始化批次的服务户数占位，见 2026-11-18 标书符合性审查。当期真实同值由正式版本维护。
+    if (evidence.version === 'v20261116' && Number(h.households) === 500000 && evidence.validFrom === '2026-01-01' &&
+        h.operator_id === 'admin' && h.created_on === '2026-11-16 14:06:05')
+        return { ...evidence, reason: '历史导入户数为占位值，待补企业实际户数' };
+    evidence.households = h.households == null ? null : Number(h.households);
     evidence.reason = evidence.households === null ? '历史户数未知' : evidence.households === 0 ? '历史户数为零' : null;
     evidence.value = evidence.reason ? null : count / evidence.households! * 10000;
     return evidence;
@@ -165,8 +174,14 @@ export async function captureStatisticsIn(db: SqlExecutor, q: StatisticsQuery, a
     }
     const selected = select(rows, q);
     const periodFacts: StatisticsCapture['periodFacts'] = [{ kind: 'current', from: q.from, to: q.to, rows: selected.content, excludedRows: selected.excludedRows }];
-    const comparisons = periods.map(period => { if (!period.from || !period.to)
-        return { ...period, currentCount: selected.content.length, baselineCount: null, changePercent: null }; const baseline = select(rows, { ...q, from: period.from, to: period.to }); periodFacts.push({ kind: period.kind, from: period.from, to: period.to, rows: baseline.content, excludedRows: baseline.excludedRows }); return { ...period, currentCount: selected.content.length, baselineCount: baseline.content.length, ...computePeriodChange(selected.content.length, baseline.content.length, selected.missingDates > 0 || baseline.missingDates > 0) }; });
+    const comparisons = periods.map(period => {
+        if (!period.from || !period.to)
+            return { ...period, currentCount: selected.content.length, baselineCount: null, changePercent: null };
+        const baseline = select(rows, { ...q, from: period.from, to: period.to });
+        periodFacts.push({ kind: period.kind, from: period.from, to: period.to, rows: baseline.content, excludedRows: baseline.excludedRows });
+        const change = computePeriodChange(selected.content.length, baseline.content.length, selected.missingDates > 0 || baseline.missingDates > 0);
+        return { ...period, currentCount: selected.content.length, baselineCount: baseline.content.length, ...change, reason: change.reason ?? period.reason };
+    });
     const contributing = new Map(periodFacts.flatMap(p => [...p.rows, ...p.excludedRows.map(e => e.row)]).map(r => [r.complaintId, r]));
     const buckets = new Map<string, DimensionBucket>();
     const categoryEvidence: StatisticsCapture['categoryEvidence'] = [];

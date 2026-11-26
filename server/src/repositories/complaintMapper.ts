@@ -3,6 +3,7 @@
 // 约定：查询一律**具名列**，禁止 select *（平台侧依赖列序的假设同样不成立）。
 import type { ComplaintDetail, ComplaintListItem } from '../types/api';
 import { labelOf } from '../domain/enums';
+import { sourceExportStatuses } from '../domain/complaintSourceSummary';
 import { overtimeFlagName, toOvertimeFlag } from '../domain/sourceAdapter';
 
 /**
@@ -18,6 +19,8 @@ export const COMPLAINT_COLUMNS = [
   'c.source_system',
   'c.source_channel',
   'c.source_id',
+  'c.source_case_no',
+  'c.source_serial_no',
   'c.title',
   'c.content',
   'c.business_type',
@@ -26,6 +29,8 @@ export const COMPLAINT_COLUMNS = [
   'c.source_major_category_code', 'c.source_minor_category_code', 'c.source_category_version',
   'c.satisfaction_text', 'c.satisfaction_code', 'c.citizen_feedback_resolution', 'c.third_party_evaluation', 'c.third_party_resolution',
   'c.industry_department', 'c.is_confidential', 'c.self_handled', 'c.item_category', 'c.source_sub_category', 'c.source_department_name', 'c.handling_result', 'c.reply_to_citizen',
+  'c.repeat_flag', 'c.repeat_of', 'c.repeat_reason',
+  'c.street_name', 'c.community_name', 'c.grid_name', 'c.seat_satisfaction', 'c.operator_name', 'c.secondary_department', 'c.online_close_basis', 'c.location_flag',
   'c.urgency_level',
   'c.status',
   'c.is_sensitive',
@@ -79,6 +84,8 @@ export const COMPLAINT_INSERT_COLUMNS = [
   'complaint_no',
   'source_system',
   'source_id',
+  'source_case_no',
+  'source_serial_no',
   'source_channel',
   'title',
   'content',
@@ -108,6 +115,8 @@ export const COMPLAINT_INSERT_COLUMNS = [
 
 /** 外部重传允许覆盖快照的列（严格白名单；人工/业务列绝不在此） */
 export const REDELIVERY_UPDATABLE_COLUMNS = [
+  'source_case_no',
+  'source_serial_no',
   'title',
   'content',
   'source_channel',
@@ -189,6 +198,7 @@ export function rowToListItem(r: ComplaintRow): ComplaintListItem {
   const urgencyLevelCode = String(r.urgency_level);
   const correctionStatusCode = String(r.correction_status ?? 'none');
   const sourceEventStatusCode = String(r.source_event_status ?? 'unknown');
+  const sourceStatuses = sourceExportStatuses(parseJsonColumn(r.source_payload));
   const supervisionStatusCode = String(r.supervision_status ?? 'none');
   const reportingStatusCode = String(r.reporting_status ?? 'not_started');
   // 三态派生标记：NULL 必须原样是 null（= 来源没给时效信息），不能压成 0（= 谎报"未超期"）。
@@ -218,6 +228,8 @@ export function rowToListItem(r: ComplaintRow): ComplaintListItem {
     correctionConfidence: toNum(r.correction_confidence),
     sourceEventStatusCode,
     sourceEventStatusName: labelOf('source_event_status', sourceEventStatusCode),
+    sourceEventStatusRaw: sourceStatuses.eventStatus,
+    sourceSupervisionStatusRaw: sourceStatuses.supervisionStatus,
     // 三态派生标记：NULL 必须原样是 null（= 来源没给时效信息），不能压成 0（= 谎报"未超期"）。
     // 非 0/1 的意外取值也回落到 null——不猜。
     overtimeFlag,
@@ -247,6 +259,17 @@ export function rowToListItem(r: ComplaintRow): ComplaintListItem {
     sourceDepartmentName: toStr(r.source_department_name),
     handlingResult: toStr(r.handling_result),
     replyToCitizen: toStr(r.reply_to_citizen),
+    repeatFlag: Number(r.repeat_flag ?? 0) === 1,
+    repeatOf: toStr(r.repeat_of),
+    repeatReason: toStr(r.repeat_reason),
+    streetName: toStr(r.street_name),
+    communityName: toStr(r.community_name),
+    gridName: toStr(r.grid_name),
+    seatSatisfaction: toStr(r.seat_satisfaction),
+    operatorName: toStr(r.operator_name),
+    secondaryDepartment: toStr(r.secondary_department),
+    onlineCloseBasis: toStr(r.online_close_basis),
+    locationFlag: toStr(r.location_flag),
     statusCode: String(r.status ?? 'pending'),
     statusName: labelOf('status', String(r.status ?? 'pending')),
     sourceReportedAt: toIso(r.source_reported_at),

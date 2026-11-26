@@ -44,10 +44,16 @@ const periodLabel = computed(
 const conditionChips = computed(() => {
   const q = query.value;
   const chips: { label: string; value: string }[] = [];
-  if (q?.typeId) chips.push({ label: '诉求类型', value: q.typeId });
-  if (q?.districtCode) chips.push({ label: '区域编码', value: q.districtCode });
-  if (q?.communityName) chips.push({ label: '小区', value: q.communityName });
-  if (q?.enterpriseId) chips.push({ label: '企业', value: q.enterpriseId });
+  const category = q?.typeId ?? q?.filters?.categoryCode;
+  const district = q?.districtCode ?? q?.filters?.districtCode;
+  const grid = q?.gridCode ?? q?.filters?.gridCode;
+  const community = q?.communityName ?? q?.communityCode ?? q?.filters?.communityCode;
+  const enterprise = q?.enterpriseId ?? q?.filters?.enterpriseCode;
+  if (category) chips.push({ label: '诉求类型', value: category });
+  if (district) chips.push({ label: '区域编码', value: district });
+  if (grid) chips.push({ label: '网格编码', value: grid });
+  if (community) chips.push({ label: '小区', value: community });
+  if (enterprise) chips.push({ label: '企业', value: enterprise });
   if (q?.bucket) chips.push({ label: '处理时长档', value: q.bucket });
   if (q?.eventNo) chips.push({ label: '关联事件', value: q.eventNo });
   if (q?.month) chips.push({ label: '月份', value: `${q.month} 月` });
@@ -82,7 +88,8 @@ const go = (p: number) => {
       </header>
 
       <div class="drill__conditions">
-        <span class="st-chip">统计期间 <b>{{ periodLabel }} · {{ periodMeta.range }}</b></span>
+        <span v-if="query?.evidence" class="st-chip">同期窗口 <b>{{ data?.evidenceWindow ? `${data.evidenceWindow.from} ~ ${data.evidenceWindow.to}` : '读取中' }}</b></span>
+        <span v-else class="st-chip">统计期间 <b>{{ periodLabel }} · {{ periodMeta.range }}</b></span>
         <span class="st-chip">行业 <b>{{ industryLabel }}</b></span>
         <span v-for="c in conditionChips" :key="c.label + c.value" class="st-chip">{{ c.label }} <b>{{ c.value }}</b></span>
         <span class="st-chip">快照 <b>{{ data?.meta.snapshotId ?? '—' }}</b></span>
@@ -146,9 +153,16 @@ const go = (p: number) => {
                   {{ item.status }}
                 </i>
               </span>
-              <span class="c-event">
-                <template v-if="item.relatedEvent">🔗 {{ item.eventNo }}</template>
-                <template v-else>—</template>
+              <!--
+                标书 1.2.2：诉求录入时间落在停水停气/管道改造事件时间范围内时，应与事件关联。
+                字段口径：后端 item.relatedEvent（布尔）+ item.relatedEventNo（事件号）。
+                注意：原实现读的是 item.eventNo —— 该字段后端从未返回，所以这一列恒为「—」。
+                当前后端 detail 尚未输出这两个字段（关联需 shutdown_complaint_link 有数据），
+                故此处如实显示「未关联」，不显示 0、也不伪造关联。
+              -->
+              <span class="c-event" :title="item.relatedEventNo || '后端未建立事件关联'">
+                <template v-if="item.relatedEvent && item.relatedEventNo">🔗 {{ item.relatedEventNo }}</template>
+                <template v-else>未关联</template>
               </span>
               <span>
                 <i class="drill__sat" :class="`is-${item.satisfaction === '满意' ? 'good' : item.satisfaction === '不满意' ? 'bad' : 'na'}`">

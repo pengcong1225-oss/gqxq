@@ -4,12 +4,20 @@ import { z } from 'zod';
 import { requireAuth } from '../middleware/requireAuth';
 import { AppError } from '../http/errors';
 import { ok } from '../http/respond';
-import { currentUser, login } from '../services/authService';
+import { bearerToken } from '../auth/platformIdentity';
+import { currentUser, login, platformSession } from '../services/authService';
+import { gqxqOidc } from '../auth/gqxqOidc';
 
 // POST /auth/login      —— 公开；bcrypt 校验后签发 JWT
 // GET  /auth/user-info  —— 需 Bearer；/auth 被挂在全局 requireAuth 之前（routes/index.ts），
 //                          因此在这个 router 内部单独挂 requireAuth
 export const authRouter = Router();
+
+authRouter.get('/auth/oidc/status', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  ok(res, gqxqOidc ? { enabled: true, startUrl: gqxqOidc.startUrl } : { enabled: false });
+});
+if (gqxqOidc) authRouter.use(gqxqOidc.router);
 
 const loginSchema = z.object({
   username: z.string().trim().min(1).max(64),
@@ -33,6 +41,16 @@ authRouter.post('/auth/login', async (req, res, next) => {
       requestId: req.requestId,
     });
     ok(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.post('/auth/platform-session', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    if (gqxqOidc) throw AppError.forbidden('请使用住新统一登录入口');
+    ok(res, await platformSession(bearerToken(req), { clientIp: req.remoteIp, requestId: req.requestId }));
   } catch (err) {
     next(err);
   }

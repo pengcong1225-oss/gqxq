@@ -1,13 +1,15 @@
 // 鉴权服务：bcrypt 口令校验 + JWT 签发 + 登录审计。
 // 设计要点（见 docs/2026-09-17-诉求平台G1详细实施方案.md §5.9）：
 //   * 对外不区分"用户不存在 / 口令错误 / 已停用"，统一 401，防用户名枚举
-//   * JWT 载荷只放 sub / username / sessionVersion，权限明细一律从库读（便于回收）
+//   * JWT 携带本地会话版本及托管身份的核验版本，权限明细一律从库读取
 //   * 登录成功与失败都写 operation_audit_log（复用既有表，不新建 audit_log）
 import { resolveAuthorization } from './roleService';
 import { validatePassword } from './passwordService';
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { checkLegacyPlatformAccess, createManagedSession, findManagedBySubject, findManagedByUser, type ManagedSession } from '../auth/managedIdentity';
+import { findBoundUserId, verifyPlatformToken } from '../auth/platformIdentity';
 import { env } from '../config/env';
 import { pool } from '../db/pool';
 import { withTransaction } from '../db/tx';
@@ -107,13 +109,56 @@ export async function login(
     throw AppError.unauthenticated('用户名或密码错误');
   }
 
-  // 载荷只放 sub / username / sessionVersion；权限明细由 /auth/user-info 查库返回
-  const token = jwt.sign(
-    { sub: user.userId, username: user.username, sessionVersion: user.sessionVersion },
-    env.jwtSecret,
-    { algorithm: 'HS256', expiresIn: env.jwtTtlSeconds }
-  );
+  const binding = await findManagedByUser(user.userId);
+  const managedSession = binding ? await createManagedSession(binding) : undefined;
+  if (!binding) await checkLegacyPlatformAccess(user.userId);
+  return await issueLocalSession(user, ctx, managedSession);
+}
 
+export async function platformSession(token: string, ctx: LoginContext): Promise<LoginResult> {
+  const claims = await verifyPlatformToken(token);
+  if (typeof claims?.iss !== 'string' || typeof claims.sub !== 'string') {
+    throw AppError.unauthenticated('平台登录状态已失效');
+  }
+  const binding = await findManagedBySubject(claims.iss, claims.sub);
+  if (!binding) {
+    const legacyId = await findBoundUserId(claims.iss, claims.sub);
+    if (!legacyId || await findManagedByUser(legacyId)) throw AppError.unauthenticated('当前平台账号尚未完成诉求应用绑定');
+    await checkLegacyPlatformAccess(legacyId, claims);
+    return { token, userInfo: await currentUser(legacyId) };
+  }
+  const authVersion = claims.auth_version ?? 0;
+  const remaining = Number(claims.exp) - Math.floor(Date.now() / 1000);
+  if (typeof claims.jti !== 'string' || !claims.jti || !Number.isSafeInteger(authVersion) || authVersion < 0
+      || !Number.isSafeInteger(remaining) || remaining <= 0) {
+    throw AppError.unauthenticated('平台登录状态已失效');
+  }
+  const user = await findByUserId(pool, binding.userId);
+  if (user === null || user.status !== 1) throw AppError.unauthenticated('绑定账号已停用');
+  const session = await createManagedSession(binding, { authVersion, sessionJti: claims.jti });
+  return await issueLocalSession(user, ctx, session, Math.min(remaining, env.jwtTtlSeconds));
+}
+
+async function issueLocalSession(
+  user: NonNullable<Awaited<ReturnType<typeof findByUserId>>>,
+  ctx: LoginContext,
+  managedSession?: ManagedSession,
+  expiresIn = env.jwtTtlSeconds,
+): Promise<LoginResult> {
+  const token = jwt.sign(
+    { sub: user.userId, username: user.username, sessionVersion: user.sessionVersion, managedSession },
+    env.jwtSecret,
+    { algorithm: 'HS256', expiresIn },
+  );
+  await auditSuccessfulLogin(user, ctx);
+  return { token, userInfo: await currentUser(user.userId) };
+}
+
+export async function auditSuccessfulLogin(
+  user: { userId: string; username: string },
+  ctx: LoginContext,
+  method?: 'oidc',
+): Promise<void> {
   const now = new Date();
   await withTransaction(async (tx) => {
     await touchLastLogin(tx, user.userId, now);
@@ -124,11 +169,9 @@ export async function login(
       result: RESULT_SUCCESS,
       bizId: user.username,
       clientIp: ctx.clientIp,
-      detail: JSON.stringify({ username: user.username, requestId: ctx.requestId }),
+      detail: JSON.stringify({ username: user.username, requestId: ctx.requestId, method }),
     });
   });
-
-  return { token, userInfo: await currentUser(user.userId) };
 }
 
 /** 令牌有效但用户已被删除或停用时同样按未认证处理 */

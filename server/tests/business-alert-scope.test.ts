@@ -8,6 +8,7 @@ import type {Tx} from '../src/db/tx';
 const fact=(id:string,enterpriseCode:string|null='E1',districtCode:string|null='D1',adminGridCode:string|null='G1')=>({complaintId:id,enterpriseCode,districtCode,adminGridCode});
 const ruleContent={ruleId:'gas-rule',kind:'alert' as const,expectedVersion:0,name:'正式燃气分类预警',businessType:'gas' as const,dictionaryVersion:'1',majorCodes:['pressure'],minorCodes:[] as string[],effectiveFrom:'2020-01-01',effectiveTo:'2030-12-31',scene:'gas_three_piece' as const,startMonth:null,endMonth:null,threshold:2,windowDays:10,definitionBasis:'已确认安装分类定义',definitionConfirmed:true,enabled:true};
 const actor:BusinessEventContext={userId:'u',permissionCodes:['statistics.read','dashboard.read','alert.handle','alert.read','shutdown.read'],access:{userId:'u',roles:['handler'],scopeVersion:1,rules:[{kind:'restricted',enterpriseCodes:['E1'],districtCodes:[]}],canReadSource:false}};
+const cityActor: BusinessEventContext = { ...actor, access: { ...actor.access, rules: [{ kind: 'all' }] } };
 
 test('city scope aggregates across grids and enterprises with NULL codes and scoped identity',()=>{
  const rows=[fact('1','E1','D1','G1'),fact('2','E2','D2','G2'),fact('3','E1','D2','G3')];
@@ -50,6 +51,7 @@ test('completeness requires scope-specific fields and missing fields are reporte
  assert.deepEqual(alertScopeMissingFields({...full,districtCode:null},'city'),[]);
  assert.deepEqual(alertScopeMissingFields({...full,districtCode:null},'district'),['districtCode']);
  assert.deepEqual(alertScopeMissingFields({...full,enterpriseCode:null},'enterprise'),['enterpriseCode']);
+ assert.deepEqual(alertScopeMissingFields({...full,districtCode:null},'enterprise'),[]);
  assert.deepEqual(alertScopeMissingFields({...full,adminGridCode:null},'grid'),['adminGridCode']);
  assert.deepEqual(alertScopeMissingFields({...full,districtCode:null,enterpriseCode:null,adminGridCode:null},'grid'),['districtCode','enterpriseCode','adminGridCode']);
 });
@@ -92,9 +94,26 @@ function fixture(options:{scope?:string;grids:(string|null)[];enterprises?:(stri
  return {db,saved};
 }
 
+test('restricted evaluation cannot persist a city alert or a district group it only partly sees', async () => {
+ const city = fixture({ scope: 'city', grids: ['G1', 'G1'] });
+ const district = fixture({ scope: 'district', grids: ['G1', 'G1'] });
+ for (const scenario of [city, district]) {
+  const denied = await evaluateBusinessAlertsIn(scenario.db, '2026-11-10', actor);
+  assert.equal(denied.created, 0);
+  assert.equal(denied.statuses[0].status, 'insufficient');
+  assert.match(String(denied.statuses[0].reason), /权限/);
+  assert.equal(scenario.saved.size, 0);
+  const allowed = await evaluateBusinessAlertsIn(scenario.db, '2026-11-10', cityActor);
+  assert.equal(allowed.created, 1);
+  assert.equal(scenario.saved.size, 1);
+ }
+ const enterprise = fixture({ scope: 'enterprise', grids: ['G1', 'G1'] });
+ assert.equal((await evaluateBusinessAlertsIn(enterprise.db, '2026-11-10', actor)).created, 1);
+});
+
 test('legacy city-scope evaluation aggregates all grids and persists NULL ownership codes',async()=>{
  const {db,saved}=fixture({grids:['G1','G2']});
- const result=await evaluateBusinessAlertsIn(db,'2026-11-10',actor);
+ const result=await evaluateBusinessAlertsIn(db,'2026-11-10',cityActor);
  const status:Record<string,unknown>=result.statuses[0] as Record<string,unknown>;
  assert.equal(result.created,1);assert.equal(result.statuses.length,1);
  assert.equal(status.scope,'city');assert.equal(status.status,'triggered');
@@ -128,7 +147,7 @@ test('scope without any eligible row is insufficient and says coverage is insuff
 
 test('district scope aggregates by district and persists only the district code',async()=>{
  const {db,saved}=fixture({scope:'district',grids:['G1','G2'],enterprises:['E1','E2'],districts:['D1','D1']});
- const result=await evaluateBusinessAlertsIn(db,'2026-11-10',actor);
+ const result=await evaluateBusinessAlertsIn(db,'2026-11-10',cityActor);
  const status:Record<string,unknown>=result.statuses[0] as Record<string,unknown>;
  assert.equal(result.created,1);assert.equal(status.scope,'district');assert.equal(status.eligibleCount,2);
  const params=[...saved.values()][0];
@@ -137,7 +156,7 @@ test('district scope aggregates by district and persists only the district code'
 
 test('zero matching records is insufficient and says no hit instead of reporting normal',async()=>{
  const {db}=fixture({scope:'city',grids:['G1'],category:'other'});
- const result=await evaluateBusinessAlertsIn(db,'2026-11-10',actor);
+ const result=await evaluateBusinessAlertsIn(db,'2026-11-10',cityActor);
  const status:Record<string,unknown>=result.statuses[0] as Record<string,unknown>;
  assert.equal(status.status,'insufficient');assert.equal(status.eligibleCount,0);assert.equal(status.incompleteCount,0);
  assert.match(String(status.reason),/可判定 0 件 \/ 缺字段 0 件/);
@@ -146,7 +165,7 @@ test('zero matching records is insufficient and says no hit instead of reporting
 
 test('below-threshold evaluation reports eligible/incomplete counts instead of silence',async()=>{
  const {db}=fixture({scope:'city',grids:['G1']});
- const result=await evaluateBusinessAlertsIn(db,'2026-11-10',actor);
+ const result=await evaluateBusinessAlertsIn(db,'2026-11-10',cityActor);
  const status:Record<string,unknown>=result.statuses[0] as Record<string,unknown>;
  assert.equal(status.status,'below_threshold');assert.equal(status.eligibleCount,1);assert.equal(status.incompleteCount,0);
  assert.match(String(status.reason),/可判定 1 件 \/ 缺字段 0 件/);

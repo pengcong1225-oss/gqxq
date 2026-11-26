@@ -253,10 +253,10 @@ export interface InsertOrderInput {
   sensitiveWords: string | null;
   targetEnterpriseCode: string;
   targetEnterpriseName: string;
-  deadline: Date | null;
+  deadline: Date;
   requestId: string;
   reason: string | null;
-  requirement: string | null;
+  requirement: string;
   createdBy: string | null;
   createdByName: string | null;
   createdAt: Date;

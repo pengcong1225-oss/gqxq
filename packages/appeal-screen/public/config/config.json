@@ -58,7 +58,7 @@
       {
         "id": 2021,
         "pid": 10,
-        "name": "天地图影像",
+        "name": "高德影像",
         "icon": "img/basemaps/tdt_img.png",
         "type": "group",
         "layers": [
@@ -69,7 +69,7 @@
       },
       {
         "pid": 10,
-        "name": "天地图电子",
+        "name": "高德电子",
         "icon": "img/basemaps/tdt_vec.png",
         "type": "group",
         "layers": [
@@ -226,7 +226,7 @@
         "pid": 50,
         "name": "行政区划界线",
         "type": "tdt",
-        "url": "https://t{s}.tianditu.gov.cn/DataServer?T=ibo_w&x={x}&y={y}&l={z}",
+        "url": "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
         "maximumLevel": 10,
         "mapSplit": false
       },

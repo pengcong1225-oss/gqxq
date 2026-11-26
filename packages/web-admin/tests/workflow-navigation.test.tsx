@@ -4,27 +4,22 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { JSDOM } from 'jsdom';
 import { createServer, type ViteDevServer } from 'vite';
 import type { ComplaintDetail, CorrectionItem, LocationClueView } from '../src/types/api';
 
-const memoryStorage = new Map<string, string>();
-globalThis.localStorage = {
-  getItem: (key: string) => memoryStorage.get(key) ?? null,
-  setItem: (key: string, value: string) => memoryStorage.set(key, value),
-  removeItem: (key: string) => memoryStorage.delete(key),
-  clear: () => memoryStorage.clear(),
-  key: (index: number) => Array.from(memoryStorage.keys())[index] ?? null,
-  get length() {
-    return memoryStorage.size;
-  },
-} as Storage;
-
 let vite: ViteDevServer;
 let dom: JSDOM;
+let MemoryRouter: typeof import('react-router-dom').MemoryRouter;
+let Route: typeof import('react-router-dom').Route;
+let Routes: typeof import('react-router-dom').Routes;
 
 before(async () => {
+  // The SPA selects its login storage when modules load. Keep the storage and
+  // interaction queries on the same window for the lifetime of this suite.
+  installDom();
+  // React Router loads ReactDOM, which detects input-event support at import time.
+  ({ MemoryRouter, Route, Routes } = await import('react-router-dom'));
   const webRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
   vite = await createServer({
     root: webRoot,
@@ -36,7 +31,7 @@ before(async () => {
 });
 
 after(async () => {
-  await vite.close();
+  try { await vite?.close(); } finally { dom?.window.close(); }
 });
 
 function renderWithRouter(node: React.ReactNode, route: string): string {
@@ -46,6 +41,45 @@ function renderWithRouter(node: React.ReactNode, route: string): string {
     </MemoryRouter>
   );
 }
+
+test('总账的来源分类补齐先显示预览，再提交该批确认摘要', async () => {
+  const { default: SourceCategoryBackfillDialog } = await vite.ssrLoadModule('/src/components/SourceCategoryBackfillDialog.tsx');
+  const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
+  const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
+  const { cleanup, fireEvent, render, within } = await import('@testing-library/react');
+  const originalUser = useAppStore.getState().userInfo;
+  const originalAdapter = request.defaults.adapter;
+  const calls: { url: string; data?: string }[] = [];
+  const digest = 'a'.repeat(64);
+  let refreshed = 0;
+  useAppStore.setState({ userInfo: { userId: 'fx', username: 'fx', roles: ['admin'], permissions: ['complaint.correct'] } });
+  request.defaults.adapter = async (config: { url: string; data?: string }) => {
+    calls.push({ url: config.url, data: config.data });
+    const data = config.url.endsWith('/preview') ? {
+      digest, dictionaryVersion: '29', candidates: 1, remaining: 0,
+      skipped: { manualDecision: 0, analysisRecord: 0, noExactSourceCategory: 0 },
+      byCategory: [{ majorCode: 'water_service', minorCode: 'w11', minorName: '农村停水问题', count: 1 }],
+    } : { revised: 1, remaining: 0, dictionaryVersion: '29' };
+    return { data: { code: 200, data }, status: 200, statusText: 'OK', headers: {}, config };
+  };
+  const ui = render(<SourceCategoryBackfillDialog onApplied={() => { refreshed++; }} />);
+  try {
+    const page = within(document.body);
+    fireEvent.click(page.getByRole('button', { name: '补齐来源分类' }));
+    await page.findByText('农村停水问题');
+    assert.deepEqual(calls.map(call => call.url), ['/categories/source-backfill/preview']);
+    fireEvent.click(page.getByRole('button', { name: '确认补齐 1 件' }));
+    await page.findByText('已补齐 1 件来源分类');
+    assert.deepEqual(calls.map(call => call.url), ['/categories/source-backfill/preview', '/categories/source-backfill/apply']);
+    assert.equal(JSON.parse(calls[1].data!).digest, digest);
+    assert.equal(refreshed, 1);
+  } finally {
+    ui.unmount();
+    cleanup();
+    request.defaults.adapter = originalAdapter;
+    useAppStore.setState({ userInfo: originalUser });
+  }
+});
 
 test('诉求核验页用覆盖全部字段的名称呈现', async () => {
   const { default: AddressCorrection } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
@@ -60,7 +94,9 @@ function installDom(): void {
   dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
   const globals: Record<string, unknown> = {
     window: dom.window, document: dom.window.document, navigator: dom.window.navigator,
+    localStorage: dom.window.localStorage, sessionStorage: dom.window.sessionStorage,
     Element: dom.window.Element, HTMLElement: dom.window.HTMLElement, SVGElement: dom.window.SVGElement,
+    HTMLBodyElement: dom.window.HTMLBodyElement, HTMLHtmlElement: dom.window.HTMLHtmlElement,
     ShadowRoot: dom.window.ShadowRoot, Node: dom.window.Node,
     MutationObserver: dom.window.MutationObserver, getComputedStyle: dom.window.getComputedStyle,
     IS_REACT_ACT_ENVIRONMENT: true,
@@ -125,7 +161,7 @@ test('长文本纠偏项直接提供多行输入而非单行框', async () => {
   assert.match(html, /<textarea[^>]*aria-label="纠偏后取值：企业处置结果"/);
 });
 
-test('选择高德地图：WGS84↔GCJ-02 转换可用且天地图选点组件已删除', async () => {
+test('选择高德地图：WGS84↔GCJ-02 转换可用且旧选点组件已删除', async () => {
   const module = await vite.ssrLoadModule('/src/components/amapSdk.ts');
   const wgs84ToGcj02 = module.wgs84ToGcj02 as (lng: number, lat: number) => [number, number];
   const gcj02ToWgs84 = module.gcj02ToWgs84 as (lng: number, lat: number) => [number, number];
@@ -136,7 +172,7 @@ test('选择高德地图：WGS84↔GCJ-02 转换可用且天地图选点组件�
   const [backLng, backLat] = gcj02ToWgs84(gcjLng, gcjLat);
   assert.ok(Math.abs(backLng - 111.286) < 1e-4 && Math.abs(backLat - 30.692) < 1e-4, '往返误差应在米级以内');
   assert.deepEqual(ringToGcj02([[111.286, 30.692]]), [[gcjLng, gcjLat]]);
-  // 天地图选点组件已下线：模块不再存在，后台不再加载天地图 JS API
+  // 旧选点组件已下线：模块不再存在
   await assert.rejects(() => vite.ssrLoadModule('/src/components/TiandituLocationPicker.tsx'));
 });
 
@@ -179,9 +215,8 @@ test('敏感词管理展示真实维护与安全重扫入口', async () => {
 });
 
 test('存量地址候选先预览，取消不执行，确认后才调用执行 API', { concurrency: false }, async () => {
-  installDom();
-  const { render, screen, fireEvent, waitFor, cleanup } = await import('@testing-library/react');
-  const { message } = await import('antd');
+  const { render, screen, within, fireEvent, waitFor, cleanup, act } = await import('@testing-library/react');
+  const { Modal, message } = await import('antd');
   const originalSuccess = message.success;
   message.success = (() => Promise.resolve()) as typeof message.success;
   const { AddressCandidateBackfillControls, addressBackfillOutcome } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
@@ -207,19 +242,27 @@ test('存量地址候选先预览，取消不执行，确认后才调用执行 A
     assert.match(ui.container.textContent ?? '', /乡镇线索/);
     assert.match(ui.container.textContent ?? '', /村社区小区线索/);
     assert.match(ui.container.textContent ?? '', /位置冲突/);
-    assert.match(ui.container.textContent ?? '', /版本重算/);
+    assert.match(ui.container.textContent ?? '', /版本重算\s*3/);
     assert.match(ui.container.textContent ?? '', /\[已脱敏\]/);
     assert.doesNotMatch(ui.container.textContent ?? '', /示例家园18号1301|13800000000/);
+    const confirmName = '确认执行存量地址候选补提取？';
     fireEvent.click(executeButton);
-    assert.equal(await screen.findByText(/位置线索预计新增\/更新\/移除 2 条/).then(() => true), true);
-    fireEvent.click(await screen.findByRole('button', { name: '取 消' }));
+    const previewDialog = within(await screen.findByRole('dialog', { name: confirmName }));
+    assert.ok(previewDialog.getByText(/位置线索预计新增\/更新\/移除 2 条/));
+    fireEvent.click(previewDialog.getByRole('button', { name: /取\s*消/ }));
+    await waitFor(() => assert.ok(!screen.queryByRole('dialog', { name: confirmName }), '取消后关闭确认框'));
     assert.equal(executeCalls, 0);
     fireEvent.click(executeButton);
-    fireEvent.click(await screen.findByRole('button', { name: '确认执行', exact: true }));
+    const executeDialog = within(await screen.findByRole('dialog', { name: confirmName }));
+    fireEvent.click(executeDialog.getByRole('button', { name: '确认执行', exact: true }));
     await waitFor(() => assert.equal(executeCalls, 1));
-    assert.equal(await screen.findByText(/位置线索新增 2/).then(() => true), true);
+    assert.ok(await screen.findByText(/位置线索新增 2/));
     assert.match(ui.container.textContent ?? '', /地址候选新增 0，更新 0，未变 4，移除 0/);
-  } finally { ui.unmount(); cleanup(); message.success = originalSuccess; }
+    await waitFor(() => assert.ok(!screen.queryByRole('dialog', { name: confirmName }), '执行后关闭确认框'));
+  } finally {
+    await act(async () => Modal.destroyAll());
+    ui.unmount(); cleanup(); message.success = originalSuccess;
+  }
 });
 
 test('地址候选分开展示来源与候选，待处理时经办点击才允许填入', async () => {
@@ -361,7 +404,6 @@ function locationCorrectionFixture(fieldName: string): CorrectionItem {
 }
 
 test('真实详情页把接口位置冲突传到只读线索区域', async () => {
-  installDom();
   const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
   const axiosRequest = request as { defaults: { adapter: unknown } };
   const originalAdapter = axiosRequest.defaults.adapter;
@@ -388,7 +430,6 @@ test('真实详情页把接口位置冲突传到只读线索区域', async () =>
 });
 
 test('真实诉求核验抽屉保留冲突原文且不自动采用候选', async () => {
-  installDom();
   const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
   const axiosRequest = request as { defaults: { adapter: unknown } };
   const originalAdapter = axiosRequest.defaults.adapter;
@@ -430,18 +471,30 @@ test('真实诉求核验抽屉保留冲突原文且不自动采用候选', async
 });
 
 
-test('规则命中诉求保留直接创建交办入口且打开表单不写入', async () => {
-  installDom();
+test('规则命中诉求可直接交办，且必须填写处置说明和企业填报截止时间', async () => {
   const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
   const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
   const originalAdapter = request.defaults.adapter;
   const originalUser = useAppStore.getState().userInfo;
   const calls: string[] = [];
-  request.defaults.adapter = async (config: { url: string; method: string }) => {
+  const submissions: Array<{ requirement?: string; deadline?: string }> = [];
+  const enterprise = { enterpriseCode: 'E-TEST', enterpriseName: '隔离测试企业' };
+  request.defaults.adapter = async (config: { url: string; method: string; data?: string }) => {
     calls.push(config.method + ' ' + config.url);
+    if (config.url === '/dispatch/orders' && config.method === 'post') {
+      submissions.push(JSON.parse(config.data || '{}'));
+      return { data: { code: 200, data: { created: true, order: { assignmentId: 'A-TEST', orderNo: 'JB-TEST' } } }, status: 200, headers: {}, config };
+    }
     const responses: Record<string, unknown> = {
-      '/complaints': { content: [{ ...locationDetailFixture, isSensitive: true, sensitiveKeywords: ['爆管'] }], total: 1 },
-      '/enterprises': { content: [], total: 0 },
+      '/complaints': { content: [{ ...locationDetailFixture, ...enterprise, isSensitive: true, sensitiveKeywords: ['爆管'] }], total: 1 },
+      '/enterprise-options': [enterprise],
+      '/dispatch/orders/A-TEST': { assignmentId: 'A-TEST', orderNo: 'JB-TEST', status: 'processing', sensitiveWords: ['爆管'] },
+      '/dispatch/orders/A-TEST/push-logs': { content: [], total: 0 },
+      '/dispatch/orders/A-TEST/approval-trace': { content: [], total: 0 },
+      '/dispatch/orders/A-TEST/reporting-result': { taskUrl: null, events: [{
+        eventId: 'EVENT-TEST', state: 'applied',
+        payload: { eventType: 'TASK_SUBMITTED', submissionVersion: 1, enterpriseDisposalResult: { result: '企业已复查并提交整改记录' } },
+      }] },
     };
     if (config.url.startsWith('/dicts/')) return { data: { code: 200, data: [] }, status: 200, headers: {}, config };
     if (!(config.url in responses)) throw new Error(`Unexpected test API: ${config.url}`);
@@ -449,22 +502,40 @@ test('规则命中诉求保留直接创建交办入口且打开表单不写入',
   };
   useAppStore.setState({ userInfo: { id: 1, userId: 'tester', username: 'tester', realName: '测试经办', roles: ['handler'], permissions: ['dispatch.create'] } });
   const { default: DispatchOrders } = await vite.ssrLoadModule('/src/views/DispatchOrders.tsx');
-  const { render, within, fireEvent, cleanup } = await import('@testing-library/react');
+  const { render, within, fireEvent, cleanup, waitFor, act } = await import('@testing-library/react');
   const ui = render(<MemoryRouter><DispatchOrders /></MemoryRouter>);
   try {
     const page = within(document.body);
     const create = await page.findByRole('button', { name: '创建交办' });
     assert.equal((create as HTMLButtonElement).disabled, false);
     fireEvent.click(create);
-    await page.findByRole('dialog');
-    assert.match(document.body.textContent ?? '', /CS-TEST/);
+    const dialog = await page.findByRole('dialog', { name: '发起交办 · CS-TEST' });
+    const form = within(dialog);
+    assert.ok(form.getByText('交办企业'));
     assert.equal(calls.some(call => !call.startsWith('get ')), false);
+    const requirement = form.getByRole('textbox', { name: '企业处置说明' });
+    await act(async () => fireEvent.change(requirement, { target: { value: ' 　\n ' } }));
+    await act(async () => fireEvent.click(form.getByRole('button', { name: '创建交办' })));
+    await waitFor(() => {
+      assert.match(dialog.textContent ?? '', /请填写企业处置说明/);
+      assert.match(dialog.textContent ?? '', /请选择企业填报截止时间/);
+    }, { timeout: 5000 });
+    assert.equal(submissions.length, 0);
+    await act(async () => fireEvent.change(requirement, { target: { value: '  核实现场并反馈整改时间  ' } }));
+    const deadline = form.getByRole('textbox', { name: '企业填报截止时间' });
+    fireEvent.mouseDown(deadline);
+    fireEvent.click(deadline);
+    const now = await page.findByText('Now', { exact: true });
+    await act(async () => fireEvent.click(now));
+    await act(async () => fireEvent.click(form.getByRole('button', { name: '创建交办' })));
+    await waitFor(() => assert.equal(submissions[0]?.requirement, '核实现场并反馈整改时间'));
+    assert.match(submissions[0]?.deadline ?? '', /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$/);
+    assert.ok(await page.findByText('企业已复查并提交整改记录'));
   } finally { ui.unmount(); cleanup(); request.defaults.adapter = originalAdapter; useAppStore.setState({ userInfo: originalUser }); }
 });
 
 
 test('固定报告保留默认口径，显式切换采购口径才发送采购模板', async () => {
-  installDom();
   const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
   const { useAppStore } = await vite.ssrLoadModule('/src/stores/appStore.ts');
   const originalAdapter = request.defaults.adapter, originalUser = useAppStore.getState().userInfo;

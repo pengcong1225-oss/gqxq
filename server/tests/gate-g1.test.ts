@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {mkdtempSync,mkdirSync,writeFileSync,copyFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {dirname,join} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {validateViewPolicy,hasRenderedDemoNotice} from '../scripts/gate-g1-view-policy.mjs';
 
@@ -36,13 +36,18 @@ test('demo label import/comment alone cannot unlock local demo literals',()=>{
  assert.deepEqual(validateViewPolicy('Example','<DemoDataNotice />',{mode:'demo'},()=>source),[]);
 });
 
-function runGate(viewName, content) {
+function runGate(viewName, content, extraFiles: Record<string, string> = {}) {
  const root=mkdtempSync(join(tmpdir(),'gqxq-gate-'));
  try {
   mkdirSync(join(root,'server/scripts'),{recursive:true});
   mkdirSync(join(root,'packages/web-admin/src/views'),{recursive:true});
   for(const file of ['gate-g1.mjs','gate-g1-view-policy.mjs']) copyFileSync(new URL('../scripts/'+file,import.meta.url),join(root,'server/scripts',file));
   writeFileSync(join(root,'packages/web-admin/src/views',viewName+'.tsx'),content);
+  for (const [path, source] of Object.entries(extraFiles)) {
+   const file = join(root, path);
+   mkdirSync(dirname(file), { recursive: true });
+   writeFileSync(file, source);
+  }
   const run=spawnSync(process.execPath,[join(root,'server/scripts/gate-g1.mjs'),'--json'],{encoding:'utf8'});
   return {status:run.status,...JSON.parse(run.stdout)};
  }finally{rmSync(root,{recursive:true,force:true});}
@@ -64,4 +69,41 @@ test('CLI still blocks fake success messages on mixed pages with valid disclosur
  const result=runGate('TenderSupportView',"import {getSupportData} from '../tenderSupport/api';\nmessage.success('交办单已创建并推送至目标企业');\nexport default () => <Alert message=\"模拟数据专区：边界、小区、管线、事件、评价、办结和户数均为模拟\" />;");
  assert.equal(result.status,1);assert.equal(result.counts.failStructural,0);
  assert.ok(result.violations.some(v=>v.ruleId==='fake-success-toast'));
+});
+
+test('CLI accepts only the reviewed atomic complaint index replacements', () => {
+ const files = {
+  'server/migrations/20261120095000__complaint_stats_cover_fix_deleted.js': `exports.up = db => updateIndexes(db, [
+    {
+      replacement: 'alter table complaint drop index idx_complaint_stats_cover, add index idx_complaint_stats_cover (source_reported_at, business_type, minor_category_code, major_category_code, admin_grid_code, deleted, source_system)',
+    },
+    {
+      replacement: 'alter table complaint drop index idx_complaint_stats_district, add index idx_complaint_stats_district (source_reported_at, business_type, district_code, deleted, source_system)',
+    },
+  ]);`,
+  'server/migrations/20261120100000__complaint_stats_cover_add_source_id.js': `exports.up = db => updateIndexes(db, [
+    {
+      replacement: 'alter table complaint drop index idx_complaint_stats_cover, add index idx_complaint_stats_cover (source_reported_at, business_type, minor_category_code, major_category_code, admin_grid_code, deleted, source_system, source_id)',
+    },
+  ]);`,
+ };
+ const [filtersPath, sourcePath] = Object.keys(files);
+ const view = "import {listComplaints} from '../api/complaints';\nexport default () => <div/>;";
+ const accepted = runGate('ComplaintList', view, files);
+ assert.equal(accepted.status, 0);
+ for (const rejectedFiles of [
+  { [filtersPath]: files[filtersPath].replace('admin_grid_code, deleted', 'district_code, deleted') },
+  { [sourcePath]: files[sourcePath].replace('add index idx_complaint_stats_cover', 'add unique index idx_complaint_stats_cover') },
+  { [sourcePath]: files[sourcePath].replace('add index idx_complaint_stats_cover', 'add index another_index') },
+  { [sourcePath]: files[sourcePath].replace('alter table complaint', 'alter table unrelated') },
+  { [sourcePath]: files[sourcePath].replace(', add index', '; alter table complaint add index') },
+  { 'server/migrations/20261126000000__other.js': files[filtersPath] },
+  { [sourcePath]: files[sourcePath] + "\ndb.raw('alter table complaint drop column deleted');" },
+  { [filtersPath]: "exports.up = db => db.raw('alter table complaint drop index idx_complaint_stats_cover');" },
+  { 'server/src/sample.ts': files[sourcePath] },
+ ]) {
+  const rejected = runGate('ComplaintList', view, rejectedFiles);
+  assert.equal(rejected.status, 1);
+  assert.ok(rejected.violations.some(violation => violation.ruleId === 'destructive-ddl'));
+ }
 });

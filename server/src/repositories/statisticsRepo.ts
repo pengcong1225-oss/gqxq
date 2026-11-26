@@ -6,23 +6,170 @@ import type {GridCoverage} from '../types/serviceGrid';
 import type {StatisticsQuery} from '../types/statistics';
 import {AppError} from '../http/errors';
 import {excludeIntegrationTestsSql} from '../domain/integrationTestPolicy';
+import {resolveComparisonPeriods,toShanghaiHalfOpenRange} from '../domain/statisticsQuery';
 // Explicit scalars only. Original source/callback JSON never enters this relation.
 const columns=['id','complaint_id','complaint_no','title','business_type','complaint_type','major_category_code','minor_category_code','category_dictionary_version','district_code','district_name','enterprise_code','enterprise_name','location_lng','location_lat','admin_grid_code','community_code','location_coordinate_system','location_coordinate_source','source_reported_at','received_at','edit_version','source_system','source_id','source_channel','urgency_level','correction_status','correction_confidence','source_event_status','source_synced_at','overtime_flag','supervision_status','reporting_status','closed_in_system','is_sensitive','sensitive_keywords','status','created_at'];
 /**
  * 大屏专用窄列读取：只取 screen 域真正用到的 16 列。
  * 完整 38 列 × 2 万行 × 3 个行业请求 = 首屏 4s+；窄列后行解析成本降一个量级。
  */
-const screenColumns = ['complaint_id','source_system','source_id','business_type','complaint_type','major_category_code','minor_category_code','district_code','enterprise_code','enterprise_name','admin_grid_code','community_code','location_lng','location_lat','source_reported_at','received_at','source_event_status','satisfaction_code','source_synced_at','source_completed_at','source_deadline_at','status'];
+const screenColumns = ['complaint_id','complaint_no','source_system','source_id','business_type','complaint_type','major_category_code','minor_category_code','district_code','enterprise_code','enterprise_name','admin_grid_code','community_code','location_lng','location_lat','source_reported_at','received_at','source_event_status','satisfaction_code','source_synced_at','source_completed_at','source_deadline_at','status'];
+/**
+ * 计算统计所需的最早日期（SQL 下界），把「全表扫描」改成「索引范围扫描」。
+ *
+ * 为什么需要下界：`buildScreen` 会用到
+ *   · 期间统计：yesterday / month / quarter / year —— 最早到「今年 1 月 1 日」
+ *   · 明细筛选：用户可能选到很早的日期
+ * 常规统计从所选起始日所在年的 1 月 1 日开始，去年同期单独读取。
+ *
+ * 性能背景（实测 2026-11-20）：原查询无时间条件，对 53,339 行 / 1.1GB 的表做全表扫描
+ * + `order by received_at`，单次 3.1 秒；大屏首屏要发 6 次 bootstrap → 约 30 秒。
+ * 加下界后命中 idx_complaint_reported_at，近 30 天窗口 3154ms → 10ms。
+ */
+export function screenStatisticsLowerBound(q: {from:string}): string {
+  const from = q.from.slice(0, 10);
+  const y = Number(from.slice(0, 4));
+  if (!Number.isFinite(y)) return from;
+  const yearStart = `${y}-01-01`;
+  return yearStart < from ? yearStart : from;
+}
+
 export async function readScreenStatisticsRows(db:SqlExecutor,q:StatisticsQuery,access:AccessContext){
  const scope=buildComplaintScopeSql(access,'c');
- const rows=await rowsIn(db,'select '+screenColumns.map(c=>'c.'+c).join(',')+' from complaint c where '+scope.sql+' and '+excludeIntegrationTestsSql('c')+' order by c.received_at desc,c.id desc limit 100001',scope.params);
+ /**
+  * 时间条件写成可走索引的形式：
+  *   (source_reported_at >= 下界) or (source_reported_at is null and received_at >= 下界)
+  *
+  * 不用 `coalesce(source_reported_at, received_at) >= ?` —— 函数包裹列会让
+  * idx_complaint_reported_at 完全失效（EXPLAIN type=ALL，全表扫描）。
+  * 实测分布：source_reported_at 非空 53339/53339，null 分支实际不会命中，
+  * 保留它是为了语义完整（真有 null 时仍按 received_at 兜底）。
+  */
+ const lower=screenStatisticsLowerBound(q);
+ const timeSql='(c.source_reported_at >= ? or (c.source_reported_at is null and c.received_at >= ?))';
+ const rows=await rowsIn(db,'select '+screenColumns.map(c=>'c.'+c).join(',')+' from complaint c where '+scope.sql+' and '+excludeIntegrationTestsSql('c')+' and '+timeSql+' order by c.received_at desc,c.id desc limit 100001',[...scope.params,lower,lower]);
  if(rows.length>100000)throw AppError.validation('授权数据集超过10万条，请联系管理员规划统计容量；未返回截断统计');
  return rows;
 }
+
+export async function readScreenPriorRows(
+  db: SqlExecutor, range: { from: string; to: string }, access: AccessContext, businessType?: string,
+) {
+  const scope = buildComplaintScopeSql(access, 'c');
+  const window = toShanghaiHalfOpenRange(range);
+  const from = new Date(window.start), to = new Date(window.end);
+  const rows = await rowsIn(db,
+    `select ${screenColumns.map(c => 'c.' + c).join(',')} from complaint c
+      where ${scope.sql} and ${excludeIntegrationTestsSql('c')}
+        and c.source_system = '宜接就办' and c.source_id <> ''${businessType ? ' and c.business_type = ?' : ''}
+        and ((c.source_reported_at >= ? and c.source_reported_at < ?)
+          or (c.source_reported_at is null and c.received_at >= ? and c.received_at < ?))
+      order by c.received_at desc,c.id desc limit 100001`,
+    [...scope.params, ...(businessType ? [businessType] : []), from, to, from, to]);
+  if (rows.length > 100000) throw AppError.validation('授权同期数据集超过10万条，未返回截断统计');
+  return rows;
+}
+type SeasonalSelection = {
+  businessType: string;
+  majorCodes: readonly string[];
+  minorCodes: readonly string[];
+  effectiveFrom: string;
+  effectiveTo: string;
+};
+
+function buildSeasonalStatisticsWhere(
+  access: AccessContext,
+  rule: SeasonalSelection,
+  range: { from: string; to: string },
+) {
+  const from = range.from < rule.effectiveFrom ? rule.effectiveFrom : range.from;
+  const to = range.to > rule.effectiveTo ? rule.effectiveTo : range.to;
+  if (from > to) return { sql: '0 = 1', params: [] };
+
+  const categories: string[] = [];
+  const categoryParams: string[] = [];
+  for (const [column, codes] of [
+    ['major_category_code', rule.majorCodes],
+    ['minor_category_code', rule.minorCodes],
+  ] as const) {
+    if (!codes.length) continue;
+    // Preserve the original summary's exact code matching under case-insensitive MySQL collations.
+    categories.push(`cast(c.${column} as binary) in (${codes.map(() => '?').join(',')})`);
+    categoryParams.push(...codes);
+  }
+  if (!categories.length) return { sql: '0 = 1', params: [] };
+
+  const scope = buildComplaintScopeSql(access, 'c');
+  const { start, end } = toShanghaiHalfOpenRange({ from, to });
+  return {
+    sql: [
+      scope.sql,
+      excludeIntegrationTestsSql('c'),
+      'c.source_reported_at >= ? and c.source_reported_at < ?',
+      'cast(c.business_type as binary) = ?',
+      '(' + categories.join(' or ') + ')',
+    ].join(' and '),
+    params: [...scope.params, new Date(start), new Date(end), rule.businessType, ...categoryParams],
+  };
+}
+
+export async function readSeasonalStatisticsRows(
+  db: SqlExecutor,
+  access: AccessContext,
+  rule: SeasonalSelection,
+  range: { from: string; to: string },
+) {
+  const { sql, params } = buildSeasonalStatisticsWhere(access, rule, range);
+  // Summary queries stay on the covering index. Display fields are fetched by the detail query.
+  return rowsIn(db, 'select c.source_reported_at, c.admin_grid_code from complaint c where ' + sql, params);
+}
+
+export async function readSeasonalStatisticsDetails(
+  db: SqlExecutor,
+  access: AccessContext,
+  rule: SeasonalSelection,
+  range: { from: string; to: string },
+  page: number,
+  size: number,
+) {
+  const { sql, params } = buildSeasonalStatisticsWhere(access, rule, range);
+  const [count] = await rowsIn(db, 'select count(*) n from complaint c where ' + sql, params);
+  const total = Number(count?.n ?? 0);
+  const offset = (page - 1) * size;
+  const rows = offset < total ? await rowsIn(db,
+    'select c.complaint_id complaintId, c.complaint_no complaintNo, c.title, ' +
+      'coalesce(c.minor_category_code,c.major_category_code) categoryCode, ' +
+      'c.admin_grid_code adminGridCode, c.enterprise_name enterpriseName, c.source_reported_at reportedAt ' +
+      'from complaint c where ' + sql + ' order by c.source_reported_at desc, c.id desc limit ? offset ?',
+    [...params, size, offset],
+  ) : [];
+  return { total, rows };
+}
+
 export async function readStatisticsRows(db:SqlExecutor,q:StatisticsQuery,access:AccessContext){
  const scope=buildComplaintScopeSql(access,'c');
  const analysis=q.dataset==='analysis';const ar=analysis?',ar.analysis_id,ar.business_type as entry_business_type,ar.complaint_type as entry_complaint_type,ar.district_code as entry_district_code,ar.district_name as entry_district_name,ar.enterprise_code as entry_enterprise_code,ar.enterprise_name as entry_enterprise_name,ar.summary as entry_title,ar.confirmed_at,ar.statistics_snapshot_version,ar.statistics_snapshot':',null as analysis_id';
- const rows=await rowsIn(db,'select '+columns.map(c=>'c.'+c).join(',')+ar+' from complaint c'+(analysis?' join analysis_record ar on ar.complaint_id=c.complaint_id':'')+' where '+scope.sql+' and '+excludeIntegrationTestsSql('c')+' order by c.received_at desc,c.id desc limit 100001',scope.params);
+ const whereParts: string[] = [scope.sql, excludeIntegrationTestsSql('c')];
+ const whereParams: unknown[] = [...scope.params];
+ // 入库快照的日期、业务和分类取自冻结数据。当前诉求仍是授权依据。
+ if (q.projection === 'current') {
+   if (q.from && q.to) {
+     // 保留缺来源日期的记录，以便按口径标记排除原因或回落接收时间。
+     const datePredicates = ['c.source_reported_at is null'];
+     for (const {from,to} of [q, ...resolveComparisonPeriods(q)]) {
+       if (!from || !to) continue;
+       const {start,end} = toShanghaiHalfOpenRange({from,to});
+       datePredicates.push('(c.source_reported_at >= ? and c.source_reported_at < ?)');
+       whereParams.push(new Date(start), new Date(end));
+     }
+     whereParts.push('(' + datePredicates.join(' or ') + ')');
+   }
+   if (q.businessType) {
+     whereParts.push('c.business_type = ?');
+     whereParams.push(q.businessType);
+   }
+ }
+ const rows=await rowsIn(db,'select '+columns.map(c=>'c.'+c).join(',')+ar+' from complaint c'+(analysis?' join analysis_record ar on ar.complaint_id=c.complaint_id':'')+' where '+whereParts.join(' and ')+' order by c.received_at desc,c.id desc limit 100001',whereParams);
  if(rows.length>100000)throw AppError.validation('授权数据集超过10万条，请联系管理员规划统计容量；未返回截断统计');return rows;
 }
 /** Explicit legacy-membership/no-date browser branch, no statistics/comparison formula. */

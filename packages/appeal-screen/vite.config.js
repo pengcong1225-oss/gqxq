@@ -210,6 +210,27 @@ export default defineConfig({
     port: 8002,
     host: true,
     open: false,
+    /**
+     * 文件监听忽略规则 —— 修 EBUSY 崩溃。
+     *
+     * 问题：某些写文件的工具（编辑器的原子写、DSH 的 edit 工具等）会在目标文件同目录下
+     * 创建 `.<name>.<pid>.<uuid>.tmpdir/` 临时目录再改名。vite 的 chokidar watcher 会去
+     * watch 这个临时文件，而临时文件的句柄此时正被写入方持有 → Windows 抛
+     * `EBUSY: resource busy or locked, watch ...tmpdir\*.tmp`，直接把整个 dev server 干掉。
+     * 实测本仓库已因此崩过 3 次。
+     *
+     * 处理：忽略所有隐藏临时目录与临时后缀，从源头不让 watcher 碰到它们。
+     */
+    watch: {
+      ignored: [
+        '**/.*.tmpdir/**',
+        '**/*.tmpdir/**',
+        '**/*.tmp',
+        '**/.git/**',
+        '**/dist/**',
+        '**/node_modules/.cache/**',
+      ],
+    },
     proxy: {
       // 业务接口：真实诉求平台 gqxq/server（生产由 nginx 反代同一相对路径）
       '/api/v1': { target: process.env.SCREEN_API_TARGET || 'http://127.0.0.1:3100', changeOrigin: true },

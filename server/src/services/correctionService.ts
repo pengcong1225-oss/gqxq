@@ -957,12 +957,25 @@ async function decide(
   return result;
 }
 
+/** 队列汇总：单条诉求状态变化后立即刷新，避免用户操作后队列里还看到旧行。 */
+async function refreshQueueFor(complaintId: string): Promise<void> {
+  try {
+    const { refreshPendingSummaryFor } = await import('../repositories/correctionRepo');
+    await refreshPendingSummaryFor(pool, complaintId);
+  } catch {
+    // 汇总刷新失败不影响纠偏本身；下一轮后台全量刷新会补齐
+  }
+}
+
 export async function confirmCorrection(
   correctionId: string,
   rawBody: unknown,
   ctx: OperatorContext
 ): Promise<DecideOutcome> {
-  return decide(correctionId, 'confirmed', rawBody, ctx);
+  const outcome = await decide(correctionId, 'confirmed', rawBody, ctx);
+  const cid = outcome.item?.complaintId;
+  if (cid) await refreshQueueFor(cid);
+  return outcome;
 }
 
 export async function rejectCorrection(
@@ -970,7 +983,10 @@ export async function rejectCorrection(
   rawBody: unknown,
   ctx: OperatorContext
 ): Promise<DecideOutcome> {
-  return decide(correctionId, 'rejected', rawBody, ctx);
+  const outcome = await decide(correctionId, 'rejected', rawBody, ctx);
+  const cid = outcome.item?.complaintId;
+  if (cid) await refreshQueueFor(cid);
+  return outcome;
 }
 
 /* ==================== 查询 ==================== */

@@ -15,7 +15,7 @@ import { AppError } from '../http/errors';
 import type { DispatchRequestLogItem, PushDispatchResult, PushResultKind } from '../types/api';
 import { env } from '../config/env';
 import { pool } from '../db/pool';
-import { withTransaction } from '../db/tx';
+import { withTransaction, type Tx } from '../db/tx';
 import { lowercaseHexSha256 } from '../clients/publicUtilityClient';
 import { cut } from '../repositories/complaintSourceLogRepo';
 import {
@@ -25,6 +25,7 @@ import {
   postIntegrationTask,
   serializeOnce,
   type PuTransportOutcome,
+  type SerializedBody,
 } from '../clients/publicUtilityClient';
 import { findOrderByAssignmentId } from '../repositories/dispatchRepo';
 import { findRequestLogsByAssignment } from '../repositories/dispatchRequestLogRepo';
@@ -87,7 +88,7 @@ export function buildTaskPayload(prep: PushPreparation): Record<string, unknown>
     prefilledData: {
       complaintNo: prep.complaintNo ?? undefined,
       sourceEventNo: prep.sourceEventNo ?? undefined,
-      dispatchRequirement: prep.requirement ?? '',
+      dispatchRequirement: prep.requirement,
     },
     organizationCode: env.pu.organizationCode || undefined,
     approvalDefinitionCode: env.pu.approvalCode,
@@ -118,11 +119,26 @@ export function buildTaskPayload(prep: PushPreparation): Record<string, unknown>
 }
 
 /** Original bytes remain authoritative even after the complaint or configuration changes. */
-export function restoreSnapshot(bodyText:string, expectedSha256?:string): import('../clients/publicUtilityClient').SerializedBody {
+export function restoreSnapshot(bodyText:string, expectedSha256?:string): SerializedBody {
  const bodyBytes=Buffer.from(bodyText,'utf8');
  const bodySha256=lowercaseHexSha256(bodyBytes);
  if (expectedSha256 && bodySha256!==expectedSha256) throw AppError.internal('immutable push snapshot digest mismatch');
  return {bodyText,bodyBytes,bodySha256};
+}
+
+async function findOriginalPushBody(
+  db: Tx | typeof pool,
+  assignmentId: string,
+): Promise<{ bytes: SerializedBody; frozen: boolean } | null> {
+  const [snapshots] = await db.query('select body,sha256 from dispatch_push_snapshot where assignment_id=?',
+    [assignmentId]) as [Array<{ body: string; sha256: string }>, unknown];
+  const snapshot = snapshots[0];
+  if (snapshot) return { bytes: restoreSnapshot(snapshot.body, snapshot.sha256), frozen: true };
+
+  const [logs] = await db.query('select request_body as body from dispatch_request_log where assignment_id=? and request_body is not null order by attempt,id limit 1',
+    [assignmentId]) as [Array<{ body: string }>, unknown];
+  const log = logs[0];
+  return log ? { bytes: restoreSnapshot(log.body), frozen: false } : null;
 }
 
 export interface ClassifiedOutcome {
@@ -241,17 +257,15 @@ export async function pushDispatch(assignmentId:string,ctx:OperatorContext):Prom
  if(!ctx.userId||currentAccessContext().userId!==ctx.userId)throw AppError.forbidden();
  const probe=await findOrderByAssignmentId(pool,assignmentId);if(!probe)throw AppError.notFound('交办不存在');
  assertPuCredentials();
- const [snapshots]=await pool.query('select body,sha256 from dispatch_push_snapshot where assignment_id=?',[assignmentId]) as [Array<{body:string;sha256:string}>,unknown];
- const [legacy]=await pool.query('select request_body as body from dispatch_request_log where assignment_id=? and request_body is not null order by attempt,id limit 1',[assignmentId]) as [Array<{body:string}>,unknown];
- const legacyBytes=snapshots[0]??legacy[0];
- if(probe.reporting_task_id&&!legacyBytes)throw AppError.conflict('已有填报任务但缺少原始请求证据，需人工核验');
- const candidate=legacyBytes?restoreSnapshot(legacyBytes.body,'sha256' in legacyBytes?legacyBytes.sha256:undefined):serializeOnce(buildTaskPayload(await preparePush(assignmentId)));
+ const original=await findOriginalPushBody(pool,assignmentId);
+ if(probe.reporting_task_id&&!original)throw AppError.conflict('已有填报任务但缺少原始请求证据，需人工核验');
+ const candidate=original?.bytes??serializeOnce(buildTaskPayload(await preparePush(assignmentId)));
  validatePushIdentity(candidate,assignmentId,String(probe.complaint_id),String(probe.request_id),String(probe.target_enterprise_code));
  const identity=currentTransportIdentity();
  const [versions]=await pool.query('select edit_version from complaint where complaint_id=?',[String(probe.complaint_id)]) as [Array<{edit_version:number}>,unknown];
  const priorDelivery=await readOutbox(pool,String(probe.request_id));
  let preflightPassed=false;
- if(!legacyBytes||priorDelivery?.state==='failed'){const readiness=await preflightPayload(JSON.parse(candidate.bodyText));if(!readiness.ready)throw AppError.validation('本站填报配置或账号授权未就绪',readiness.issues.map(i=>({field:i.subjectCode??i.code,message:i.message})));preflightPassed=true;}
+ if(!original||priorDelivery?.state==='failed'){const readiness=await preflightPayload(JSON.parse(candidate.bodyText));if(!readiness.ready)throw AppError.validation('本站填报配置或账号授权未就绪',readiness.issues.map(i=>({field:i.subjectCode??i.code,message:i.message})));preflightPassed=true;}
  const job=await withTransaction(async tx=>{
   // Authorization singleton comes before user/scope and business locks, like A5/C3.
   await lockAuthorization(tx);await tx.query('select user_id from app_user where user_id=? for update',[ctx.userId]);
@@ -266,23 +280,20 @@ export async function pushDispatch(assignmentId:string,ctx:OperatorContext):Prom
    if(!current||String(current.complaint_id)!==String(probe.complaint_id)||String(current.request_id)!==String(probe.request_id))throw AppError.conflict('交办关联已变化，请刷新');
    if((TERMINAL_SUPERVISION_STATUSES as readonly string[]).includes(String(current.status)))throw new AppError('INVALID_STATE_TRANSITION','终态交办不允许推送');
    if(identity!==currentTransportIdentity())throw AppError.conflict('集成目标已变化，请重新预检');
-   const [stored]=await tx.query('select body,sha256 from dispatch_push_snapshot where assignment_id=?',[assignmentId]) as [Array<{body:string;sha256:string}>,unknown];
-   const [currentLegacy]=await tx.query('select request_body as body from dispatch_request_log where assignment_id=? and request_body is not null order by attempt,id limit 1',[assignmentId]) as [Array<{body:string}>,unknown];
-   const originalBytes=stored[0]??currentLegacy[0];
+   const lockedOriginal=await findOriginalPushBody(tx,assignmentId);
    // A signed callback may have registered an old task during unlocked preflight.
    // Current task facts cannot turn today's candidate into historical request evidence.
-   if(current.reporting_task_id&&!originalBytes)throw AppError.conflict('已有填报任务但缺少原始请求证据，需人工核验');
-   let bytes=candidate;
-   if(originalBytes)bytes=restoreSnapshot(originalBytes.body,'sha256' in originalBytes?originalBytes.sha256:undefined);
-   else if(!legacyBytes){
+   if(current.reporting_task_id&&!lockedOriginal)throw AppError.conflict('已有填报任务但缺少原始请求证据，需人工核验');
+   const bytes=lockedOriginal?.bytes??candidate;
+   if(!lockedOriginal&&!original){
     const [nowVersion]=await tx.query('select edit_version from complaint where complaint_id=?',[String(current.complaint_id)]) as [Array<{edit_version:number}>,unknown];
     const final=serializeOnce(buildTaskPayload(await preparePush(assignmentId,tx)));
     if(final.bodySha256!==candidate.bodySha256||String(nowVersion[0]?.edit_version)!==String(versions[0]?.edit_version))throw AppError.conflict('预检后诉求或交办信息已变化，请刷新重试');
    }
    validatePushIdentity(bytes,assignmentId,String(current.complaint_id),String(current.request_id),String(current.target_enterprise_code));
-   if(!stored[0])await tx.execute('insert into dispatch_push_snapshot(assignment_id,request_id,body,sha256,created_at) values(?,?,?,?,?)',[assignmentId,String(current.request_id),bytes.bodyText,bytes.bodySha256,new Date()]);
+   if(!lockedOriginal?.frozen)await tx.execute('insert into dispatch_push_snapshot(assignment_id,request_id,body,sha256,created_at) values(?,?,?,?,?)',[assignmentId,String(current.request_id),bytes.bodyText,bytes.bodySha256,new Date()]);
    const before=await readOutbox(tx,String(current.request_id));
-   let row=await enqueueInTx(tx,{request_id:String(current.request_id),assignment_id:assignmentId,complaint_id:String(current.complaint_id),payload_hash:bytes.bodySha256,transport_identity:identity,recovery_mode:env.pu.recoveryMode,contract_version:env.pu.recoveryContractVersion,initiator_id:ctx.userId!,initiator_name:ctx.userName??null,client_ip:ctx.clientIp,scope_version:scope.scopeVersion,authorization_version:auth.authorizationVersion},!!originalBytes||!!legacyBytes);
+   let row=await enqueueInTx(tx,{request_id:String(current.request_id),assignment_id:assignmentId,complaint_id:String(current.complaint_id),payload_hash:bytes.bodySha256,transport_identity:identity,recovery_mode:env.pu.recoveryMode,contract_version:env.pu.recoveryContractVersion,initiator_id:ctx.userId!,initiator_name:ctx.userName??null,client_ip:ctx.clientIp,scope_version:scope.scopeVersion,authorization_version:auth.authorizationVersion},!!lockedOriginal||!!original);
    const requeued=await requeueRejectedInTx(tx,row,identity,bytes.bodySha256,preflightPassed&&bytes.bodySha256===candidate.bodySha256);
    if(row.state==='failed'&&requeued.state==='pending'){
     await tx.execute('update dispatch_outbox set initiator_id=?,initiator_name=?,client_ip=?,scope_version=?,authorization_version=? where request_id=?',[ctx.userId,ctx.userName,ctx.clientIp,scope.scopeVersion,auth.authorizationVersion,row.request_id]);
@@ -314,7 +325,22 @@ async function preflightPayload(payload:Record<string,unknown>):Promise<Prefligh
  if(typeof result.ready!=='boolean'||!Array.isArray(result.issues))throw AppError.internal('invalid preflight response');
  return {ready:result.ready,issues:result.issues.map(issue=>({code:String(issue.code??''),subjectCode:typeof issue.subjectCode==='string'?issue.subjectCode:null,message:typeof issue.message==='string'?issue.message:'外部预检未通过'}))};
 }
-export async function preflightDispatch(assignmentId:string):Promise<PreflightResult>{const prep=await preparePush(assignmentId);assertPuCredentials();return preflightPayload(buildTaskPayload(prep));}
+export async function preflightDispatch(assignmentId: string): Promise<PreflightResult> {
+  const order = await findOrderByAssignmentId(pool, assignmentId);
+  if (!order) throw AppError.notFound('交办单不存在');
+  if ((TERMINAL_SUPERVISION_STATUSES as readonly string[]).includes(String(order.status))) {
+    throw new AppError('INVALID_STATE_TRANSITION', '终态交办不允许推送');
+  }
+  const original = await findOriginalPushBody(pool, assignmentId);
+  if (original) {
+    validatePushIdentity(original.bytes, assignmentId, String(order.complaint_id), String(order.request_id), String(order.target_enterprise_code));
+    assertPuCredentials();
+    return preflightPayload(JSON.parse(original.bytes.bodyText));
+  }
+  const payload = buildTaskPayload(await preparePush(assignmentId));
+  assertPuCredentials();
+  return preflightPayload(payload);
+}
 
 /** 推送尝试日志（按 attempt 升序），交办不存在时 404 */
 export async function listPushLogs(

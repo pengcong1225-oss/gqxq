@@ -1,53 +1,157 @@
-import {evaluateHeat,TENDER_HEAT_POLICY,TENDER_HEAT_POLICY_ID} from '../domain/heatRule';
+import {buildSpatialScopeSql, canAccessSpatialMaster} from '../auth/gridScope';
+import type {AccessContext} from '../auth/accessScope';
+import {evaluateHeat, policyFingerprint, TENDER_HEAT_POLICY, TENDER_HEAT_POLICY_ID, validateCoefficients, validateConfirmation} from '../domain/heatRule';
 import {SIMULATED_HEAT_COEFFICIENTS} from '../domain/simulatedYichangGrid';
 import {dayCount} from '../domain/statisticsQuery';
-import type {buildScreen} from '../domain/screen';
+import type {buildScreen, ScreenQuery} from '../domain/screen';
 import type {TenderDataset} from '../types/tenderSupport';
-import type {ScreenSection,ScreenHeat,ScreenHeatRuleRef} from '../types/screen';
-import {pool} from '../db/pool';
+import type {ScreenSection, ScreenHeat, ScreenHeatRuleRef} from '../types/screen';
 import {rowsIn} from '../repositories/serviceGridRepo';
-import {heatJson} from '../repositories/heatRuleRepo';
-/** 可注入的已发布热力规则读取器：默认走只读 SQL，单测可注入假数据源覆盖分支。 */
-export type PublishedHeatRuleReader=(to:string)=>Promise<ScreenHeatRuleRef[]>;
-const shanghaiDay=(v:unknown)=>v instanceof Date?v.toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'}):String(v??'').slice(0,10);
-/**
- * 正式模式读取已发布热力规则（只读）：按查询结束日对每个分类取最近一条生效版本
- * （heat_rule_published.effective_from<=to），并核对 heat_policy_version 是否有对应政策版本。
- * 读不到任何规则即返回空数组，不伪造系数/几何。
- */
-async function readPublishedHeatRules(to:string):Promise<ScreenHeatRuleRef[]>{
- const published=await rowsIn(pool,'select category_key,version_id,effective_from,content from heat_rule_published where effective_from<=? order by category_key,effective_from desc',[to]);
- const policies=await rowsIn(pool,'select policy_id,policy_version from heat_policy_version');
- const policyKeys=new Set(policies.map(r=>String(r.policy_id)+'|'+String(r.policy_version)));
- const seen=new Set<string>();const rules:ScreenHeatRuleRef[]=[];
- for(const row of published){
-  const categoryKey=String(row.category_key);if(seen.has(categoryKey))continue;seen.add(categoryKey);
-  let content:any=null;try{content=heatJson<any>(row.content);}catch{content=null;}
-  const rule=content?.rule??{};
-  const policyId=typeof rule.policyId==='string'?rule.policyId:null;
-  const policyVersion=Number.isSafeInteger(rule.policyVersion)?Number(rule.policyVersion):null;
-  rules.push({categoryKey,ruleVersion:typeof rule.version==='string'?rule.version:String(row.version_id),policyId,policyVersion,policyPublished:!!policyId&&policyVersion!==null&&policyKeys.has(policyId+'|'+policyVersion),effectiveFrom:shanghaiDay(row.effective_from)});
- }
- return rules;
+import {heatCategoryKey, heatJson, readPublishedHeat} from '../repositories/heatRuleRepo';
+import type {SqlExecutor} from '../repositories/userRepo';
+import {validateGeometry} from './serviceGridService';
+import {CATEGORY_TYPE} from './categoryService';
+import {readDictionaryItems} from './dictService';
+import type {FrozenHeatRule} from './heatRuleService';
+import type {ScreenEvidenceItem} from './screenEvidence';
+
+const thresholdsFor=(coefficients:readonly string[],days:number)=>coefficients.map(c=>Number((Number(c)*days).toFixed(2)));
+type Options={query:ScreenQuery;access:AccessContext;db:SqlExecutor;details?:Map<string,ScreenEvidenceItem[]>};
+
+async function readRule(db:SqlExecutor,key:string,to:string) {
+ const row=await readPublishedHeat(db,key,to);
+ if(!row)return null;
+ const frozen=heatJson<FrozenHeatRule>(row.content);
+ const {rule,policy,confirmation}=frozen;
+ const ref:ScreenHeatRuleRef={categoryKey:key,ruleVersion:String(row.version_id),policyId:rule.policyId,policyVersion:rule.policyVersion,policyPublished:false,effectiveFrom:rule.effectiveFrom};
+ const appliedKey=heatCategoryKey(rule.category.majorCode,rule.category.minorCode);
+ if(frozen.formatVersion!==1||rule.version!==ref.ruleVersion||appliedKey!==key||
+    !validateConfirmation(confirmation,rule.policyVersion,policy))return {frozen,ref};
+ validateCoefficients(rule.coefficients);
+ const [published]=await rowsIn(db,'select fingerprint from heat_policy_version where policy_id=? and policy_version=?',[rule.policyId,rule.policyVersion]);
+ ref.policyPublished=published?.fingerprint===policyFingerprint(policy);
+ return {frozen,ref};
 }
-export async function screenHeat(result:ReturnType<typeof buildScreen>,dataset:TenderDataset|null,permissions:readonly string[],readRules:PublishedHeatRuleReader=readPublishedHeatRules):Promise<ScreenSection<ScreenHeat>>{
- const empty:ScreenHeat={days:null,thresholds:null,coefficients:null,policyId:null,ruleVersion:null,rules:[],grids:[]};
- if(!permissions.includes('grid.read')||!permissions.includes('heatmap.read'))return {state:'unavailable',reason:'缺少网格或热力权限',data:empty};
+
+async function readGrids({db,query,access}:Options) {
+ const scope=buildSpatialScopeSql(access,'audit_ag.district_code');
+ const conditions=[scope.sql,'audit_ag.code<>audit_ag.district_code','audit_ag.geometry is not null','audit_ag.coordinate_system=\'WGS84\''];
+ const params=scope.params;
+ if(query.districtCode){conditions.push('audit_ag.district_code=?');params.push(query.districtCode);}
+ if(query.adminGridCode){conditions.push('audit_ag.code=?');params.push(query.adminGridCode);}
+ return rowsIn(db,'select code,name,district_code,version,geometry,coordinate_system,geometry_source from admin_grid audit_ag where '+conditions.join(' and ')+' order by code',params);
+}
+
+function visibleZero(access:AccessContext,district:string,query:ScreenQuery) {
+ return !query.enterpriseCode&&!query.communityCode&&access.rules.some(r=>r.kind==='all'||!r.enterpriseCodes.length&&r.districtCodes.includes(district));
+}
+
+/** Map the exact scoped ledger slice by its recorded administrative grid and district. */
+async function mapGrids(rows:ScreenEvidenceItem[], options:Options, days:number, selected:FrozenHeatRule|null) {
+ const {query,access,db,details}=options;
+ const rowsByGrid=new Map<string,ScreenEvidenceItem[]>();
+ for(const row of rows){
+  const list=rowsByGrid.get(row.adminGridCode)??[];
+  list.push(row);
+  rowsByGrid.set(row.adminGridCode,list);
+ }
+ const grids:ScreenHeat['grids']=[];
+ const mappedCommunities=new Map<string,string>();
+ const matched=new Map<string,ScreenEvidenceItem[]>();
+ for(const grid of await readGrids(options)){
+  const {code,name,district_code:district,geometry_source:source}=grid;
+  if(typeof code!=='string'||typeof district!=='string'||code===district||!canAccessSpatialMaster(access,district)||
+    grid.coordinate_system!=='WGS84'||typeof source!=='string'||!source.trim()||
+    /模拟|演示|测试|示例|近似|推导|栅格|未知|不明|待|未确认|未核验|未核实|无来源|\b(osm|unknown|test|tbd|n\/a)\b|voronoi|buffer|simulation|demo|approx|unverified|pending/i.test(source))continue;
+  const members=(rowsByGrid.get(code)??[]).filter(row=>row.districtCode===district);
+  if(!members.length&&!visibleZero(access,district,query))continue;
+  let geometry;
+  try{geometry=validateGeometry(heatJson(grid.geometry));}catch{continue;}
+  if(!geometry)continue;
+  for(const row of members)if(row.communityCode!=='__missing__')mappedCommunities.set(row.communityCode,code);
+  matched.set(code,members);
+  grids.push({code,name:String(name),geometry,geometrySource:source,geometryVersion:String(grid.version),communities:[],
+   count:members.length,...evaluateHeat({count:members.length,days,rule:selected?.rule??null,policy:selected?.policy})});
+ }
+ const communitiesByGrid=new Map<string,Set<string>>();
+ const communityCodes=[...mappedCommunities.keys()];
+ for(let offset=0;offset<communityCodes.length;offset+=500){
+  const batch=communityCodes.slice(offset,offset+500);
+  const communities=await rowsIn(db,'select code,name,admin_grid_code from community where code in ('+batch.map(()=>'?').join(',')+') order by name,code',batch);
+  for(const {code,name,admin_grid_code:gridCode} of communities){
+   if(typeof gridCode!=='string'||typeof name!=='string'||mappedCommunities.get(String(code))!==gridCode)continue;
+   const names=communitiesByGrid.get(gridCode)??new Set<string>();
+   names.add(name);
+   communitiesByGrid.set(gridCode,names);
+  }
+ }
+ for(const grid of grids){
+  grid.communities=[...(communitiesByGrid.get(grid.code)??[])];
+  details?.set(grid.code,matched.get(grid.code)!);
+ }
+ return grids;
+}
+
+export async function screenHeat(result:ReturnType<typeof buildScreen>,dataset:TenderDataset|null,permissions:readonly string[],options?:Options):Promise<ScreenSection<ScreenHeat>>{
+ const data:ScreenHeat={days:null,thresholds:null,coefficients:null,policyId:null,ruleVersion:null,rules:[],grids:[],categories:[],unmappedCount:null};
+ const unavailable=(reason:string):ScreenSection<ScreenHeat>=>({state:'unavailable',reason,data});
+ if(!permissions.includes('grid.read')||!permissions.includes('heatmap.read'))return unavailable('缺少网格或热力权限');
+ const days=dayCount(result.window.from,result.window.to);
+ data.days=days;
  if(result.mode==='simulation'&&dataset){
-  const days=dayCount(result.window.from,result.window.to),coefficients=[...SIMULATED_HEAT_COEFFICIENTS],version='simulation-only';
-  const thresholds=coefficients.map(c=>Number((Number(c)*days).toFixed(2)));
+  const coefficients=[...SIMULATED_HEAT_COEFFICIENTS],version='simulation-only';
   const grids=dataset.grids.map(g=>{const count=result.details.filter(r=>r.adminGridCode===g.id).length;
    return {code:g.id,count,...evaluateHeat({count,days,rule:{version,coefficients},policy:TENDER_HEAT_POLICY})};});
-  return {state:'available',reason:'仅模拟样本，非正式热力',data:{days,thresholds,coefficients,policyId:TENDER_HEAT_POLICY_ID,ruleVersion:version,rules:[],grids}};
+  return {state:'available',reason:'仅模拟样本，非正式热力',data:{...data,thresholds:thresholdsFor(coefficients,days),coefficients,policyId:TENDER_HEAT_POLICY_ID,ruleVersion:version,grids}};
  }
- if(result.mode!=='simulation'){
-  let rules:ScreenHeatRuleRef[];
-  try{rules=await readRules(result.window.to);}catch{return {state:'unavailable',reason:'读取已发布热力规则失败，正式热力不可计算',data:empty};}
-  if(!rules.length)return {state:'unavailable',reason:'无已发布热力规则',data:empty};
-  const single=rules.length===1?rules[0]:null;
-  const data:ScreenHeat={days:dayCount(result.window.from,result.window.to),thresholds:null,coefficients:null,policyId:single?.policyId??null,ruleVersion:single?.ruleVersion??null,rules,grids:[]};
-  if(!rules.some(rule=>rule.policyPublished))return {state:'unavailable',reason:'已取到已发布热力规则版本，但缺少已确认政策版本，正式热力不可计算',data};
-  return {state:'partial',reason:'规则版本已取到，但缺行政网格边界/服务网格几何，正式热力不可计算',data};
+ if(!options)return unavailable('正式热力查询上下文不可用');
+ const {db,query}=options;
+ let selected:FrozenHeatRule|null=null;
+ let ruleReason:string|null=null;
+ let categoryIndustry:string|null=null;
+ try{
+  const items=await readDictionaryItems(db,CATEGORY_TYPE);
+  const published=items.filter(i=>i.published&&i.status==='enabled');
+  data.categories=published.filter(i=>!i.parentCode||published.some(parent=>parent.code===i.parentCode&&!parent.parentCode))
+   .map(i=>({code:i.code,name:i.label,parentCode:i.parentCode}));
+  const item=data.categories.find(i=>i.code===query.categoryCode);
+  const major=item?.parentCode??item?.code;
+  categoryIndustry=major==='water_service'?'water':major==='gas_service'?'gas':null;
+  if(!item)ruleReason=query.categoryCode?'所选诉求分类缺少有效字典映射':'请选择诉求大类或小类';
+  else if(categoryIndustry&&query.businessType&&query.businessType!==categoryIndustry){
+   ruleReason='所选诉求分类与当前行业不匹配';
+  }
+  else {
+   const exact=await readRule(db,heatCategoryKey(item.parentCode??item.code,item.parentCode?item.code:null),query.to);
+   const fallback=!exact&&item.parentCode?await readRule(db,heatCategoryKey(item.parentCode,null),query.to):null;
+   const candidate=exact??(fallback?.frozen.policy?.classFallback==='minor_then_major'?fallback:null);
+   if(candidate){
+    data.rules=[candidate.ref];
+    data.ruleVersion=candidate.ref.ruleVersion;
+    data.policyId=candidate.ref.policyId;
+   }
+   if(!candidate)ruleReason='所选分类截至统计结束日无已发布热力规则';
+   else if(!candidate.ref.policyPublished)ruleReason='已发布热力规则缺少可核验的确认政策版本';
+   else {
+    selected=candidate.frozen;
+    data.coefficients=selected.rule.coefficients;
+    data.thresholds=thresholdsFor(data.coefficients,days);
+   }
+  }
+ }catch{
+  ruleReason='读取已发布热力规则失败';
  }
- return {state:'unavailable',reason:'正式空间资源及发布规则尚未核验',data:empty};
+ let geometryReason:string|null=null;
+ try{
+  const demands=result.details.filter(row=>(row.businessType==='water'||row.businessType==='gas')&&(!categoryIndustry||row.businessType===categoryIndustry));
+  data.grids=await mapGrids(demands,options,days,selected);
+  data.unmappedCount=demands.length-data.grids.reduce((sum,g)=>sum+g.count,0);
+  if(!data.grids.length)geometryReason='当前范围缺少可核验的正式行政网格面';
+  else if(data.unmappedCount)geometryReason=`${data.unmappedCount} 件诉求缺少可核验的正式行政网格关联`;
+ }catch{
+  geometryReason='读取正式行政网格关系失败';
+ }
+ const reason=[ruleReason,geometryReason].filter(Boolean).join('；');
+ if(ruleReason||!data.grids.length)return unavailable(reason);
+ return {state:geometryReason?'partial':'available',reason:reason||null,data};
 }

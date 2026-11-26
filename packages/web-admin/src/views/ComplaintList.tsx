@@ -2,6 +2,7 @@ import { downloadCsv } from '../utils/csvExport';
 import {namedLabel,sourceLabel} from '../utils/chineseDisplay';
 import {useWriteAccess} from '../stores/roleAccess';
 import ComplaintImportDialog from '../components/ComplaintImportDialog';
+import SourceCategoryBackfillDialog from '../components/SourceCategoryBackfillDialog';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -42,6 +43,7 @@ import type { Dayjs } from 'dayjs';
 import { listComplaints } from '../api/complaints';
 import { applyDisposition } from '../api/complaintActions';
 import { createDispatch } from '../api/dispatch';
+import DispatchFormFields, { type DispatchFormValues } from '../components/DispatchFormFields';
 import { getDictItems } from '../api/dicts';
 import { listEnterpriseOptions } from '../api/enterprises';
 import { getSourceAdapterState } from '../api/source';
@@ -279,13 +281,7 @@ const ComplaintList: React.FC = () => {
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [dispatchForm] = Form.useForm<{
-    targetEnterpriseCode: string;
-    targetEnterpriseName: string;
-    deadline?: Dayjs;
-    requirement?: string;
-    reason?: string;
-  }>();
+  const [dispatchForm] = Form.useForm<DispatchFormValues>();
   const [dispositionForm] = Form.useForm<{ reason: string }>();
 
   /* ---------- 企业主数据：发起交办时的企业选择 ---------- */
@@ -422,13 +418,7 @@ const ComplaintList: React.FC = () => {
 
   const handleCreateDispatch = useCallback(async () => {
     if (!dispatchTarget) return;
-    let values: {
-      targetEnterpriseCode: string;
-      targetEnterpriseName: string;
-      deadline?: Dayjs;
-      requirement?: string;
-      reason?: string;
-    };
+    let values: DispatchFormValues;
     try {
       values = await dispatchForm.validateFields();
     } catch {
@@ -440,10 +430,10 @@ const ComplaintList: React.FC = () => {
         complaintId: dispatchTarget.complaintId,
         targetEnterpriseCode: values.targetEnterpriseCode.trim(),
         targetEnterpriseName: values.targetEnterpriseName.trim(),
-        requirement: values.requirement?.trim() || undefined,
+        requirement: values.requirement.trim(),
         reason: values.reason?.trim() || undefined,
         // 契约要求带时区偏移的 ISO-8601，例如 2026-09-20T18:00:00+08:00
-        deadline: values.deadline ? values.deadline.format('YYYY-MM-DDTHH:mm:ssZ') : undefined,
+        deadline: values.deadline.format('YYYY-MM-DDTHH:mm:ssZ'),
         dispatchType: 'manual',
         triggerType: 'manual_flag',
       });
@@ -519,6 +509,11 @@ const ComplaintList: React.FC = () => {
             {r.isSensitive && (
               <Tag color="red" style={{ marginRight: 4 }}>敏感</Tag>
             )}
+            {r.repeatFlag && (
+              <Tooltip title={r.repeatReason ?? '同一市民同内容重复来电'}>
+                <Tag color="volcano" style={{ marginRight: 4 }}>重复来电</Tag>
+              </Tooltip>
+            )}
             <Tooltip title={t}>{t}</Tooltip>
           </>
         ),
@@ -566,21 +561,29 @@ const ComplaintList: React.FC = () => {
         },
       },
       {
-        title: '办理',
-        width: '10%',
+        title: '来源状态与时效',
+        width: '11%',
         render: (_: unknown, r) => {
           const key = r.overtimeFlag === 1 ? '1' : r.overtimeFlag === 0 ? '0' : 'none';
           return (
-            <Space size={2} wrap>
-              <Tag color={SUPERVISION_COLOR[r.supervisionStatusCode] ?? 'default'}>
-                {namedLabel(r.supervisionStatusCode, r.supervisionStatusName, 'supervision_status')}
-              </Tag>
-              <Tooltip title="来源未给出时效信息（未同步 / 正常在办 / 状态认不出 / 历史未回填），不等于「未超期」">
+            <div style={{ overflowWrap: 'anywhere' }}>
+              <div>事件：{r.sourceEventStatusRaw ?? <span title="来源未提供">{DASH}</span>}</div>
+              <div>督办：{r.sourceSupervisionStatusRaw ?? <span title="来源未提供">{DASH}</span>}</div>
+              <Tooltip title={key === 'none' ? '来源未提供可核实的超期时效信息' : '来源超期时效'}>
                 <Tag color={OVERTIME_COLOR[key]}>{r.overtimeFlagName}</Tag>
               </Tooltip>
-            </Space>
+            </div>
           );
         },
+      },
+      {
+        title: '平台交办状态',
+        width: '9%',
+        render: (_: unknown, r) => (
+          <Tag color={SUPERVISION_COLOR[r.supervisionStatusCode] ?? 'default'} style={{whiteSpace:'normal'}}>
+            {namedLabel(r.supervisionStatusCode, r.supervisionStatusName, 'supervision_status')}
+          </Tag>
+        ),
       },
       {
         title: '区域',
@@ -780,7 +783,7 @@ const ComplaintList: React.FC = () => {
             onChange={(v: UrgencyLevel | undefined) => applyFilter({ urgencyLevel: v })}
           />
           <Select
-            placeholder="督办状态"
+            placeholder="平台交办状态"
             allowClear
             style={{ width: 150 }}
             options={dictOptions('supervision_status')}
@@ -862,6 +865,7 @@ const ComplaintList: React.FC = () => {
               ], '诉求列表-本页.csv')}>导出本页</Button>
           </Tooltip>
           <ComplaintImportDialog onImported={reload}/>
+          <SourceCategoryBackfillDialog onApplied={reload}/>
         </Space>
 
 
@@ -965,12 +969,7 @@ const ComplaintList: React.FC = () => {
           >
             <Input disabled placeholder="选择交办企业后自动带出" />
           </Form.Item>
-          <Form.Item name="deadline" label="截止时间">
-            <DatePicker showTime style={{ width: '100%' }} placeholder="可选" />
-          </Form.Item>
-          <Form.Item name="requirement" label="交办要求">
-            <Input.TextArea rows={2} placeholder="可选，例如：请核实情况并填报企业处置结果。" />
-          </Form.Item>
+          <DispatchFormFields />
           <Form.Item name="reason" label="交办原因">
             <Input.TextArea rows={2} placeholder="可选" />
           </Form.Item>

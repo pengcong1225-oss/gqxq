@@ -288,7 +288,7 @@ const DispatchArchive: React.FC = () => {
               <Tag>{namedLabel(detail.status,detail.statusName,'supervision_status')}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="触发类型">{detail.triggerTypeName || DASH}</Descriptions.Item>
-            <Descriptions.Item label="交办要求">{detail.requirement ?? DASH}</Descriptions.Item>
+            <Descriptions.Item label="企业处置说明">{detail.requirement || DASH}</Descriptions.Item>
             <Descriptions.Item label="填报任务号">{detail.reportingTaskId ?? DASH}</Descriptions.Item>
             <Descriptions.Item label="推送时间">{fmt(detail.pushedAt)}</Descriptions.Item>
             <Descriptions.Item label="完成时间">{fmt(detail.completedAt)}</Descriptions.Item>

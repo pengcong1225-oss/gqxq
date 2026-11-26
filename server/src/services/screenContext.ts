@@ -6,9 +6,12 @@ export interface ScreenContext {
  scope:string;
  expires:number;
  details:ReturnType<typeof buildScreen>['details'];
+ eventDemandTimes:ReturnType<typeof buildScreen>['eventDemandTimes'];
+ capturedAt:number;
  periodDetails:ReturnType<typeof buildScreen>['periodDetails'];
  events:ReturnType<typeof buildScreen>['events'];
  gridCodes:string[];
+ heatGridDetails?:Map<string,ReturnType<typeof buildScreen>['details']>;
  evidence:Record<string,ScreenEvidenceRecord>;
  mode:'real'|'simulation';
 }
