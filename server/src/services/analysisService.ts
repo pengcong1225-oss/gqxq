@@ -1,5 +1,5 @@
 import { currentAccessContext } from '../auth/accessScope';
-import { projectComplaintDetail } from './complaintProjection';
+import { projectComplaintDetail, projectCorrectionItems } from './complaintProjection';
 // G5 分析库与待查报告：只读 + 下钻。
 // 入库逻辑在 correctionService.maybeEnterAnalysis（唯一入口），本文件不写任何业务表。
 import type {
@@ -53,12 +53,12 @@ export async function listAnalysisRecords(
 }
 
 /** 单条分析记录 + 诉求 / 交办 / 审批轨迹 / 纠偏项 / 待查待办，全部真实数据，失败即抛错。 */
-export async function getAnalysisDrilldown(analysisId: string): Promise<AnalysisDrilldown> {
+export async function getAnalysisDrilldown(analysisId: string, permissionCodes:readonly string[]=[]): Promise<AnalysisDrilldown> {
   const record = await findAnalysisByAnalysisId(pool, analysisId);
   if (!record) throw AppError.notFound('分析记录不存在');
 
   const complaintRow = await findByIdOrNo(record.complaintId);
-  const complaint = complaintRow ? projectComplaintDetail(complaintRow,currentAccessContext()) : null;
+  const complaint = complaintRow ? projectComplaintDetail(complaintRow,currentAccessContext(),permissionCodes) : null;
 
   let dispatch: DispatchOrderDetail | null = null;
   if (record.assignmentId !== null) {
@@ -71,7 +71,7 @@ export async function getAnalysisDrilldown(analysisId: string): Promise<Analysis
   const corrections = await listByComplaint(pool, record.complaintId);
   const reportTodo = await findTodoByAnalysisId(pool, analysisId);
 
-  return { record, complaint, dispatch, approvalTraces, corrections, reportTodo };
+  return { record, complaint, dispatch, approvalTraces, corrections:projectCorrectionItems(corrections,permissionCodes), reportTodo };
 }
 
 export async function listReportTodos(query: Record<string, unknown>): Promise<Paged<ReportTodoItem>> {

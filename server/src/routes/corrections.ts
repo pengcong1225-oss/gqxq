@@ -52,7 +52,7 @@ function ctxOf(req: Request): MasterDataContext {
 /** 待纠偏队列（全局），支持按诉求过滤 */
 correctionsRouter.get('/corrections/pending', async (req, res, next) => {
   try {
-    ok(res, await listPendingCorrections(req.query as Record<string, unknown>));
+    ok(res, await listPendingCorrections(req.query as Record<string, unknown>, req.user?.permissionCodes));
   } catch (err) {
     next(err);
   }
@@ -70,7 +70,7 @@ correctionsRouter.get('/corrections/pending-complaints', async (req, res, next) 
 /** 某诉求的全部纠偏项（含已确认 / 已判定无需纠偏，供详情页展示完整清单） */
 correctionsRouter.get('/complaints/:idOrNo/corrections', async (req, res, next) => {
   try {
-    ok(res, await listComplaintCorrections(String(req.params.idOrNo)));
+    ok(res, await listComplaintCorrections(String(req.params.idOrNo), req.user?.permissionCodes));
   } catch (err) {
     next(err);
   }

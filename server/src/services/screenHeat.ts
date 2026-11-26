@@ -1,5 +1,6 @@
 import {buildSpatialScopeSql, canAccessSpatialMaster} from '../auth/gridScope';
 import type {AccessContext} from '../auth/accessScope';
+import {isCimBoundarySource} from '../domain/cimBoundarySource';
 import {evaluateHeat, policyFingerprint, TENDER_HEAT_POLICY, TENDER_HEAT_POLICY_ID, validateCoefficients, validateConfirmation} from '../domain/heatRule';
 import {SIMULATED_HEAT_COEFFICIENTS} from '../domain/simulatedYichangGrid';
 import {dayCount} from '../domain/statisticsQuery';
@@ -39,7 +40,7 @@ async function readGrids({db,query,access}:Options) {
  const params=scope.params;
  if(query.districtCode){conditions.push('audit_ag.district_code=?');params.push(query.districtCode);}
  if(query.adminGridCode){conditions.push('audit_ag.code=?');params.push(query.adminGridCode);}
- return rowsIn(db,'select code,name,district_code,version,geometry,coordinate_system,geometry_source from admin_grid audit_ag where '+conditions.join(' and ')+' order by code',params);
+ return rowsIn(db,'select code,name,district_code,version,geometry,coordinate_system,geometry_source,administrative_community_name from admin_grid audit_ag where '+conditions.join(' and ')+' order by code',params);
 }
 
 function visibleZero(access:AccessContext,district:string,query:ScreenQuery) {
@@ -60,7 +61,7 @@ async function mapGrids(rows:ScreenEvidenceItem[], options:Options, days:number,
  const matched=new Map<string,ScreenEvidenceItem[]>();
  for(const grid of await readGrids(options)){
   const {code,name,district_code:district,geometry_source:source}=grid;
-  if(typeof code!=='string'||typeof district!=='string'||code===district||!canAccessSpatialMaster(access,district)||
+  if(typeof code!=='string'||typeof district!=='string'||code===district||isCimBoundarySource(code,source,'community')||!canAccessSpatialMaster(access,district)||
     grid.coordinate_system!=='WGS84'||typeof source!=='string'||!source.trim()||
     /模拟|演示|测试|示例|近似|推导|栅格|未知|不明|待|未确认|未核验|未核实|无来源|\b(osm|unknown|test|tbd|n\/a)\b|voronoi|buffer|simulation|demo|approx|unverified|pending/i.test(source))continue;
   const members=(rowsByGrid.get(code)??[]).filter(row=>row.districtCode===district);
@@ -70,7 +71,9 @@ async function mapGrids(rows:ScreenEvidenceItem[], options:Options, days:number,
   if(!geometry)continue;
   for(const row of members)if(row.communityCode!=='__missing__')mappedCommunities.set(row.communityCode,code);
   matched.set(code,members);
-  grids.push({code,name:String(name),geometry,geometrySource:source,geometryVersion:String(grid.version),communities:[],
+  const administrativeCommunityName=isCimBoundarySource(code,source,'community-grid')&&typeof grid.administrative_community_name==='string'
+    ?grid.administrative_community_name.trim()||null:null;
+  grids.push({code,name:String(name),geometry,geometrySource:source,geometryVersion:String(grid.version),communities:[],administrativeCommunityName,
    count:members.length,...evaluateHeat({count:members.length,days,rule:selected?.rule??null,policy:selected?.policy})});
  }
  const communitiesByGrid=new Map<string,Set<string>>();

@@ -100,7 +100,9 @@ async function plan(tx:Tx,rawRows:ImportRow[],kind:MasterDataImportKind,ctx:Mast
     input={...v,aliases,verified:bool(v.verified),expectedVersion:Number(old?.version??0),expectedEnterpriseVersion:enterprise?.version??0};const result=await enterpriseService.validateMappingInTx(tx,input as unknown as DepartmentMappingInput,ctx);before=result.before;after=result.input;dependency=result.dependency;const oldAliases=result.before?typeof result.before.aliases==='string'?JSON.parse(result.before.aliases):result.before.aliases:null;unchanged=!!result.before&&result.before.source_department_name===input.sourceDepartmentName&&Boolean(Number(result.before.verified))===input.verified&&isDeepStrictEqual(oldAliases,[...new Set(aliases as string[])].sort());
    }else if(kind==='admin_grid'||kind==='grid_boundary'){
     const old=await readAdminIn(tx,String(v.code),true);if(kind==='grid_boundary'&&!old)throw AppError.validation('边界只能绑定已登记行政网格');input=kind==='grid_boundary'?{code:v.code,name:old!.name,districtCode:old!.districtCode,geometry:v.geometry,coordinateSystem:v.coordinateSystem,geometrySource:v.geometrySource,expectedVersion:old!.version}:{...v,geometry:old?.geometry??null,coordinateSystem:old?.coordinateSystem??null,geometrySource:old?.geometrySource??null,expectedVersion:old?.version??0};
-    const district=await readDictionaryType(tx,'district',true);if(district)input.expectedDistrictVersion=district.version;const result=await serviceGridService.validateAdminInTx(tx,input as unknown as AdminGridInput,ctx);before=result.before;after=result.value;dependency=result.dependency;unchanged=isDeepStrictEqual(before,after);
+    const district=await readDictionaryType(tx,'district',true);if(district)input.expectedDistrictVersion=district.version;
+    const communityName=kind==='grid_boundary'?v.administrativeCommunityName as string|null|undefined:undefined;
+    const result=await serviceGridService.validateAdminInTx(tx,input as unknown as AdminGridInput,ctx,communityName);before=result.before;after=result.value;dependency=result.dependency;unchanged=isDeepStrictEqual(before,after);
    }else if(kind==='community'){
     const old=await readCommunityIn(tx,String(v.code),true);const parent=await readAdminIn(tx,String(v.adminGridCode),true);input={...v,expectedVersion:old?.version??0,expectedAdminVersion:parent?.version??0};const result=await serviceGridService.validateCommunityInTx(tx,input as unknown as CommunityInput,ctx);before=result.before;after=result.value;dependency=result.dependency;unchanged=isDeepStrictEqual(before,after);
    }else if(kind==='service_grid'){
@@ -158,7 +160,8 @@ export class MasterDataImportService {
     else if(b.kind==='enterprise')result=await enterpriseService.saveInTx(tx,input as unknown as EnterpriseWriteInput,current);
     else if(b.kind==='household'){result=await enterpriseService.saveHouseholdsInTx(tx,input as unknown as HouseholdWriteInput,current);touchedEnterprises.set(String(input.enterpriseCode),result.version);}
     else if(b.kind==='department_mapping')result=await enterpriseService.saveMappingInTx(tx,input as unknown as DepartmentMappingInput,current);
-    else if(b.kind==='admin_grid'||b.kind==='grid_boundary')result=await serviceGridService.saveAdminInTx(tx,input as unknown as AdminGridInput,current);
+    else if(b.kind==='admin_grid'||b.kind==='grid_boundary')result=await serviceGridService.saveAdminInTx(tx,input as unknown as AdminGridInput,current,
+      b.kind==='grid_boundary'?d.values.administrativeCommunityName as string|null|undefined:undefined);
     else if(b.kind==='community')result=await serviceGridService.saveCommunityInTx(tx,input as unknown as CommunityInput,current);
     else if(b.kind==='service_grid')result=await serviceGridService.registerInTx(tx,input as unknown as GridRegistrationInput,current);
     else result=await serviceGridService.saveInTx(tx,input as unknown as ServiceGridInput,current);

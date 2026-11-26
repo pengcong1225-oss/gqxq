@@ -63,4 +63,18 @@ test('approved projected fixtures produce B4 import files with the unchanged ful
   assert.equal(imported.rows[0].values.code,code);
   assert.equal(imported.rows[0].values.coordinateSystem,'WGS84');
   assert.match(String(imported.rows[0].values.geometrySource),/测试审批编号/);
+  assert.equal(imported.rows[0].values.administrativeCommunityName,'社区');
+});
+
+test('only the CIM community-grid source carries its explicit parent name into a boundary import',async()=>{
+  const feature=sourceFeature(2,'42050200100102');
+  feature.fieldValues[4]='';
+  const preview=prepareCimPreview('community-grid',[feature]);
+  const projected={...preview,metadata:{...preview.metadata,srid:4326,sourceSha256:cimPreviewDigest(preview),accuracyMeters:0.2,operation:'Test only calibration'}};
+  const file=await prepareCimBoundaryImport(preview,projected,'测试审批编号');
+  const parsed=await parseImportFile({name:'grid_boundary.geojson',bytes:file},'grid_boundary');
+  assert.equal(parsed.rows[0].values.administrativeCommunityName,null);
+  const unexpected=JSON.parse(file.toString());
+  Object.assign(unexpected.features[0].properties,{geometrySource:'其他边界来源',administrativeCommunityName:'越权填写的社区'});
+  await assert.rejects(parseImportFile({name:'grid_boundary.geojson',bytes:Buffer.from(JSON.stringify(unexpected))},'grid_boundary'),/CIM/);
 });

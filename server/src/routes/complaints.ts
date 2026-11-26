@@ -25,7 +25,7 @@ complaintsRouter.get('/complaints', async (req, res, next) => {
 
 complaintsRouter.get('/complaints/:idOrNo', async (req, res, next) => {
   try {
-    ok(res, await getComplaintDetail(String(req.params.idOrNo)));
+    ok(res, await getComplaintDetail(String(req.params.idOrNo), req.user?.permissionCodes));
   } catch (err) {
     next(err);
   }
@@ -33,7 +33,7 @@ complaintsRouter.get('/complaints/:idOrNo', async (req, res, next) => {
 
 complaintsRouter.get('/complaints/:idOrNo/timeline', async (req, res, next) => {
   try {
-    ok(res, await getComplaintTimeline(String(req.params.idOrNo)));
+    ok(res, await getComplaintTimeline(String(req.params.idOrNo), req.user?.permissionCodes));
   } catch (err) {
     next(err);
   }

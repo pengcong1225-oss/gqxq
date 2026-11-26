@@ -13,6 +13,8 @@ import {insertAudit} from '../repositories/auditLogRepo';
 import {captureStatisticsIn,assertStatisticsPermission,type StatisticsCapture} from './statisticsService';
 import {normalizeStatisticsQuery,dayCount,shanghaiToday} from '../domain/statisticsQuery';
 import type {StatisticsQuery} from '../types/statistics';
+import type {ComplaintDisplayLocation} from '../types/locationCorrection';
+import {readComplaintJitterPoints} from './complaintLocationJitterService';
 const manage=(ctx:MasterDataContext)=>{if(!ctx.userId||!ctx.permissionCodes.includes('heatmap.manage'))throw AppError.forbidden();};
 async function audit(db:Tx,ctx:MasterDataContext,action:string,id:string,input:HeatDraftInput,version:number,publishedVersion?:string){await insertAudit(db,{userId:ctx.userId,appCode:'gqxq',resourceCode:'heat_rule',action,bizType:'heat_rule',bizId:id,result:'success',clientIp:ctx.clientIp,createdAt:new Date(),detail:{ruleId:id,majorCode:input.category.majorCode,minorCode:input.category.minorCode,dictionaryVersion:input.category.dictionaryVersion,version,policyId:input.policyId,policyVersion:input.policyVersion,effectiveFrom:input.effectiveFrom,...(publishedVersion?{publishedVersion}:{})}});}
 export async function saveHeatDraft(raw:unknown,ctx:MasterDataContext){manage(ctx);const input=parseHeatDraft(raw);return withTransaction(tx=>saveHeatDraftIn(tx,input,ctx));}
@@ -98,7 +100,7 @@ function selectedCategory(q:StatisticsQuery,rows:StatisticsCapture['rows']):{maj
  if(minor){const majors=new Set(rows.filter(r=>r.minorCode===minor&&r.majorCode).map(r=>r.majorCode!));if(major)return {majorCode:major,minorCode:minor};if(majors.size===1)return {majorCode:[...majors][0],minorCode:minor};return null;}
  return major?{majorCode:major,minorCode:null}:null;
 }
-export function buildHeatData(capture:StatisticsCapture,rules:FrozenHeatRule[],detail:boolean){
+export function buildHeatData(capture:StatisticsCapture,rules:FrozenHeatRule[],displayLocations:ReadonlyMap<string,ComplaintDisplayLocation>){
  const q=capture.summary.query,category=selectedCategory(q,capture.rows),days=dayCount(q.from,q.to);
  let frozen=category?rules.find(r=>r.rule.category.majorCode===category.majorCode&&r.rule.category.minorCode===category.minorCode):undefined;
  if(!frozen&&category?.minorCode){
@@ -132,14 +134,12 @@ export function buildHeatData(capture:StatisticsCapture,rules:FrozenHeatRule[],d
   }
  }
  const available=frozen&&validateConfirmation(frozen.confirmation,frozen.rule.policyVersion,frozen.policy)?frozen:undefined;
- // Match D1's CRS/source eligibility. A sourced point can still have no historic grid match.
- const points=detail?rows.filter(r=>
-  r.longitude!==null&&r.latitude!==null&&Number.isFinite(r.longitude)&&Number.isFinite(r.latitude)&&
-  Math.abs(r.longitude)<=180&&Math.abs(r.latitude)<=90&&(r.coordinateSystem==='WGS84'||r.coordinateSystem==='CGCS2000')&&Boolean(r.coordinateSource)
- ).map(r=>({
-  complaintId:r.complaintId,longitude:r.longitude!,latitude:r.latitude!,coordinateSystem:r.coordinateSystem,coordinateSource:r.coordinateSource,needsCorrection:Boolean(r.coordinateSource?.includes('待纠偏')),
-  grids:r.grids.filter(code=>r.businessDay&&memberships.get(code)?.has(r.businessDay))
- })):[];
+ const points=rows.flatMap(r=>{
+  const location=displayLocations.get(r.complaintId);
+  if(!location)return [];
+  return [{complaintId:r.complaintId,...location,needsCorrection:false,
+   grids:r.grids.filter(code=>r.businessDay&&memberships.get(code)?.has(r.businessDay))}];
+ });
  return {
   query:q,total:capture.summary.total,unlocatedCount:capture.summary.unlocatedCount,dataCutoffAt:capture.summary.dataCutoffAt,
   statisticsPolicy:capture.summary.policy,partial:capture.summary.partial,excludedByReason:capture.summary.excludedByReason,
@@ -155,7 +155,10 @@ export function buildHeatData(capture:StatisticsCapture,rules:FrozenHeatRule[],d
 export async function captureHeatIn(db:SqlExecutor,q:StatisticsQuery,ctx:MasterDataContext,clock:()=>Date=()=>new Date()){
  if(!ctx.permissionCodes.includes('heatmap.read'))throw AppError.forbidden();const capture=await captureStatisticsIn(db,q,ctx.access,ctx.permissionCodes,clock);const category=selectedCategory(q,capture.rows);const rules:FrozenHeatRule[]=[];
  if(category){for(const minor of category.minorCode?[category.minorCode,null]:[null]){const row=await readPublishedHeat(db,heatCategoryKey(category.majorCode,minor),q.to);if(row)rules.push(heatJson<FrozenHeatRule>(row.content));}}
- return {data:buildHeatData(capture,rules,ctx.permissionCodes.includes('complaint.read')),statistics:capture,rules};
+ const ids=q.projection==='current'&&ctx.permissionCodes.includes('complaint.read')
+  ? [...new Set(capture.rows.filter(r=>r.longitude!==null&&r.latitude!==null).map(r=>r.complaintId))] : [];
+ const displayLocations=await readComplaintJitterPoints(db,ids,ctx.access);
+ return {data:buildHeatData(capture,rules,displayLocations),statistics:capture,rules};
 }
 export async function getHeatData(raw:Record<string,unknown>,ctx:MasterDataContext,clock:()=>Date=()=>new Date()){
  const q=normalizeStatisticsQuery(raw,ctx.access,clock);if(!ctx.permissionCodes.includes('heatmap.read'))throw AppError.forbidden();assertStatisticsPermission(q,ctx.permissionCodes);const conn=await pool.getConnection();try{await conn.query('set transaction isolation level repeatable read');await conn.query('start transaction with consistent snapshot, read only');return (await captureHeatIn(conn,q,ctx,clock)).data;}finally{try{await conn.rollback();}finally{conn.release();}}

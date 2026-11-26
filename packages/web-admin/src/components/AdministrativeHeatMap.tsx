@@ -10,7 +10,7 @@ type Grid=AdministrativeHeatData['grids'][number];
  *
  * 数据是 WGS84（后端契约），高德地图使用 GCJ-02，因此绘制前统一 wgs84ToGcj02；
  * 地图服务统一为高德：未配置 Key 时提示"未配置高德 Key"。
- * 交互：悬停显示网格名/数量/覆盖率，点击回调 onGrid；点位按 needsCorrection 区分。
+ * 悬停显示网格统计，点击打开明细，诉求点使用脱敏展示坐标。
  */
 export default function AdministrativeHeatMap({data,showPoints,onGrid}:{data:AdministrativeHeatData;showPoints:boolean;onGrid:(g:Grid)=>void}){
  const host=useRef<HTMLDivElement>(null),callback=useRef(onGrid);callback.current=onGrid;
@@ -32,7 +32,8 @@ export default function AdministrativeHeatMap({data,showPoints,onGrid}:{data:Adm
    }
   }}
   if(showPoints)for(const p of data.points){
-   const circle=new AMap.Circle({center:wgs84ToGcj02(p.longitude,p.latitude),radius:35,strokeColor:p.needsCorrection?'#8c8c8c':'#262626',strokeWeight:1,fillColor:p.needsCorrection?'#8c8c8c':'#262626',fillOpacity:0.6});
+   if(p.coordinateSource!=='jitter')continue;
+   const circle=new AMap.Circle({center:wgs84ToGcj02(p.longitude,p.latitude),radius:35,strokeColor:'#262626',strokeWeight:1,fillColor:'#262626',fillOpacity:0.6});
    overlays.push(circle);
   }
   if(overlays.length){map.add(overlays);map.setFitView(overlays);}

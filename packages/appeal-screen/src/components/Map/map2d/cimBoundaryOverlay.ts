@@ -14,32 +14,14 @@ export const CIM_BOUNDARY_LEVELS = {
 type CimBoundaryLevel = keyof typeof CIM_BOUNDARY_LEVELS;
 const CIM_CITY_BBOX = [110.251, 29.935, 112.089, 31.572];
 
-export function parseCimBoundaryLink(query: URLSearchParams): {
-  level: CimBoundaryLevel;
-  center: [number, number] | null;
-} {
-  const requestedLevel = query.get('cimLevel');
-  if (!requestedLevel || !Object.hasOwn(CIM_BOUNDARY_LEVELS, requestedLevel)) {
-    return { level: 'sqwg', center: null };
-  }
-
-  const level = requestedLevel as CimBoundaryLevel;
-  const lon = Number(query.get('lon'));
-  const lat = Number(query.get('lat'));
-  const [west, south, east, north] = CIM_CITY_BBOX;
-  const center: [number, number] | null = lon >= west && lon <= east && lat >= south && lat <= north ? [lon, lat] : null;
-  return { level, center };
-}
-
 type BoundaryMap = Pick<OlMap, 'getSize' | 'getView' | 'addLayer' | 'removeLayer'>;
 type OverlayStatus = { text: string; retry?: boolean };
 
 export function useCimBoundaryOverlay(
   getMap: () => BoundaryMap | null,
   apiBase: string,
-  initialLevel: CimBoundaryLevel = 'sqwg',
 ) {
-  const level = ref<CimBoundaryLevel | ''>(initialLevel);
+  const level = ref<CimBoundaryLevel | ''>('sqwg');
   const status = ref<OverlayStatus>({ text: '等待地图准备' });
   let layer: ImageLayer<ImageStatic> | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;

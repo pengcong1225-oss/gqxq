@@ -16,7 +16,7 @@
  *   ② 同一街道的缓冲面做 union，合并成一块/多块连通区域；
  *   ③ 相邻街道的缓冲轻微重叠是可接受的（真实街道本就相邻），不做互相裁切。
  *
- * 形状贴近点位实际分布、不拉长条；位置完全由真实点位推导，不虚构。
+ * 形状贴近小区点位分布；公开近似面和标注位置由已有抖动点推导。
  * 甲方把正式边界写入 `admin_grid.geometry` 后，自动改用 official，前端不用改。
  */
 import buffer from '@turf/buffer';
@@ -53,7 +53,7 @@ export interface StreetBoundary {
    * 为什么必须由服务端给：缓冲面是"点位各做 420m 圆再 union"得到的，
    * 它的几何质心经常落在江面/库区上（小溪塔街道的小区绕库区分布，质心就在水中）。
    * 前端如果拿几何质心当锚点，标签和打点标识就会"漂在河上"。
-   * 这里返回**该网格下真实小区点位中离质心最近的那个**，保证锚点一定在陆地上。
+   * 使用该网格下离质心最近的已抖动小区点作为地图标注位置。
    */
   anchor?: [number, number];
   /** 参与生成的点位数 */
@@ -261,6 +261,7 @@ function polygonsFromGeoJson(geometry: any): number[][][] | null {
 
 export interface StreetBoundaryInput {
   pointsByGrid: Map<string, LonLat[]>;
+  verificationPointsByGrid: Map<string, LonLat[]>;
   names: Map<string, string>;
   officialGeometry?: Map<string, any>;
   /** 每个街道网格下的社区（小区）名称，用于标书 1.2.4 的悬停「社区名称」 */
@@ -522,7 +523,7 @@ export function buildStreetBoundaries(input: StreetBoundaryInput): StreetBoundar
    * 匹配不上的面用 PK-<osmId> 占位码输出（packMatched=false），前端会如实提示「未对齐编码」。
    */
   for (const feat of unresolved) {
-    const best = matchGridByPoints(feat.polygons, input.pointsByGrid);
+    const best = matchGridByPoints(feat.polygons, input.verificationPointsByGrid);
     if (best) putPackFeature(feat, best, true);
     else putPackFeature(feat, 'PK-' + (feat.osmRelationId ?? packIndex), false);
   }
@@ -556,8 +557,7 @@ export function buildStreetBoundaries(input: StreetBoundaryInput): StreetBoundar
 
 /**
  * 从数据库读取街道网格与小区点位。
- * 点位来源：`community` 表的抖动坐标（jitter_lng/lat），缺失时回退 location_lng/lat，
- * 与二维大屏的 `spatial.communities` 同源，保证边界与点位不偏不叠。
+ * 点位来源与 `spatial.communities` 一致，只使用已有的成功抖动结果。
  */
 export async function loadStreetBoundaryInput(
   db: Pool,
@@ -566,6 +566,7 @@ export async function loadStreetBoundaryInput(
   const names = new Map<string, string>();
   const officialGeometry = new Map<string, any>();
   const pointsByGrid = new Map<string, LonLat[]>();
+  const verificationPointsByGrid = new Map<string, LonLat[]>();
 
   const [gridRows] = await db.query<import('mysql2').RowDataPacket[]>(
     'SELECT code, name, geometry FROM admin_grid WHERE CHAR_LENGTH(code) = 9'
@@ -584,8 +585,9 @@ export async function loadStreetBoundaryInput(
 
   const [rows] = await db.query<import('mysql2').RowDataPacket[]>(
     'SELECT admin_grid_code AS gridCode, name AS communityName, ' +
-      'jitter_lng AS jitterLng, jitter_lat AS jitterLat, ' +
-      'location_lng AS lng, location_lat AS lat FROM community WHERE admin_grid_code IS NOT NULL'
+      'jitter_lng AS jitterLng, jitter_lat AS jitterLat, jitter_state AS jitterState, ' +
+      'location_lng AS lng, location_lat AS lat ' +
+      'FROM community WHERE admin_grid_code IS NOT NULL'
   );
   const communityByGrid = new Map<string, string[]>();
   for (const r of rows) {
@@ -600,14 +602,17 @@ export async function loadStreetBoundaryInput(
       communityByGrid.set(gid, list);
     }
 
-    /*
-     * 坐标来源必须与 screenCommunities 保持一致（同一个 GQXQ_SCREEN_COORD_SOURCE 开关）：
-     * 否则点位层用原始坐标、缓冲面用抖动坐标，两者会差几十米，
-     * 在大屏上看起来就像「点和面对不上」，反而制造新的疑问。
-     */
-    const lon = Number(env.screenCoordSource === 'jitter' ? (r.jitterLng ?? r.lng) : r.lng);
-    const lat = Number(env.screenCoordSource === 'jitter' ? (r.jitterLat ?? r.lat) : r.lat);
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    const original = {lon: Number(r.lng), lat: Number(r.lat)};
+    if (r.lng != null && r.lat != null && Number.isFinite(original.lon) && Number.isFinite(original.lat)) {
+      const points = verificationPointsByGrid.get(gid) ?? [];
+      points.push(original);
+      verificationPointsByGrid.set(gid, points);
+    }
+
+    if (r.jitterState !== 'succeeded' || r.jitterLng == null || r.jitterLat == null) continue;
+    const lon = Number(r.jitterLng);
+    const lat = Number(r.jitterLat);
+    if (!(lon >= 110 && lon <= 112.3 && lat >= 29.5 && lat <= 31.8)) continue;
     const arr = pointsByGrid.get(gid) ?? [];
     arr.push({lon, lat});
     pointsByGrid.set(gid, arr);
@@ -621,11 +626,13 @@ export async function loadStreetBoundaryInput(
   const allow = options?.districtCodes?.length ? new Set(options.districtCodes) : null;
   if (allow) {
     for (const code of [...pointsByGrid.keys()]) if (!allow.has(code.slice(0, 6))) pointsByGrid.delete(code);
+    for (const code of [...verificationPointsByGrid.keys()]) if (!allow.has(code.slice(0, 6))) verificationPointsByGrid.delete(code);
     for (const code of [...names.keys()]) if (!allow.has(code.slice(0, 6))) names.delete(code);
   }
 
   return {
     pointsByGrid,
+    verificationPointsByGrid,
     names,
     officialGeometry,
     communityByGrid,

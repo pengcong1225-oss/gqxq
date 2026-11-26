@@ -23,7 +23,7 @@ analysisRouter.get('/analysis/records', async (req, res, next) => {
 /** 单条分析记录 + 可下钻关联（诉求 / 交办 / 审批轨迹 / 纠偏项 / 待查待办） */
 analysisRouter.get('/analysis/records/:analysisId', async (req, res, next) => {
   try {
-    ok(res, await getAnalysisDrilldown(String(req.params.analysisId)));
+    ok(res, await getAnalysisDrilldown(String(req.params.analysisId), req.user?.permissionCodes));
   } catch (err) {
     next(err);
   }

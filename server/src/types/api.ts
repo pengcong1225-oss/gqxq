@@ -167,6 +167,7 @@ export interface ComplaintDetail extends ComplaintListItem {
   communityCode:string|null;
   locationCoordinateSystem:'WGS84'|'CGCS2000'|'unknown'|null;
   locationCoordinateSource:string|null;
+  displayLocation:import('./locationCorrection').ComplaintDisplayLocation|null;
 
   ruleConfidence: number | null;
   ruleVersion: string | null;

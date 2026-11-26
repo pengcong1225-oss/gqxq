@@ -3,7 +3,7 @@ import { getTownshipSnapshot } from './townshipGazetteer';
 import { extractLocation } from './locationExtract';
 import { hasImmediateComplaintPredicate, isRejectedLocationContext } from './locationContext';
 
-export const ADDRESS_EXTRACTOR_VERSION = 'address-extract.v4';
+export const ADDRESS_EXTRACTOR_VERSION = 'address-extract.v5';
 
 export interface ExtractedAddressCandidate {
   value: string;
@@ -30,6 +30,12 @@ const HOUSE_NUMBER = '[0-9一二三四五六七八九十百]{1,5}(?:号|弄)';
 const PLACE_ADDRESS = new RegExp(`^(?:${PLACE_NAME}${PLACE_SUFFIX}(?:${DOOR}|${HOUSE_NUMBER})?|${PLACE_NAME}(?:大道|路|街|巷|弄)${HOUSE_NUMBER})(?=$|的(?:居民|业主)|(?:居民|业主)?(?:反映|投诉|反馈))`);
 const COMMUNITY_NAME = new RegExp(`^(${PLACE_NAME}${PLACE_SUFFIX})(?:${DOOR}|${HOUSE_NUMBER})?$`);
 const NON_ADDRESS_NAME = /居民(?:投诉|反映|要求)|群众|投诉|反映|燃气|停气|停水|供水|问题|目前|尚待|同小区|该小区|本小区|[0-9]{7,}/;
+const GRID_CLAUSE_INTRO = /^(?:(?:居民|市民|来电|服务对象)?(?:反映|投诉)(?:其)?(?:在)?|网格名称(?:是|为|\s*[：:])|(?:我|本人)住在|发生在)\s*[：:]?\s*/;
+const GRID_NAME = '[\\u4e00-\\u9fffA-Za-z0-9·]{1,24}?网格';
+const GRID_PLACE = new RegExp(`^${GRID_NAME}(?=$|(?:范围)?内|(?:的)?(?:居民|业主)|(?:发生|出现)?(?:停水|断水|停气|断气|漏水|漏气|供水|供气|燃气))`);
+const COMPLETE_GRID_NAME = new RegExp(`^${GRID_NAME}$`);
+const GENERIC_GRID_NAME = /^(?:本|该|此|某|同|各|整个|当前|所在|对应|附近|辖区|这个|那个|我们(?:的)?|他们(?:的)?)网格$/;
+const REJECTED_GRID_NAME = /^(?:事发地|诉求地址|具体地址|地址|本人|我家|在|原来|以前|过去|曾经|之前|旧址|邻近|附近|前往|转交到|搬离|离开)|不是|并非|不在|不属于|联系|电话|供气/;
 export { hasImmediateComplaintPredicate } from './locationContext';
 
 interface AddressMatch {
@@ -107,19 +113,26 @@ export function addressCommunityName(value: string): string | null {
   return match && !NON_ADDRESS_NAME.test(match[1]) ? match[1] : null;
 }
 
-function extendedCandidatesIn(text: string): AddressMatch[] {
+export function addressGridName(value: string): string | null {
+  const name = addressParts(value).local;
+  return COMPLETE_GRID_NAME.test(name) && !name.slice(0, -2).includes('网格') &&
+    !GENERIC_GRID_NAME.test(name) && !REJECTED_GRID_NAME.test(name) && !NON_ADDRESS_NAME.test(name) ? name : null;
+}
+
+function extendedCandidatesIn(text: string, gridOnly = false): AddressMatch[] {
   const matches: AddressMatch[] = [];
   for (const clause of text.matchAll(/[^，,。；;！？\r\n]+/g)) {
     const value = clause[0].trim();
-    const introduction = ADDRESS_CLAUSE_INTRO.exec(value);
+    const introduction = ADDRESS_CLAUSE_INTRO.exec(value) ?? (gridOnly ? GRID_CLAUSE_INTRO.exec(value) : null);
     const address = value.slice(introduction?.[0].length ?? 0);
     const start = clause.index! + clause[0].indexOf(value) + (introduction?.[0].length ?? 0);
     if (isRejectedLocationContext(text, start)) continue;
     const parts = addressParts(address);
-    const place = PLACE_ADDRESS.exec(parts.local);
-    if (!place || NON_ADDRESS_NAME.test(place[0])) continue;
+    const place = (gridOnly ? GRID_PLACE : PLACE_ADDRESS).exec(parts.local);
+    if (!place || (gridOnly ? !addressGridName(place[0]) : NON_ADDRESS_NAME.test(place[0]))) continue;
     const length = address.length - parts.local.length + place[0].length;
-    if (!introduction && !parts.county && !parts.township && length !== address.length) continue;
+    if (!gridOnly && !introduction && !parts.county && !parts.township && length !== address.length) continue;
+    if (gridOnly && /网格(?!员)/.test(address.slice(length))) continue;
     matches.push({ value: address.slice(0, length), start, end: start + length,
       townshipCode: parts.township?.code ?? null, districtCode: parts.county?.code ?? parts.parent?.code ?? null,
       explicitDistrict: !!parts.county, parentConflict: !!parts.county && !!parts.parent && parts.county.code !== parts.parent.code });
@@ -145,6 +158,10 @@ export function extractAddressCandidate(input: AddressInput): ExtractedAddressCa
     const extended = extendedCandidatesIn(field.value).filter(candidate =>
       !legacy.some(existing => candidate.start < existing.end && existing.start < candidate.end));
     for (const match of [...legacy, ...extended]) matches.push({ ...match, sourceField: field.name });
+  }
+  if (matches.length === 0) for (const field of fields) {
+    if (!field.value) continue;
+    for (const match of extendedCandidatesIn(field.value, true)) matches.push({ ...match, sourceField: field.name });
   }
   if (matches.some((match) => match.parentConflict)) return null;
   const unique = [...new Set(matches.map((match) => match.value))];

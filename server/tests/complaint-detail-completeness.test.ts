@@ -13,6 +13,29 @@ import {followupsRouter} from '../src/routes/followups';
 import {errorHandler,notFoundHandler} from '../src/middleware/errorHandler';
 const access={userId:'reader',roles:['analyst'],scopeVersion:1,rules:[{kind:'all'}] as const,canReadSource:false};
 const row={id:1,complaint_id:'C-1',complaint_no:'CS-1',title:'测试',business_type:'gas',complaint_type:'complaint',urgency_level:'normal',source_id:'A-1',source_payload:{metadata:{'案件类型名':'燃气安全','部门名称':'测试部门','街道':'测试街道','小区':'测试小区','规定完成时间':'2026-11-10 18:00:00','实际完成时间':'2026-11-10T19:30:00+08:00','处理结果':'已核实','市民姓名':'测试人','市民电话':'13800000000'}}};
+test('only a viewer with the position correction permission receives verified source coordinates',()=>{
+ const longitude=111.28765432,latitude=30.7154321;
+ const located={...row,address:'测试小区',location_lng:String(longitude),location_lat:String(latitude),
+  location_coordinate_system:'WGS84',location_coordinate_source:'人工核验',
+  source_payload:{longitude,latitude,metadata:{'经度':String(longitude),'纬度':String(latitude),'小区':'测试小区'}},
+  effective_field_state:{location_lng:{value:longitude,reason:'核验经度'},location_lat:{value:latitude,reason:'核验纬度'},
+   location_coordinate_system:{value:'WGS84'},location_coordinate_source:{value:'人工核验'},address:{value:'测试小区'}}};
+ const visible=projectComplaintDetail(located,access as never,[]);
+ assert.equal(visible.locationLng,null);
+ assert.equal(visible.locationLat,null);
+ assert.equal(visible.locationCoordinateSystem,null);
+ assert.equal(visible.locationCoordinateSource,null);
+ assert.deepEqual(visible.effectiveFieldState,{address:{value:'测试小区'}});
+ assert.equal(visible.sourceSummary?.community,'测试小区');
+ assert.doesNotMatch(JSON.stringify(visible),/111\.28765432|30\.7154321/);
+ const editor=projectComplaintDetail(located,access as never,['complaint.correct']);
+ assert.equal(editor.locationLng,longitude);
+ assert.equal(editor.locationLat,latitude);
+ assert.equal(editor.locationCoordinateSystem,'WGS84');
+ assert.equal(editor.locationCoordinateSource,'人工核验');
+ assert.deepEqual(editor.effectiveFieldState?.location_lng,{value:longitude,reason:'核验经度'});
+ assert.equal(Object.hasOwn(editor,'sourcePayload'),false);
+});
 test('source summary exposes known business fields and valid source dates without exposing citizen data',()=>{
  const detail=projectComplaintDetail(row,access as never) as any;
  assert.equal(detail.sourceSummary.caseType,'燃气安全');assert.equal(detail.sourceSummary.department,'测试部门');

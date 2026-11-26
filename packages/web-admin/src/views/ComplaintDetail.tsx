@@ -62,7 +62,6 @@ import type {
  *
  * 设计纪律：
  *  - 删除本地示例与「id 不是 1 就回退示例」的逻辑；404 就是「诉求不存在」，绝不回落示例。
- *  - 无坐标时不渲染图表（此前 data.locationLng.toFixed 在无坐标时会崩）。
  *  - 时效统计只显示可算项，算不出的显示 —，不硬编码任何无来源的耗时数字。
  *  - 未实现的按钮 disabled + Tooltip 说明批次，不弹假成功。
  */
@@ -438,26 +437,27 @@ const ComplaintDetail: React.FC = () => {
   }, [detail]);
 
   /* ---------- 坐标 ---------- */
-  const hasCoords = detail?.locationLng != null && detail?.locationLat != null;
+  const displayLocation = detail?.displayLocation?.coordinateSource === 'jitter' ? detail.displayLocation : null;
   const mapOption = useMemo(() => {
-    if (!hasCoords || !detail) return null;
+    if (!displayLocation) return null;
+    const { longitude, latitude } = displayLocation;
     return {
       tooltip: { trigger: 'item' },
       grid: { left: 0, right: 0, top: 0, bottom: 0 },
-      xAxis: { show: false, min: detail.locationLng! - 0.1, max: detail.locationLng! + 0.1 },
-      yAxis: { show: false, min: detail.locationLat! - 0.1, max: detail.locationLat! + 0.1 },
+      xAxis: { show: false, min: longitude - 0.1, max: longitude + 0.1 },
+      yAxis: { show: false, min: latitude - 0.1, max: latitude + 0.1 },
       series: [
         {
           type: 'scatter',
-          data: [[detail.locationLng, detail.locationLat]],
+          data: [[longitude, latitude]],
           symbolSize: 20,
           itemStyle: { color: '#ff4d4f', borderColor: '#fff', borderWidth: 2 },
-          label: { show: true, position: 'top', formatter: '诉求位置', color: '#333' },
+          label: { show: true, position: 'top', formatter: '诉求位置（脱敏）', color: '#333' },
           emphasis: { scale: 1.5 },
         },
       ],
     };
-  }, [detail, hasCoords]);
+  }, [displayLocation]);
 
   const backButton = (
     <Space style={{ marginBottom: 16 }}>
@@ -647,9 +647,9 @@ const ComplaintDetail: React.FC = () => {
                 )}
               </Descriptions.Item>
               <Descriptions.Item label="地理位置">
-                {hasCoords
-                  ? Number(detail.locationLng).toFixed(4) + ', ' + Number(detail.locationLat).toFixed(4)
-                  : '无定位信息'}
+                {displayLocation
+                  ? `${displayLocation.longitude.toFixed(4)}, ${displayLocation.latitude.toFixed(4)}（脱敏）`
+                  : '暂无脱敏定位信息'}
               </Descriptions.Item>
               <Descriptions.Item label="纠偏状态">
                 <Tag color={CORRECTION_COLOR[detail.correctionStatusCode] ?? 'default'}>
@@ -882,21 +882,20 @@ const ComplaintDetail: React.FC = () => {
               </>
             }
           >
-            {hasCoords && mapOption ? (
+            {displayLocation && mapOption ? (
               <>
                 <ReactECharts option={mapOption} style={{ height: 250 }} />
                 <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
-                  经度: {Number(detail.locationLng).toFixed(4)} 纬度:{' '}
-                  {Number(detail.locationLat).toFixed(4)}
+                  展示经度 {displayLocation.longitude.toFixed(4)}，展示纬度 {displayLocation.latitude.toFixed(4)}
                 </div>
               </>
             ) : (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="无定位信息（该诉求未提供坐标，可在整体纠偏中补全）"
+                description="暂无脱敏定位信息"
               />
             )}
-            <Typography.Paragraph type="secondary" style={{marginTop:8}}>坐标系：{detail.locationCoordinateSystem==='WGS84'?'全球大地坐标系（详见来源）':detail.locationCoordinateSystem==='CGCS2000'?'国家大地坐标系（历史自动定位结果，来源见来源字段）':'未核实'}；来源：{detail.locationCoordinateSource??'未留存可核实来源'}。网格：{detail.adminGridCode??'—'}；小区：{detail.communityCode??'—'}。</Typography.Paragraph>
+            <Typography.Paragraph type="secondary" style={{marginTop:8}}>{displayLocation && `展示坐标系 ${displayLocation.coordinateSystem}。`}网格：{detail.adminGridCode??'—'}；小区：{detail.communityCode??'—'}。</Typography.Paragraph>
             {correctionAccess.can&&<Button onClick={()=>navigate('/address-correction?complaintId='+encodeURIComponent(detail.complaintId))}>前往位置组纠偏</Button>}
           </Card>
 

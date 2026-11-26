@@ -28,6 +28,8 @@ before(async () => {
     // Avoid colliding with the user's persistent 5173 preview / its HMR websocket.
     server: { port: 0, middlewareMode: true, hmr: false },
   });
+  vite.config.env.VITE_AMAP_KEY = 'fixture-map-key';
+  vite.config.env.VITE_AMAP_SECURITY_CODE = '';
 });
 
 after(async () => {
@@ -403,13 +405,16 @@ function locationCorrectionFixture(fieldName: string): CorrectionItem {
   };
 }
 
-test('真实详情页把接口位置冲突传到只读线索区域', async () => {
+test('详情保留位置冲突线索，缺少展示点时隐藏原始坐标', async () => {
   const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
   const axiosRequest = request as { defaults: { adapter: unknown } };
   const originalAdapter = axiosRequest.defaults.adapter;
   axiosRequest.defaults.adapter = async (config: { url?: string }) => {
     const responses: Record<string, unknown> = {
-      '/complaints/CPL-TEST': locationDetailFixture,
+      '/complaints/CPL-TEST': {
+        ...locationDetailFixture, locationLng: 111.3012, locationLat: 30.7023,
+        locationCoordinateSystem: 'WGS84', displayLocation: null,
+      },
       '/complaints/CPL-TEST/timeline': { content: [], total: 0 },
       '/complaints/CPL-TEST/source-status': { enabled: false, batch: 'G6', message: '未接入' },
     };
@@ -425,15 +430,22 @@ test('真实详情页把接口位置冲突传到只读线索区域', async () =>
     const page = within(document.body);
     await waitFor(() => assert.match(ui.container.textContent ?? '', /待核实位置线索.*样例社区20号1301/));
     assert.match(ui.container.textContent ?? '', /位置冲突/);
+    assert.match(ui.container.textContent ?? '', /暂无脱敏定位信息/);
+    assert.doesNotMatch(ui.container.textContent ?? '', /111\.3012|30\.7023/);
     assert.equal(page.queryByRole('button', { name: '填入待核实地址' }), null);
   } finally { ui.unmount(); cleanup(); axiosRequest.defaults.adapter = originalAdapter; }
 });
 
-test('真实诉求核验抽屉保留冲突原文且不自动采用候选', async () => {
+test('诉求核验抽屉保留冲突原文，使用高德查找和调整位置后由人工确认', async t => {
   const { default: request } = await vite.ssrLoadModule('/src/api/request.ts');
   const axiosRequest = request as { defaults: { adapter: unknown } };
   const originalAdapter = axiosRequest.defaults.adapter;
-  axiosRequest.defaults.adapter = async (config: { url?: string }) => {
+  let confirmed: Record<string, unknown> | undefined;
+  axiosRequest.defaults.adapter = async (config: { url?: string; data?: string }) => {
+    if (config.url === '/complaints/CPL-TEST/location-corrections') {
+      confirmed = JSON.parse(config.data ?? '{}');
+      return { data: { code: 200, data: { version: 2, analysisEntered: false } }, status: 200, statusText: 'OK', headers: {}, config };
+    }
     const responses: Record<string, unknown> = {
       '/corrections/pending-complaints': { content: [], total: 0 },
       '/enterprises': { content: [], total: 0 },
@@ -448,7 +460,41 @@ test('真实诉求核验抽屉保留冲突原文且不自动采用候选', async
   const originalUser = useAppStore.getState().userInfo;
   useAppStore.setState({ userInfo: { id: 1, userId: 'tester', username: 'tester', realName: '测试经办', roles: ['handler'], permissions: ['complaint.correct', 'dispatch.create', 'assessment.read'] } });
   const { default: AddressCorrectionPage } = await vite.ssrLoadModule('/src/views/AddressCorrection.tsx');
-  const { render, within, fireEvent, cleanup, waitFor } = await import('@testing-library/react');
+  const { render, within, fireEvent, cleanup, waitFor, act } = await import('@testing-library/react');
+  const address = '宜昌市示例路18号';
+  const suggestedAddress = '湖北省宜昌市示例路20号';
+  const mapPoint = { getLng: () => 111.291, getLat: () => 30.697 };
+  const adjustedPoint = { getLng: () => 111.292, getLat: () => 30.698 };
+  let clickMap: ((event: { lnglat: typeof adjustedPoint }) => void) | undefined;
+  let lookUp: ((status: string, result: unknown) => void) | undefined;
+  const queries: string[] = [];
+  const amap = {
+    Map: class {
+      on(_event: string, handler: typeof clickMap) { clickMap = handler; }
+      add() {}
+      setCenter() {}
+      destroy() {}
+    },
+    Marker: class { on() {} setPosition() {} },
+    Geocoder: class {
+      getLocation(query: string, callback: (status: string, result: unknown) => void) {
+        queries.push(query);
+        callback('complete', { geocodes: [{ formattedAddress: address, location: mapPoint }] });
+      }
+      getAddress(_point: [number, number], callback: typeof lookUp) { lookUp = callback; }
+    },
+  };
+  const originalAmap = window.AMap;
+  const appendChild = document.head.appendChild.bind(document.head);
+  t.mock.method(document.head, 'appendChild', (element: Node) => {
+    const appended = appendChild(element);
+    if (element instanceof dom.window.HTMLScriptElement && element.id === 'amap-js-sdk') {
+      const hasGeocoder = new URL(element.src).searchParams.get('plugin') === 'AMap.Geocoder';
+      window.AMap = (hasGeocoder ? amap : { Map: amap.Map, Marker: amap.Marker }) as unknown as typeof window.AMap;
+      queueMicrotask(() => element.dispatchEvent(new dom.window.Event('load')));
+    }
+    return appended;
+  });
   const ui = render(<MemoryRouter initialEntries={['/address-correction?complaintId=CPL-TEST']}>
     <AddressCorrectionPage />
   </MemoryRouter>);
@@ -457,11 +503,6 @@ test('真实诉求核验抽屉保留冲突原文且不自动采用候选', async
     await waitFor(() => assert.match(document.body.textContent ?? '', /原文区划或候选存在冲突/));
     assert.match(document.body.textContent ?? '', /联棚乡示例家园18号1301，样例社区20号1301/);
     assert.match(document.body.textContent ?? '', /位置核验/);
-    const reference = page.getByRole('link', { name: '查看 CIM 行政边界' });
-    assert.equal(reference.getAttribute('href'), '/screen/#/accept?cimLevel=sqjcglqy');
-    assert.equal(reference.getAttribute('target'), '_blank');
-    assert.equal(reference.getAttribute('rel'), 'noopener noreferrer');
-    assert.match(document.body.textContent ?? '', /仅显示边界概览/);
     await waitFor(() => assert.equal((page.getByRole('button', { name: '调整位置' }) as HTMLButtonElement).disabled, false));
     fireEvent.click(page.getByRole('button', { name: '调整位置' }));
     assert.equal(page.queryByRole('button', { name: '填入待核实地址' }), null);
@@ -469,38 +510,55 @@ test('真实诉求核验抽屉保留冲突原文且不自动采用候选', async
     fireEvent.click(page.getByRole('button', { name: '确认位置', exact: true }));
     await waitFor(() => assert.match(document.body.textContent ?? '', /调整或存在冲突时，请填写核对依据/));
     assert.equal((page.getByRole('textbox', { name: '核实后的地址' }) as HTMLInputElement).value, '来源地址原值');
-    useAppStore.setState({ userInfo: { ...useAppStore.getState().userInfo, permissions: ['complaint.correct'] } });
-    await page.findByText('当前账号未获 CIM 参考边界查看授权。');
-    await waitFor(() => assert.equal(page.queryByRole('link', { name: '查看 CIM 行政边界' }), null));
+    const addressInput = page.getByRole('textbox', { name: '核实后的地址' }) as HTMLInputElement;
+    fireEvent.change(addressInput, { target: { value: address } });
+    const locate = page.getByRole('button', { name: /按地址定位/ }) as HTMLButtonElement;
+    await waitFor(() => assert.equal(locate.disabled, false));
+    fireEvent.click(locate);
+    await page.findByText(`高德识别：${address}`);
+    assert.deepEqual(queries, [address]);
+    assert.equal(addressInput.value, address);
+    await act(async () => { clickMap?.({ lnglat: adjustedPoint }); });
+    assert.ok(lookUp);
+    await act(async () => { lookUp?.('complete', { regeocode: { formattedAddress: suggestedAddress } }); });
+    assert.equal(addressInput.value, address);
+    fireEvent.click(page.getByRole('button', { name: '使用高德建议地址' }));
+    assert.equal(addressInput.value, suggestedAddress);
+    assert.equal(page.queryByRole('link', { name: '查看 CIM 行政边界' }), null);
+    fireEvent.change(page.getByRole('textbox', { name: '位置核对依据' }), { target: { value: '人工核对高德地图' } });
+    fireEvent.click(page.getByRole('button', { name: '确认位置', exact: true }));
+    await waitFor(() => assert.equal(confirmed?.address, suggestedAddress));
+    assert.equal(confirmed?.coordinateSystem, 'WGS84');
+    assert.equal(confirmed?.longitude, 111.28634);
+    assert.equal(confirmed?.latitude, 30.700435);
   } finally {
     ui.unmount(); cleanup(); axiosRequest.defaults.adapter = originalAdapter;
     useAppStore.setState({ userInfo: originalUser });
+    window.AMap = originalAmap;
+    document.getElementById('amap-js-sdk')?.remove();
   }
 });
 
-test('CIM 地址参考仅使用有效的有来源 WGS84 位置，并排除区县代表点', async () => {
-  const { cimAddressReference } = await vite.ssrLoadModule('/src/utils/cimAddressReference.ts');
-  const saved = {
-    ...locationDetailFixture, locationLng: 111.30042, locationLat: 30.70052,
-    locationCoordinateSystem: 'WGS84', locationCoordinateSource: '高德地址解析（门牌号）',
-    citizenName: '测试人名', citizenPhone: '测试号码',
-  };
-  const { href, hasPoint } = cimAddressReference('/gqxq', saved);
-  assert.equal(href, '/gqxq/screen/#/accept?cimLevel=sqjcglqy&lon=111.30042&lat=30.70052');
-  assert.equal(hasPoint, true);
-  const url = new URL(href, 'https://platform.example.test');
-  assert.equal(url.search, '');
-  for (const change of [
-    { locationLng: null }, { locationLat: null }, { locationLng: 0 },
-    { locationLng: Infinity }, { locationLat: 33 },
-    { locationCoordinateSystem: 'CGCS2000' }, { locationCoordinateSystem: 'unknown' },
-    { locationCoordinateSource: '' }, { locationCoordinateSource: null },
-    { locationCoordinateSource: '待纠偏：西陵区区县代表点，非诉求实际发生位置' },
-    { locationCoordinateSource: '已人工核验（原近似来源）：DataV行政区中心' },
-  ]) {
-    assert.deepEqual(cimAddressReference('/gqxq', { ...saved, ...change }), {
-      href: '/gqxq/screen/#/accept?cimLevel=sqjcglqy', hasPoint: false,
-    });
+test('热力预览只绘制来源为 jitter 的诉求点', async () => {
+  const { default: AdministrativeHeatMap } = await vite.ssrLoadModule('/src/components/AdministrativeHeatMap.tsx');
+  const { render, cleanup, waitFor } = await import('@testing-library/react');
+  const originalAmap = window.AMap;
+  const plotted: number[][] = [];
+  window.AMap = {
+    Map: class { add() {} setFitView() {} destroy() {} },
+    Circle: class { constructor({ center }: { center: number[] }) { plotted.push(center); } },
+  } as unknown as typeof window.AMap;
+  const data = { grids: [], points: [
+    { complaintId: 'raw', longitude: 111.3012, latitude: 30.7023 },
+    { complaintId: 'display', longitude: 111.286, latitude: 30.692, coordinateSource: 'jitter' },
+  ] };
+  const ui = render(<AdministrativeHeatMap data={data} showPoints={true} onGrid={() => {}} />);
+  try {
+    await waitFor(() => assert.equal(plotted.length, 1));
+    assert.ok(Math.abs(plotted[0][0] - 111.2917) < 0.0001);
+    assert.ok(Math.abs(plotted[0][1] - 30.6896) < 0.0001);
+  } finally {
+    ui.unmount(); cleanup(); window.AMap = originalAmap;
   }
 });
 

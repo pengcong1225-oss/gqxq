@@ -278,7 +278,7 @@ export function rowToListItem(r: ComplaintRow): ComplaintListItem {
   };
 }
 
-export type ComplaintDetailProjection = Omit<ComplaintDetail, 'addressCandidate' | 'locationClues' | 'locationConflict' | 'sourceAddress' | 'effectiveAddress' | 'sourceDeadlineAt' | 'sourceCompletedAt' | 'sourceSnapshotAt' | 'businessTimeSource' | 'sourceFieldReasons'> & {sourcePayload:Record<string,unknown>|null;sourceFields:Record<string,unknown>|null;sourcePayloadHash:string|null};
+export type ComplaintDetailProjection = Omit<ComplaintDetail, 'displayLocation' | 'addressCandidate' | 'locationClues' | 'locationConflict' | 'sourceAddress' | 'effectiveAddress' | 'sourceDeadlineAt' | 'sourceCompletedAt' | 'sourceSnapshotAt' | 'businessTimeSource' | 'sourceFieldReasons'> & {sourcePayload:Record<string,unknown>|null;sourceFields:Record<string,unknown>|null;sourcePayloadHash:string|null};
 
 export function rowToDetail(r: ComplaintRow): ComplaintDetailProjection {
   return {

@@ -3,19 +3,7 @@ import { setImmediate } from 'node:timers/promises';
 import { test } from 'node:test';
 import View from 'ol/View.js';
 import { effectScope } from 'vue';
-import { parseCimBoundaryLink, useCimBoundaryOverlay } from './src/components/Map/map2d/cimBoundaryOverlay.ts';
-
-test('a CIM link opens the requested layer and only marks a valid city coordinate', () => {
-  assert.deepEqual(parseCimBoundaryLink(new URLSearchParams('cimLevel=sqjcglqy&lon=111.3615&lat=30.7248')), {
-    level: 'sqjcglqy', center: [111.3615, 30.7248],
-  });
-  for (const search of ['cimLevel=qx', 'cimLevel=qx&lon=111.3', 'cimLevel=qx&lon=111.3&lat=32.5']) {
-    assert.deepEqual(parseCimBoundaryLink(new URLSearchParams(search)), { level: 'qx', center: null });
-  }
-  for (const search of ['lon=111.3615&lat=30.7248', 'cimLevel=constructor&lon=111.3615&lat=30.7248']) {
-    assert.deepEqual(parseCimBoundaryLink(new URLSearchParams(search)), { level: 'sqwg', center: null });
-  }
-});
+import { useCimBoundaryOverlay } from './src/components/Map/map2d/cimBoundaryOverlay.ts';
 
 function mountOverlay(t) {
   const scope = effectScope();

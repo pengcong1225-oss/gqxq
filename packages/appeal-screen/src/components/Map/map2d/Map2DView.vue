@@ -17,7 +17,6 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import OlMap from 'ol/Map';
-import Overlay from 'ol/Overlay';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
 import VectorLayer from 'ol/layer/Vector';
@@ -49,9 +48,8 @@ import {
 } from './cimTileSource';
 import { fetchGridBoundaries, boundarySourceLabel, type GridBoundary, type BoundaryPackInfo } from './gridLayer';
 import { API_BASE } from '../../../stats/apiBase';
-import { hashQuery } from '../../../stats/useDesignScale';
-import { CIM_BOUNDARY_LEVELS, parseCimBoundaryLink, useCimBoundaryOverlay } from './cimBoundaryOverlay';
-import { formalHeatColor, HEAT_COLORS, type AdministrativeHeat } from './administrativeHeat';
+import { CIM_BOUNDARY_LEVELS, useCimBoundaryOverlay } from './cimBoundaryOverlay';
+import { formalGridCommunityLabel, formalHeatColor, HEAT_COLORS, type AdministrativeHeat } from './administrativeHeat';
 import {
   fetchPipelineLayers,
   PIPELINE_COLORS,
@@ -189,14 +187,13 @@ const emit = defineEmits<{
 
 const hostRef = ref<HTMLDivElement | null>(null);
 const mapRef = shallowRef<OlMap | null>(null);
-const cimBoundaryLink = parseCimBoundaryLink(hashQuery());
 const {
   level: cimBoundaryLevel,
   status: cimBoundaryStatus,
   refresh: refreshCimBoundary,
   schedule: scheduleCimBoundary,
   stop: stopCimBoundary,
-} = useCimBoundaryOverlay(() => mapRef.value, API_BASE, cimBoundaryLink.level);
+} = useCimBoundaryOverlay(() => mapRef.value, API_BASE);
 const probe = ref<CimProbeResult | null>(null);
 /**
  * 当前底图是否是高德兜底。
@@ -261,6 +258,7 @@ const hoverCode = ref('');
 /** 悬停网格下的社区名称（标书 1.2.4 要求显示「社区名称」） */
 const hoverCommunityNames = ref<string[]>([]);
 const hoverFormalGrid = ref(false);
+const hoverAdministrativeCommunityName = ref<string | null>(null);
 /** 该网格的社区总数（列表可能截断，用于「共 N 个」提示） */
 const hoverCommunityTotal = ref(0);
 const cursorStyle = ref<'default' | 'pointer'>('default');
@@ -774,8 +772,8 @@ async function initMap() {
 
   const view = new View({
     projection: 'EPSG:4326',
-    center: cimBoundaryLink.center ?? DEFAULT_CENTER_LONLAT,
-    zoom: cimBoundaryLink.center ? 13 : DEFAULT_ZOOM,
+    center: DEFAULT_CENTER_LONLAT,
+    zoom: DEFAULT_ZOOM,
     minZoom: 6,
     maxZoom: 18,
     extent: [-180, -90, 180, 90],
@@ -790,17 +788,6 @@ async function initMap() {
     ]),
   });
   mapRef.value = map;
-  if (cimBoundaryLink.center) {
-    const marker = document.createElement('span');
-    marker.className = 'map2d__cim-marker';
-    marker.textContent = '参考位置';
-    map.addOverlay(new Overlay({
-      element: marker,
-      position: cimBoundaryLink.center,
-      positioning: 'center-center',
-      stopEvent: false,
-    }));
-  }
   /*
    * 诊断钩子：把当前 scale / resolution 写到容器 dataset 上。
    * 生产环境也保留 —— 排查「标签该不该显示」「色块为什么这样分档」时，
@@ -1021,6 +1008,7 @@ async function initMap() {
       }
       if (layer === gridLayer.value) {
         isFormal = Boolean(f.get('formalHeatGrid'));
+        hoverAdministrativeCommunityName.value = isFormal ? f.get('administrativeCommunityName') ?? null : null;
         // 推导面（泰森多边形）带 ≈：形状是推出来的，不是测绘边界（与缓冲近似同一套表达）
         const provider = String(f.get('provider') ?? '');
         hovered = String(f.get('name') ?? '') + (provider === 'derived-voronoi' ? ' ≈' : '');
@@ -1048,6 +1036,7 @@ async function initMap() {
     cursorStyle.value = hovered ? 'pointer' : 'default';
     hoverName.value = hovered;
     hoverFormalGrid.value = isFormal;
+    if (!isFormal) hoverAdministrativeCommunityName.value = null;
     hoverCount.value = count;
     hoverKind.value = kind;
     hoverCode.value = code;
@@ -1787,6 +1776,7 @@ function renderGrids() {
       count: grid.count, heatLevel: grid.level, formalHeatGrid: true,
       level: 'grid', source: 'official', selected: props.gridCode === grid.code,
       communityNames: related.slice(0, 12), communityCount: related.length,
+      administrativeCommunityName: grid.administrativeCommunityName,
     });
     source.addFeature(feature);
   }
@@ -2383,7 +2373,7 @@ defineExpose({ resetCamera, flyToDistrict, setPipelineVisible, loadPipeline, cle
         <b>{{ hoverName }}</b>
         <span v-if="hoverCode" class="map2d__hover-code">{{ hoverCode }}</span>
         <span v-if="hoverCount !== null" class="map2d__hover-count">{{ hoverCount }} 件诉求</span>
-        <div v-if="hoverFormalGrid" class="map2d__hover-comm">行政社区名称未配置</div>
+        <div v-if="hoverFormalGrid" class="map2d__hover-comm">{{ formalGridCommunityLabel(hoverAdministrativeCommunityName) }}</div>
         <div v-if="hoverCommunityNames.length" class="map2d__hover-comm">
           <span class="map2d__hover-comm-label">关联小区</span>
           <span class="map2d__hover-comm-list">{{ hoverCommunityNames.join('、') }}</span>
@@ -3062,31 +3052,6 @@ defineExpose({ resetCamera, flyToDistrict, setPipelineVisible, loadPipeline, cle
   margin-left: 3px;
   color: #b8ded6;
   font-size: 11px;
-}
-.map2d :deep(.map2d__cim-marker) {
-  display: block;
-  position: relative;
-  transform: translateX(calc(50% + 10px));
-  padding: 2px 4px;
-  background: #112f31;
-  border-radius: 2px;
-  color: #fff1b5;
-  font-size: 11px;
-  white-space: nowrap;
-  pointer-events: none;
-}
-.map2d :deep(.map2d__cim-marker::before) {
-  content: '';
-  position: absolute;
-  top: 50%;
-  right: calc(100% + 2px);
-  box-sizing: border-box;
-  width: 16px;
-  height: 16px;
-  transform: translateY(-50%);
-  border: 2px solid #ffe57a;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px #112f31;
 }
 .map2d__layerbar-sep,
 .map2d__layerbar-vsep {

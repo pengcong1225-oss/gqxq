@@ -1,15 +1,18 @@
 import type { AccessContext } from '../auth/accessScope';
 import { rowToDetail, toIso, type ComplaintRow } from '../repositories/complaintMapper';
-import type { ComplaintDetail } from '../types/api';
+import type { ComplaintDetail, CorrectionItem } from '../types/api';
 import { EFFECTIVE_COLUMNS } from '../domain/effectiveFieldPolicy';
 import {LOCATION_GROUP_COLUMNS} from '../repositories/correctionRepo';
 import {sourceSummary,sourceExportTime} from '../domain/complaintSourceSummary';
 /** Explicit mapper whitelist; documents are exclusively served by source-document. */
-export function projectComplaintDetail(row:ComplaintRow,_ctx:AccessContext):ComplaintDetail {
+export function projectComplaintDetail(row:ComplaintRow,ctx:AccessContext,permissionCodes:readonly string[]=[]):ComplaintDetail {
  const {sourcePayload:_payload,sourceFields:_fields,sourcePayloadHash:_hash,...detail}=rowToDetail(row);
+ const readOriginal=Boolean(ctx.userId)&&permissionCodes.includes('complaint.correct');
  const fields=_fields ?? _payload;
  const effectiveFieldState=detail.effectiveFieldState===null?null:Object.fromEntries(
-  Object.entries(detail.effectiveFieldState).filter(([field])=>[...EFFECTIVE_COLUMNS,...LOCATION_GROUP_COLUMNS,'enterprise_code','enterprise_name','major_category_code','minor_category_code','category_dictionary_version'].includes(field as typeof EFFECTIVE_COLUMNS[number])).map(([field,state])=>[field,pick(state,['resolution','value','version','reason','correctionId'])]));
+  Object.entries(detail.effectiveFieldState).filter(([field])=>(readOriginal||!isOriginalLocationField(field))&&
+   [...EFFECTIVE_COLUMNS,...LOCATION_GROUP_COLUMNS,'enterprise_code','enterprise_name','major_category_code','minor_category_code','category_dictionary_version'].includes(field as typeof EFFECTIVE_COLUMNS[number]))
+   .map(([field,state])=>[field,pick(state,['resolution','value','version','reason','correctionId'])]));
  const sourceAddress=typeof fields?.address==='string'?fields.address:null;
  const sourceSnapshotAt=typeof _fields?._receivedAt==='string'?toIso(_fields._receivedAt):null;
  const summary=sourceSummary(_payload,{districtName:detail.districtName,address:detail.address});
@@ -18,12 +21,21 @@ export function projectComplaintDetail(row:ComplaintRow,_ctx:AccessContext):Comp
  const sourceDeadlineAt=dbDeadline??(hasProcessSnapshot?null:sourceExportTime(summary.deadlineRaw));
  const sourceCompletedAt=dbCompleted??(hasProcessSnapshot?null:sourceExportTime(summary.completedRaw));
  return {...detail,effectiveFieldState,sourceAddress,effectiveAddress:detail.address,
+  ...(readOriginal?{}:{locationLng:null,locationLat:null,locationCoordinateSystem:null,locationCoordinateSource:null}),
   sourceSummary:summary,sourceDeadlineAt,sourceCompletedAt,sourceSnapshotAt,
   businessTimeSource:detail.sourceReportedAt?'source_reported_at':detail.receivedAt?'platform_received_at':'unavailable',
   sourceFieldReasons:{sourceAddress:sourceAddress===null?'未留存可核实的结构化来源原地址':null,
    sourceDeadlineAt:sourceDeadlineAt?null:hasProcessSnapshot?'最新来源过程快照未提供规定完成时间':summary.deadlineRaw?'来源规定完成时间格式未能核实，请核对原值':'来源未提供规定完成时间',sourceCompletedAt:sourceCompletedAt?null:hasProcessSnapshot?'最新来源过程快照未提供实际完成时间':summary.completedRaw?'来源实际完成时间格式未能核实，请核对原值':'来源未提供实际完成时间',
    sourceSnapshotAt:sourceSnapshotAt===null?'未留存可核实的快照接收时间':null},
-  addressCandidate:null,locationClues:[],locationConflict:false};
+  displayLocation:null,addressCandidate:null,locationClues:[],locationConflict:false};
+}
+const originalLocationFields=new Set(['location_lng','location_lat','location_coordinate_system','location_coordinate_source','location_group']);
+export function isOriginalLocationField(field:unknown):boolean {
+ return typeof field==='string'&&originalLocationFields.has(field);
+}
+export function projectCorrectionItems(items:CorrectionItem[],permissionCodes:readonly string[]):CorrectionItem[] {
+ if(permissionCodes.includes('complaint.correct'))return items;
+ return items.map(item=>isOriginalLocationField(item.fieldName)?{...item,oldValue:null,newValue:null,effectiveValue:null,basis:null}:item);
 }
 function pick(value:unknown,keys:string[]):Record<string,unknown>{
  let v=value;if(typeof v==='string'){try{v=JSON.parse(v);}catch{v={};}}

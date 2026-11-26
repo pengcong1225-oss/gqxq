@@ -275,6 +275,12 @@ export interface ComplaintDetail extends ComplaintListItem {
   communityCode:string|null;
   locationCoordinateSystem:'WGS84'|'CGCS2000'|'unknown'|null;
   locationCoordinateSource:string|null;
+  displayLocation: {
+    longitude: number;
+    latitude: number;
+    coordinateSystem: 'WGS84' | 'CGCS2000';
+    coordinateSource: 'jitter';
+  } | null;
 
   ruleConfidence: number | null;
   ruleVersion: string | null;

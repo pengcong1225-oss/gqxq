@@ -1,17 +1,12 @@
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {pointInRing} from '../domain/rangeToGrid';
+import {CIM_BOUNDARY_SOURCE_NAME as sourceName,CIM_BOUNDARY_DATASETS as datasets,type CimBoundaryLevel} from '../domain/cimBoundarySource';
 import type {BoundaryGeometry} from '../types/serviceGrid';
 import {IMPORT_LIMITS, parseImportFile, safeCsvCell, TEMPLATE_VERSION} from './masterDataImportParser';
 import {validateGeometry} from './serviceGridService';
 
-const sourceName = '宜昌网格20230512';
-const datasets = {
-  'community-grid': {name: 'skjc_xzq_wangge_new', digits: 14},
-  community: {name: 'skjc_xzq_cun_new', digits: 12},
-} as const;
-
-export type CimBoundaryLevel = keyof typeof datasets;
+export type {CimBoundaryLevel} from '../domain/cimBoundarySource';
 export const CIM_VECTOR_ENDPOINT = 'https://drs.sc.yichang.gov.cn/api/restapi/prod/IC42050020230626000008/gtis/data/rest/9eadbf946f994536aa59078a630a0cc9';
 export const CIM_SOURCE_EPSG = 4490;
 
@@ -115,7 +110,8 @@ export async function prepareCimBoundaryImport(preview:CimPreview,converted:unkn
     const shapes=(input:BoundaryGeometry)=>input.type==='Polygon'?[input.coordinates.map(ring=>ring.length)]:input.coordinates.map(poly=>poly.map(ring=>ring.length));
     if(JSON.stringify(shapes(geometry))!==JSON.stringify(shapes(original))) throw new Error('转换文件改变了源几何的环或节点数');
     const geometrySource=`宜昌 CIM ${sourceName}/${preview.metadata.dataset} SmID=${properties.id}，EPSG:4490→4326 ${metadata.operation}，精度 ${metadata.accuracyMeters} 米，授权依据 ${approval.trim()}，源预览 SHA-256 ${digest}`;
-    return {type:'Feature',properties:{code:properties.code,coordinateSystem:'WGS84',geometrySource,conversion:'none'},geometry};
+    const community = preview.metadata.level === 'community-grid' ? {administrativeCommunityName:properties.communityName || null} : {};
+    return {type:'Feature',properties:{code:properties.code,coordinateSystem:'WGS84',geometrySource,conversion:'none',...community},geometry};
   });
   const bytes=Buffer.from(JSON.stringify({type:'FeatureCollection',templateVersion:TEMPLATE_VERSION,features:rows}),'utf8');
   await parseImportFile({name:'grid_boundary.geojson',bytes},'grid_boundary');

@@ -1,4 +1,7 @@
 import type {AdminGrid, Community, GridCoverage} from './serviceGrid';
+export interface ComplaintDisplayLocation {
+ longitude:number;latitude:number;coordinateSystem:'WGS84'|'CGCS2000';coordinateSource:'jitter';
+}
 export interface LocationCorrectionInput {
  revision?:boolean;
  complaintId:string;expectedVersion:number;districtCode:string|null;address:string|null;

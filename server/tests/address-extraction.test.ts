@@ -251,6 +251,24 @@ test('does not keep a detailed candidate when a second incompatible settlement i
   );
 });
 
+test('extracts the bounded name of a grid, including a community-prefixed grid name', () => {
+  const result = extractAddressCandidate({
+    title: '供气异常', content: '来电反映供气异常，事发地在西陵区金安岭社区07网格，持续数日。',
+  });
+  assert.equal(result?.value, '西陵区金安岭社区07网格');
+  assert.equal(result?.evidence, '西陵区金安岭社区07网格');
+  assert.equal(result?.districtCode, '420502');
+  assert.equal(extractAddressCandidate({ title: '供气异常', content: '荷汀东07网格停气。' })?.value, '荷汀东07网格');
+  assert.equal(extractAddressCandidate({ title: '供气异常', content: '来电反映荷汀东07网格内燃气供应中断。' })?.value, '荷汀东07网格');
+});
+
+test('ignores generic, denied and conflicting grid mentions', () => {
+  for (const content of ['所在网格停气。', '来电反映，帮忙联系网格员。', '事发地并非荷汀东07网格。',
+    '荷汀东07网格与荷汀西07网格均停气。', '事发地在荷汀东07网格，地址是荷汀西07网格。']) {
+    assert.equal(extractAddressCandidate({ title: '供气异常', content }), null, content);
+  }
+});
+
 test('re-extracts an unchanged input when the address rule version changes', async () => {
   const input = { title: '地址核查', content: '点军区联棚乡示例小区18号1301' };
   const db = new CandidateFake() as unknown as CandidateFake & Queryable;

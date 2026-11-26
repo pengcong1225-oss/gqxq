@@ -1,5 +1,6 @@
 import { currentAccessContext } from '../auth/accessScope';
-import { projectComplaintDetail, projectAuditDetail } from './complaintProjection';
+import { isOriginalLocationField, projectComplaintDetail, projectAuditDetail } from './complaintProjection';
+import { readComplaintJitterPoints } from './complaintLocationJitterService';
 // 诉求总账查询服务：参数解析/校验 + DTO 组装。
 // 校验口径见 docs/2026-09-17-诉求平台G1详细实施方案.md §5.4：
 //   size 必须在 1..100（超限 400）；sort 只允许白名单字段；startDate/endDate 按 +08:00 解析。
@@ -277,13 +278,14 @@ export async function listComplaints(query: Record<string, unknown>): Promise<Co
   };
 }
 
-export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetail> {
+export async function getComplaintDetail(idOrNo: string, permissionCodes:readonly string[]=[]): Promise<ComplaintDetail> {
   const row = await findByIdOrNo(idOrNo);
   if (!row) throw AppError.notFound('诉求不存在');
   const complaintId = String(row.complaint_id);
-  const [candidate, storedClues] = await Promise.all([
+  const [candidate, storedClues, displayLocations] = await Promise.all([
     findAddressCandidate(pool, complaintId),
     findLocationClues(pool, complaintId),
+    row.location_lng != null && row.location_lat != null ? readComplaintJitterPoints(pool, [complaintId], currentAccessContext()) : null,
   ]);
   const [citizenRows] = await pool.query('select name_raw,phone_raw,name_enc,phone_enc from complaint_citizen where complaint_id=? limit 1', [complaintId]) as unknown as [Array<{name_raw:string|null;phone_raw:string|null;name_enc:string|null;phone_enc:string|null}>,unknown];
   const citizen = citizenRows[0] ?? null;
@@ -302,7 +304,8 @@ export async function getComplaintDetail(idOrNo: string): Promise<ComplaintDetai
     snapshotId: clue.snapshotId,
   }));
   return {
-    ...projectComplaintDetail(row,currentAccessContext()),
+    ...projectComplaintDetail(row,currentAccessContext(),permissionCodes),
+    displayLocation: displayLocations?.get(complaintId) ?? null,
     citizenName: citizen?.name_raw ?? decryptPii(citizen?.name_enc ?? null),
     citizenPhone: citizen?.phone_raw ?? decryptPii(citizen?.phone_enc ?? null),
     addressCandidate: candidate ? {
@@ -476,11 +479,12 @@ function buildIntakeItems(rows: IntakeLogRow[], startSeq: number): PendingItem[]
   });
 }
 
-function buildFieldChangeItems(rows: FieldVersionRow[], startSeq: number): PendingItem[] {
+function buildFieldChangeItems(rows: FieldVersionRow[], startSeq: number, readOriginal: boolean): PendingItem[] {
   let seq = startSeq;
   return rows.filter(r=>Object.hasOwn(FIELD_LABELS,r.field_name)).map((r) => {
     const at = toDate(r.changed_at) ?? new Date(0);
     const fieldLabel = FIELD_LABELS[r.field_name] ?? r.field_name;
+    const masked = !readOriginal && isOriginalLocationField(r.field_name);
     return {
       at,
       seq: seq++,
@@ -490,26 +494,31 @@ function buildFieldChangeItems(rows: FieldVersionRow[], startSeq: number): Pendi
         action: '字段变更',
         operatorName:
           r.operator_name ?? CHANGE_SOURCE_LABELS[r.change_source] ?? r.change_source ?? null,
-        summary: fieldLabel + '：' + displayValue(r.old_value) + ' -> ' + displayValue(r.new_value),
+        summary: masked ? fieldLabel + '已变更' : fieldLabel + '：' + displayValue(r.old_value) + ' -> ' + displayValue(r.new_value),
         detail: {
           field: r.field_name,
-          oldValue: r.old_value,
-          newValue: r.new_value,
+          oldValue: masked ? null : r.old_value,
+          newValue: masked ? null : r.new_value,
           changeSource: r.change_source,
-          reason: r.reason,
+          reason: masked ? null : r.reason,
         },
       },
     };
   });
 }
 
-function buildOperationItems(rows: OperationLogRow[], startSeq: number): PendingItem[] {
+function buildOperationItems(rows: OperationLogRow[], startSeq: number, readOriginal: boolean): PendingItem[] {
   let seq = startSeq;
   return rows.map((r) => {
     const at = toDate(r.created_at) ?? new Date(0);
     const actionRaw = String(r.action ?? '');
     const label = ACTION_LABELS[actionRaw] ?? (/^[\u3400-\u9fff\s]+$/.test(actionRaw) ? actionRaw : '其他操作');
     const parsed = projectAuditDetail(r.detail);
+    if (!readOriginal && (isOriginalLocationField(parsed.fieldName) || actionRaw === 'CORRECTION_LOCATION_GROUP')) {
+      delete parsed.basis;
+      delete parsed.oldValue;
+      delete parsed.newValue;
+    }
 
     let summary = label;
     const note =
@@ -543,7 +552,7 @@ function buildOperationItems(rows: OperationLogRow[], startSeq: number): Pending
  * 真实事件时间线：合并 complaint_source_log / complaint_field_version / operation_audit_log。
  * approval_trace 属 G4，本次不查。无事件时返回 { content: [], total: 0 }（空态，不摆示例）。
  */
-export async function getComplaintTimeline(idOrNo: string): Promise<TimelineResult> {
+export async function getComplaintTimeline(idOrNo: string, permissionCodes:readonly string[]=[]): Promise<TimelineResult> {
   const row = await findByIdOrNo(idOrNo);
   if (!row) throw AppError.notFound('诉求不存在');
 
@@ -552,8 +561,9 @@ export async function getComplaintTimeline(idOrNo: string): Promise<TimelineResu
   const raw = await findTimelineRaw(complaintId, numericId);
 
   const intakes = buildIntakeItems(raw.intakes, 0);
-  const fieldChanges = buildFieldChangeItems(raw.fieldChanges, intakes.length);
-  const operations = buildOperationItems(raw.operations, intakes.length + fieldChanges.length);
+  const readOriginal = permissionCodes.includes('complaint.correct');
+  const fieldChanges = buildFieldChangeItems(raw.fieldChanges, intakes.length, readOriginal);
+  const operations = buildOperationItems(raw.operations, intakes.length + fieldChanges.length, readOriginal);
 
   const pending = [...intakes, ...fieldChanges, ...operations].sort((a, b) => {
     const diff = a.at.getTime() - b.at.getTime();

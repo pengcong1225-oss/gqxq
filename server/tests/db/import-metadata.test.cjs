@@ -31,6 +31,27 @@ test('optional enterprise/grid import metadata preview and commit',{skip:process
   const invalid=await preview('service_grid',{...grid,managerPhone:'x'.repeat(65)});assert.equal(invalid.p.canCommit,false);
   await commit('service_grid',{...grid,managerName:'',managerPhone:''});saved=await db('service_grid').where('grid_code','G-SYN').first();assert.equal(saved.manager_name,null);assert.equal(saved.manager_phone,null);
   for(const state of ['published','legacy']){await db('service_grid').where('grid_code','G-SYN').update({import_state:state});const rejected=await preview('service_grid',{...grid,managerName:'Forbidden historical rewrite'});assert.equal(rejected.p.canCommit,false);assert.match(rejected.batch.details[0].errors[0].message,/受控网格维护/);assert.equal((await db('service_grid').where('grid_code','G-SYN').first()).manager_name,null);}
+  const {prepareCimPreview,prepareCimBoundaryImport,cimPreviewDigest}=require('../../src/services/cimBoundaryImportService');
+  const gridCode='42050201010103';
+  await db('admin_grid').insert({code:gridCode,name:'合成东岸03网格',district_code:'420502',version:1});
+  const importCimBoundary=async(administrativeCommunityName)=>{
+   const points=[[111.28,30.7],[111.29,30.7],[111.29,30.71],[111.28,30.71],[111.28,30.7]].map(([x,y])=>({x,y}));
+   const source=prepareCimPreview('community-grid',[{ID:42,fieldNames:['NAME','BM','SSSQ'],
+    fieldValues:['合成东岸03网格',gridCode,administrativeCommunityName],geometry:{type:'REGION',parts:[5],partTopo:[1],points}}]);
+   const converted={...source,metadata:{...source.metadata,srid:4326,sourceSha256:cimPreviewDigest(source),accuracyMeters:0.2,operation:'Synthetic measured control'}};
+   const bytes=await prepareCimBoundaryImport(source,converted,'合成授权文书');
+   const draft=await service.previewImport({name:'grid_boundary.geojson',bytes},'grid_boundary',ctx);
+   const batch=await service.getBatch(draft.batchId,ctx);
+   assert.equal(draft.canCommit,true,JSON.stringify(batch.details));
+   assert.equal(batch.details[0].after.administrativeCommunityName,administrativeCommunityName||null);
+   const applied=await service.commitImport({batchId:draft.batchId,previewVersion:draft.previewVersion,requestId:'synthetic-'+(++serial)},ctx);
+   assert.equal(applied.state,'succeeded',JSON.stringify(applied));
+   assert.equal((await db('admin_grid').where({code:gridCode}).first()).administrative_community_name,administrativeCommunityName||null);
+   return applied;
+  };
+  assert.equal((await importCimBoundary('合成东岸居委会')).updated,1);
+  assert.equal((await importCimBoundary('合成东岸居委会')).unchanged,1);
+  assert.equal((await importCimBoundary('')).updated,1);
   // Parse the distributed CSV and XLSX artifacts, not just an in-memory header.
   for(const kind of ['enterprise','service_grid'])for(const ext of ['csv','xlsx']){const bytes=fs.readFileSync(path.join(__dirname,'../../templates/imports',kind+'.'+ext));const parsed=await parseImportFile({name:kind+'.'+ext,bytes},kind);for(const key of kind==='enterprise'?['displayOnScreen','screenName']:['managerName','managerPhone']){assert.ok(TEMPLATE_FIELDS[kind].includes(key));assert.ok(key in parsed.rows[0].values);}}
   console.log('IMPORT METADATA DB VERIFIED',database);

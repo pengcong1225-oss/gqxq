@@ -1,16 +1,13 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Button,Card,Collapse,Input,Select,Space,Typography} from 'antd';
 import {useAppStore} from '../stores/appStore';
-import {usePermissionAccess,useWriteAccess} from '../stores/roleAccess';
 import {getComplaint} from '../api/complaints';
-import {BASE_PATH} from '../api/request';
 import type {ComplaintDetail,CorrectionItem} from '../types/api';
 import type {LocationCorrectionOptions,LocationCorrectionResult} from '../types/locationCorrection';
 import {confirmLocationGroup,deferLocationGroup,getLocationCorrectionOptions,listComplaintCorrections} from '../api/corrections';
 import {locationDraftInput,type LocationDraft} from './LocationCorrectionFields';
 import AmapLocationPicker from './AmapLocationPicker';
 import {adoptLocation,safePlaceQuery,suggestLocations,resolveAddressLocation} from '../utils/locationSuggestions';
-import {cimAddressReference} from '../utils/cimAddressReference';
 export interface LocationReviewPanelProps {detail:ComplaintDetail;items:CorrectionItem[];disabled?:boolean;onSaved:(result:LocationCorrectionResult,next:boolean)=>void;onDeferred:(next:boolean)=>void}
 const fields=new Set(['address','location_lng','location_lat','district_name','district_code','admin_grid_code','community_code']);
 function initial(d:ComplaintDetail):LocationDraft{return {address:d.effectiveAddress??d.correctedAddress??d.address??'',districtCode:d.districtCode,adminGridCode:d.adminGridCode,communityCode:d.communityCode,lng:d.locationLng==null?'':String(d.locationLng),lat:d.locationLat==null?'':String(d.locationLat),coordinateSystem:d.locationCoordinateSystem??'unknown',coordinateSource:d.locationCoordinateSource??''};}
@@ -25,9 +22,6 @@ function Review({detail:incoming,items:incomingItems,disabled,onSaved,onDeferred
  const canRevise=!detail.closedInSystem&&items.some(i=>fields.has(i.fieldName))&&items.filter(i=>fields.has(i.fieldName)).every(i=>i.status==='confirmed');
  const suggestions=options?suggestLocations(detail,options):null;
  const addressResolution=options?resolveAddressLocation(draft.address??'',options):null;
- const canReviewLocation=useWriteAccess('complaint.correct').can;
- const canReadReference=usePermissionAccess('assessment.read').can;
- const cimReference=cimAddressReference(BASE_PATH,detail);
  useEffect(()=>{alive.current=true;void getLocationCorrectionOptions(detail.complaintId).then(o=>{if(!alive.current)return;setOptions(o);const s=suggestLocations(detail,o);const manual=!!detail.correctedAddress||items.some(i=>fields.has(i.fieldName)&&i.status==='confirmed');setDraft(current=>{
  if(!changed.current&&s.unique&&!manual)return adoptLocation(current,s.unique);
  if(current.address&&!current.districtCode&&!current.adminGridCode&&!current.communityCode){
@@ -50,15 +44,17 @@ function Review({detail:incoming,items:incomingItems,disabled,onSaved,onDeferred
   finally{lock.current=false;if(alive.current)setBusy(false);}
  }
  async function refresh(){if(lock.current)return;lock.current=true;setBusy(true);try{const [fresh,freshItems]=await Promise.all([getComplaint(detail.complaintId),listComplaintCorrections(detail.complaintId)]);if(alive.current){setRefreshed({detail:fresh,items:freshItems});setError('最新原文已加载，草稿已保留，请核对后继续');}}catch(e){if(alive.current)setError((e as Error).message||'刷新失败');}finally{lock.current=false;if(alive.current)setBusy(false);}}
- function useMapAddress(address:string,name=address){
-  const resolved=options?resolveAddressLocation(address,options,name):null;
+ function useMapAddress(address:string){
+  const resolved=options?resolveAddressLocation(address,options):null;
   change(resolved?.location??{address,communityCode:null,adminGridCode:null,districtCode:null});
  }
  function editAddress(address:string){
   const resolved=options?resolveAddressLocation(address,options):null;
   change(resolved?.location??{address,districtCode:null,adminGridCode:null,communityCode:null},true);
  }
- const query=!dirty&&suggestions?.unique?safePlaceQuery((options?.districts.find(d=>d.code===suggestions.unique?.districtCode)?.name??'')+suggestions.unique.address):null;
+ const placeQuery=safePlaceQuery(draft.address??'');
+ const districtName=options?.districts.find(d=>d.code===draft.districtCode)?.name;
+ const mapQuery=placeQuery&&districtName&&!placeQuery.includes(districtName)?districtName+placeQuery:placeQuery;
  return <Card title="位置核验" size="small">
   <Typography.Paragraph><strong>原始内容：</strong>{detail.title}　{detail.content||'未提供正文'}</Typography.Paragraph>
   <Typography.Paragraph><strong>原始地址：</strong>{detail.sourceAddress||'来源未提供地址'}</Typography.Paragraph>
@@ -71,14 +67,6 @@ function Review({detail:incoming,items:incomingItems,disabled,onSaved,onDeferred
   {!pending&&<Alert type="success" message={revision?'正在重新核对已确认位置，请填写本次核对依据':'本条位置待办已处理'} action={canRevise&&!revision?<Button disabled={disabled||busy||stale} onClick={()=>{setRevision(true);setEditing(true);setDirty(true);setDraft(current=>({...current,basis:''}));}}>重新核对已确认位置</Button>:undefined}/>}
   <Typography.Paragraph>区县：{options?.districts.find(d=>d.code===draft.districtCode)?.name??'待核实'}；网格：{options?.adminGrids.find(g=>g.code===draft.adminGridCode)?.name??'待核实'}；小区：{options?.communities.find(c=>c.code===draft.communityCode)?.name??'待核实'}</Typography.Paragraph>
   <Typography.Paragraph>待确认地点：{draft.address||'待选择'}；坐标{draft.lng&&draft.lat?'已提供，仍按来源状态核验':'未知'}</Typography.Paragraph>
-  {canReviewLocation&&<Typography.Paragraph>
-   {canReadReference?<Space wrap>
-    <Button href={cimReference.href} target="_blank" rel="noopener noreferrer">查看 CIM 行政边界</Button>
-    <Typography.Text type="secondary">{cimReference.hasPoint
-     ? '使用工单已保存的 WGS84 坐标作参考，位置精度与归属仍需人工核对。'
-     : '缺少可用于核对的 WGS84 位置，仅显示边界概览。'} 边界仅供核对，确认结果请在此处保存。</Typography.Text>
-   </Space>:<Typography.Text type="secondary">当前账号未获 CIM 参考边界查看授权。</Typography.Text>}
-  </Typography.Paragraph>}
    {draft.address&&addressResolution&&<Alert type="info" showIcon message={addressResolution.message} description={addressResolution.township?'乡镇／街道线索：'+addressResolution.township+'（从地址提取）':undefined} />}
   {suggestions&&suggestions.candidates.length>1&&<Space wrap>{suggestions.candidates.map((c,i)=><Button key={i} disabled={blocked} onClick={()=>change(adoptLocation(draft,c))}>{c.address} · {options?.districts.find(d=>d.code===c.districtCode)?.name??'区县未知'} · {options?.adminGrids.find(g=>g.code===c.adminGridCode)?.name??'网格未知'}</Button>)}</Space>}
   <Space wrap style={{marginBottom:12}}><Button type="primary" disabled={blocked||!options} loading={busy} onClick={()=>void submit(true)}>确认位置并下一条</Button><Button disabled={blocked||!options} onClick={()=>void submit(false)}>确认位置</Button><Button disabled={blocked} onClick={()=>setEditing(v=>!v)}>调整位置</Button><Button disabled={blocked||revision} onClick={()=>setDeferring(v=>!v)}>暂无法确认</Button></Space>
@@ -89,13 +77,13 @@ function Review({detail:incoming,items:incomingItems,disabled,onSaved,onDeferred
    <Typography.Text strong>村社区／小区</Typography.Text>
    <Select showSearch optionFilterProp="label" aria-label="核验小区" placeholder="地址自动匹配；未识别时可搜索补选" allowClear style={{width:'100%'}} disabled={blocked} value={draft.communityCode} options={options?.communities.map(c=>({value:c.code,label:c.name+' · '+(options?.adminGrids.find(g=>g.code===c.adminGridCode)?.name??'')}))} onChange={code=>{const c=options?.communities.find(c=>c.code===code),g=options?.adminGrids.find(g=>g.code===c?.adminGridCode);change({communityCode:c?.code??null,adminGridCode:g?.code??null,districtCode:g?.districtCode??null,address:c?.name??draft.address},true);}}/>
    <Typography.Text strong>区县</Typography.Text>
-   <Select aria-label="核验区县" placeholder="请选择区县" allowClear style={{width:'100%'}} disabled={blocked} value={draft.districtCode} options={options?.districts.map(d=>({value:d.code,label:d.name}))} onChange={districtCode=>change({districtCode:districtCode??null,adminGridCode:null,communityCode:null},true)}/>
+   <Select aria-label="核验区县" placeholder="请选择区县" allowClear style={{width:'100%'}} disabled={blocked} value={draft.districtCode} options={options?.districts.map(d=>({value:d.code,label:d.name}))} onChange={districtCode=>change({districtCode:districtCode??null,adminGridCode:null,communityCode:null})}/>
    <Typography.Text strong>行政网格</Typography.Text>
-   <Select showSearch optionFilterProp="label" aria-label="核验网格" placeholder="请选择行政网格" allowClear style={{width:'100%'}} disabled={blocked} value={draft.adminGridCode} options={options?.adminGrids.filter(g=>g.districtCode===draft.districtCode).map(g=>({value:g.code,label:g.name}))} onChange={adminGridCode=>change({adminGridCode:adminGridCode??null,communityCode:null},true)}/>
+   <Select showSearch optionFilterProp="label" aria-label="核验网格" placeholder="请选择行政网格" allowClear style={{width:'100%'}} disabled={blocked} value={draft.adminGridCode} options={options?.adminGrids.filter(g=>g.districtCode===draft.districtCode).map(g=>({value:g.code,label:g.name}))} onChange={adminGridCode=>change({adminGridCode:adminGridCode??null,communityCode:null})}/>
    <Typography.Text strong>核对依据</Typography.Text>
    <Input.TextArea aria-label="位置核对依据" value={draft.basis} maxLength={500} placeholder="调整或冲突时填写核对依据" disabled={blocked} onChange={e=>change({basis:e.target.value})}/>
   </Space>}
-  {(editing||suggestions?.unique)&&<AmapLocationPicker contextKey={JSON.stringify([draft.districtCode,draft.adminGridCode,draft.communityCode])} address={safePlaceQuery(draft.address??'')??''} lng={draft.lng} lat={draft.lat} autoSearch={query} disabled={!!blocked} onPick={p=>change({lng:p.lng,lat:p.lat,coordinateSystem:'unknown',coordinateSource:p.coordinateSource,communityCode:null,adminGridCode:null})} onSelectPlace={place=>useMapAddress(place.address,place.name)} onUseAddressSuggestion={useMapAddress}/>}
+  {(editing||suggestions?.unique)&&<AmapLocationPicker address={mapQuery} lng={draft.lng} lat={draft.lat} coordinateSystem={draft.coordinateSystem} disabled={!!blocked} onPick={p=>change({...p,communityCode:null,adminGridCode:null})} onUseAddressSuggestion={useMapAddress}/>}
   <Collapse style={{marginTop:12}} items={[{key:'coordinates',label:'高级坐标细节（可选）',children:<><Typography.Text type="secondary">坐标系：{draft.coordinateSystem==='WGS84'?'已有来源声明':draft.coordinateSystem==='CGCS2000'?'国家大地坐标系（历史自动定位结果，来源见来源字段）':'未知，不自动用于空间归属判定'}</Typography.Text><Space><Input aria-label="高级经度" value={draft.lng} disabled={blocked} onChange={e=>change({lng:e.target.value,coordinateSystem:'unknown',coordinateSource:'人工填写，坐标系未核实'})}/><Input aria-label="高级纬度" value={draft.lat} disabled={blocked} onChange={e=>change({lat:e.target.value,coordinateSystem:'unknown',coordinateSource:'人工填写，坐标系未核实'})}/></Space></>}]} />
  </Card>;
 }

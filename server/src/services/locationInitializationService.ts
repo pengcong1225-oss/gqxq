@@ -9,8 +9,9 @@ import { insertFieldVersions } from '../repositories/complaintFieldVersionRepo';
 import { loadEffectiveFieldState } from '../repositories/effectiveFieldRepo';
 import { complaintAddressQuery, matchComplaintGridIn, registeredCommunityPoint, verifyComplaintAddress } from './complaintAddressResolution';
 import { recognizeCommunityIn } from './communityRecognitionService';
+import { queueComplaintLocationJitter } from './complaintLocationJitterService';
 
-const JOB_VERSION = '地址归网v4：';
+const JOB_VERSION = '地址归网v5：';
 const fingerprint = "sha2(concat_ws(char(0),coalesce(c.address,''),coalesce(c.title,''),coalesce(c.content,''),coalesce(c.district_code,''),coalesce(c.district_name,''),coalesce(a.candidate_text,''),coalesce(a.parent_match,''),coalesce(a.district_code,'')),256)";
 const locationFields = ['location_lng', 'location_lat', 'location_coordinate_system', 'location_coordinate_source'];
 const addressFields = ['address', 'district_code', 'district_name', 'street_name', 'community_name', 'community_code', 'grid_name', 'admin_grid_code'];
@@ -105,7 +106,7 @@ export async function initializeLocations(limit = 20, complaintId?: string) {
         reason = resolution.reason;
         point = resolution.point ?? null;
       }
-      if (mayLocate && !addressCleared && resolution?.state !== 'verified') {
+      if (mayLocate && !addressCleared && !input?.gridName && resolution?.state !== 'verified') {
         if (!resolution || resolution.state === 'retry' || point) {
           const registered = await registeredCommunityPoint(db, { ...row, effective_field_state: priorState }, input);
           if (registered) {
@@ -144,6 +145,7 @@ export async function initializeLocations(limit = 20, complaintId?: string) {
         if (storedSource.startsWith('待纠偏：') && storedSource.includes('实际精度兴趣点') && !Number(current.closed_in_system) &&
             [...locationFields, 'address', 'district_code', 'district_name'].every(field => !protectedField(fields, field)) &&
             await recognizeCommunityIn(db, row.complaint_id)) {
+          await queueComplaintLocationJitter(db, row.complaint_id);
           state = 'review';
           reason = '已沿用既有小区级位置自动认可，网格待核验';
           point = null;
@@ -151,18 +153,20 @@ export async function initializeLocations(limit = 20, complaintId?: string) {
           state = 'preserved';
           reason = '保留既有位置或人工核验决定';
           point = null;
+        } else if (verified?.namedGrid && gridMatch && !gridMatch.grid) {
+          reason = gridMatch.reason;
         } else if (verified && input && gridMatch) {
-          point = verified.point;
-          const locationBasis = point.source;
-          fill('address', input.address, locationBasis);
+          point = verified.namedGrid ? null : verified.point;
+          const locationBasis = verified.namedGrid ? gridMatch.reason : verified.point.source;
+          if (!verified.namedGrid) fill('address', input.address, locationBasis);
           fill('district_name', verified.districtName, locationBasis);
           fill('district_code', verified.districtCode, locationBasis);
           fill('street_name', verified.streetName, '高德逆地理编码与批准的宜昌区划名录一致');
           fill('community_name', verified.communityName, '文本小区名称与高德标准地址一致');
 
-          const notes: string[] = [];
-          if (current.address && current.address !== input.address) notes.push('保留既有地址，提取地址待核验');
-          if (!verified.streetName) notes.push('街道未匹配批准的区划名录，待核验');
+          const notes: string[] = verified.namedGrid ? ['详细地址和坐标待核验'] : [];
+          if (!verified.namedGrid && current.address && current.address !== input.address) notes.push('保留既有地址，提取地址待核验');
+          if (!verified.namedGrid && !verified.streetName) notes.push('街道未匹配批准的区划名录，待核验');
           const compatible = (field: string, value: string | null) => Boolean(value) &&
             (String(current[field] ?? '') === value || availableField(current, fields, field));
           const grid = gridMatch.grid;
@@ -196,6 +200,7 @@ export async function initializeLocations(limit = 20, complaintId?: string) {
           await db.query('update complaint set ' + changes.map(([field]) => field + '=?').join(',') +
             ',effective_field_state=?,edit_version=? where complaint_id=?',
             [...changes.map(([, change]) => change.value), JSON.stringify(fields), version, row.complaint_id]);
+          if (verified && updates.location_lng) await queueComplaintLocationJitter(db, row.complaint_id);
           const now = new Date();
           await insertFieldVersions(db, changes.map(([field, change]) => ({ complaintId: row.complaint_id,
             fieldName: field, oldValue: current[field] == null ? null : String(current[field]), newValue: String(change.value),

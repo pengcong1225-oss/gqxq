@@ -36,5 +36,5 @@ export interface ScreenHeat {
  rules:ScreenHeatRuleRef[];
  categories:{code:string;name:string;parentCode:string|null}[];
  unmappedCount:number|null;
- grids:{code:string;count:number;level:string|null;reason:string|null;ruleVersion:string|null;name?:string;geometry?:BoundaryGeometry;geometrySource?:string;geometryVersion?:string;communities?:string[]}[];
+ grids:{code:string;count:number;level:string|null;reason:string|null;ruleVersion:string|null;name?:string;geometry?:BoundaryGeometry;geometrySource?:string;geometryVersion?:string;communities?:string[];administrativeCommunityName?:string|null}[];
 }

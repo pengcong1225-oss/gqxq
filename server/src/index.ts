@@ -1,4 +1,5 @@
 import {startLocationInitializer} from './services/locationInitializationService';
+import {startComplaintLocationJitter} from './services/complaintLocationJitterService';
 import { runAsTrustedSystem } from './auth/accessScope';
 import { startSubjectAssignmentSync } from './auth/managedIdentity';
 import { createApp } from './app';
@@ -60,6 +61,7 @@ async function main(): Promise<void> {
   const stopBusinessAlertWorker=startBusinessAlertWorker();
   const stopUtilityIntegrationWorker=runAsTrustedSystem(()=>startUtilityIntegrationWorker());
   const stopLocationInitializer=runAsTrustedSystem(()=>startLocationInitializer());
+  const stopComplaintLocationJitter=startComplaintLocationJitter();
   const stopPendingSummaryWorker=startPendingSummaryWorker();
   let pruning=false;
   const prune=async()=>{if(pruning)return;pruning=true;try{await pruneExpiredImports();await pruneExpiredComplaintImports();}catch{console.error('[import] expired resource cleanup failed; retained for retry');}finally{pruning=false;}};
@@ -86,6 +88,7 @@ async function main(): Promise<void> {
     stopBusinessAlertWorker();
     stopUtilityIntegrationWorker();
     stopLocationInitializer();
+    stopComplaintLocationJitter();
     stopPendingSummaryWorker();
     stopSubjectAssignmentSync();
     clearInterval(replayTimer);

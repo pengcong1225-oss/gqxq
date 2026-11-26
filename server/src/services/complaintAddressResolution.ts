@@ -1,11 +1,12 @@
 import { amapGeocode, amapRegeocode } from '../clients/amapGeocoder';
 import type { Tx } from '../db/tx';
+import { isCimBoundarySource } from '../domain/cimBoundarySource';
 import { parseFieldState } from '../domain/effectiveFieldPolicy';
 import type { InitialPoint } from '../domain/locationFallback';
 import { locationQuery } from '../domain/locationInitialization';
 import { locationCandidates } from '../domain/locationCandidates';
 import { classifyLocationBoundary } from './locationValidationService';
-import { addressCommunityName, addressParts, extractAddressCandidate } from './rules/addressExtract';
+import { addressCommunityName, addressGridName, addressParts, extractAddressCandidate } from './rules/addressExtract';
 import { getTownshipSnapshot } from './rules/townshipGazetteer';
 import { extractLocation } from './rules/locationExtract';
 import { validateGeometry } from './serviceGridService';
@@ -15,19 +16,25 @@ export interface ComplaintAddressQuery {
   query: string;
   districtCode: string | null;
   evidence: string;
+  gridName: string | null;
 }
 
 export function complaintAddressQuery(row: Record<string, unknown>): ComplaintAddressQuery | null {
-  const address = String(row.address ?? '').trim();
+  const buildQuery = (address: string, districtCode: string | null, evidence: string): ComplaintAddressQuery | null => {
+    const gridName = addressGridName(address);
+    if (!gridName && address.endsWith('网格')) return null;
+    const districtName = row.district_name || (gridName && getTownshipSnapshot().counties.find(county =>
+      county.code === (row.district_code || districtCode))?.name);
+    const query = locationQuery({ ...row, address, district_name: districtName || null }, gridName !== null);
+    return query ? { address, query, districtCode, evidence, gridName } : null;
+  };
+  const current = buildQuery(String(row.address ?? '').trim(), null, '有效地址字段');
+  if (current) return current;
   const state = parseFieldState(row.effective_field_state).address;
-  const query = locationQuery({ ...row, address });
-  if (query) return { address, query, districtCode: null, evidence: '有效地址字段' };
   if (row.parent_match === 'conflict' || state && (state.resolution !== 'unresolved' || state.correctionId)) return null;
   const extracted = extractAddressCandidate({ title: String(row.title ?? ''), content: String(row.content ?? '') });
   if (!extracted) return null;
-  const boundedQuery = locationQuery({ ...row, address: extracted.value });
-  return boundedQuery ? { address: extracted.value, query: boundedQuery, districtCode: extracted.districtCode,
-    evidence: `${extracted.extractorVersion}/${extracted.sourceField}` } : null;
+  return buildQuery(extracted.value, extracted.districtCode, `${extracted.extractorVersion}/${extracted.sourceField}`);
 }
 
 /** Fall back to a uniquely registered community point as location evidence only. */
@@ -61,6 +68,7 @@ interface VerifiedAddress {
   streetCode: string | null;
   streetName: string | null;
   communityName: string | null;
+  namedGrid?: { name: string; districtCode: string | null; providerNameVerified: boolean; hasUsableReferencePoint: boolean };
 }
 
 type AddressResolution =
@@ -68,6 +76,7 @@ type AddressResolution =
   | { state: 'review' | 'retry'; reason: string; point?: InitialPoint };
 
 const PRECISE_LEVELS = new Set(['门牌号', '门址', '兴趣点', '建筑物', '门牌']);
+const GRID_REFERENCE_LEVELS = new Set(['网格', '住宅区', '社区', '村庄', '道路']);
 
 export async function verifyComplaintAddress(row: Record<string, unknown>, input: ComplaintAddressQuery): Promise<AddressResolution> {
   const forward = await amapGeocode(input.query);
@@ -95,11 +104,28 @@ export async function verifyComplaintAddress(row: Record<string, unknown>, input
   const namedResidentialPlace = level === '住宅区' && communityName === parts.local;
   const point: InitialPoint = { longitude: forward.longitude, latitude: forward.latitude, level,
     score: 100, coordinateSystem: 'WGS84', source: `高德地址解析（${level}），正逆编码区县一致，GCJ02已转WGS84` };
+  const mapAddress = addressParts(forward.formattedAddress ?? '');
+  if (input.gridName) {
+    const mapGridName = addressGridName(forward.formattedAddress ?? '');
+    const providerNameVerified = mapGridName === input.gridName;
+    const hasUsableReferencePoint = PRECISE_LEVELS.has(level) || GRID_REFERENCE_LEVELS.has(level);
+    if (!providerNameVerified && !hasUsableReferencePoint) {
+      return { state: 'review', reason: `高德定位精度不足以核验网格（${level}），网格待核验` };
+    }
+    if (mapGridName && !providerNameVerified || mapAddress.county && mapAddress.county.code !== district.code ||
+        mapAddress.township && street?.code !== mapAddress.township.code) {
+      return { state: 'review', reason: '高德标准地址与诉求网格无法相互印证，待核验' };
+    }
+    // The provider point can corroborate a polygon. A grid name does not identify where inside it the complaint occurred.
+    return { state: 'verified', evidence: { point, districtCode: district.code, districtName: district.name,
+      streetCode: parts.township?.code ?? null, streetName: parts.township?.name ?? null, communityName: null,
+      namedGrid: { name: input.gridName, districtCode: expectedCodes.length || row.district_name ? district.code : null,
+        providerNameVerified, hasUsableReferencePoint } } };
+  }
   if (!PRECISE_LEVELS.has(level) && !namedResidentialPlace) {
     const reason = `待纠偏：高德近似地址定位（${level}），地址、街道及网格待核验`;
     return { state: 'review', reason, point: { ...point, score: 60, source: reason } };
   }
-  const mapAddress = addressParts(forward.formattedAddress ?? '');
   // A provider can return a plausible point for a different place. Require the submitted
   // location text (including its number if present) to still be in the validated match.
   if (!parts.local || mapAddress.local !== parts.local ||
@@ -125,13 +151,31 @@ export async function matchComplaintGridIn(tx: Tx, evidence: VerifiedAddress): P
   // Master-data JSON contains only admitted `grid_boundary` imports / manual grid maintenance.
   // Check authorization provenance and the admitted coordinate system before using a row.
   const [rows] = await tx.query<any[]>(
-    'select code,name,geometry,coordinate_system,geometry_source,version from admin_grid where district_code=? and geometry is not null order by code for share',
-    [evidence.districtCode]);
+    'select code,name,district_code,geometry,coordinate_system,geometry_source,version from admin_grid ' +
+    'where (district_code=? and geometry is not null)' +
+    (evidence.namedGrid ? ' or (name=? and (? is null or district_code=?))' : '') + ' order by code for share',
+    evidence.namedGrid ? [evidence.districtCode, evidence.namedGrid.name, evidence.namedGrid.districtCode, evidence.namedGrid.districtCode]
+      : [evidence.districtCode]);
+  const fineGrids = rows.filter(row => !/^\d{6}(?:\d{3})?$/.test(String(row.code)) &&
+    !isCimBoundarySource(String(row.code), row.geometry_source, 'community'));
+  let namedGridCode: string | null = null;
+  if (evidence.namedGrid) {
+    const { name, districtCode, providerNameVerified, hasUsableReferencePoint } = evidence.namedGrid;
+    const exact = fineGrids.filter(row => row.name === name && (!districtCode || row.district_code === districtCode));
+    if (exact.length !== 1) return { grid: null, reason: exact.length ? '正式目录中有同名网格，网格待核验' : '正式目录未匹配诉求网格名称，网格待核验' };
+    const [registered] = exact;
+    namedGridCode = String(registered.code);
+    if (!registered.geometry && districtCode && providerNameVerified) {
+      return { grid: { code: namedGridCode, name, source: '正式网格目录', version: String(registered.version) },
+        reason: '正式网格目录、高德网格名称与诉求区县一致，尚无正式边界' };
+    }
+    if (!hasUsableReferencePoint) return { grid: null, reason: '高德定位精度不足以核验正式边界，网格待核验' };
+  }
   const hits: GridMatch[] = [];
   const point = [evidence.point.longitude, evidence.point.latitude];
-  for (const row of rows) {
+  for (const row of fineGrids) {
     const code = String(row.code), source = String(row.geometry_source ?? '').trim();
-    if (/^\d{6}(?:\d{3})?$/.test(code) || row.coordinate_system !== 'WGS84' || !source || NON_OFFICIAL_GEOMETRY.test(source)) continue;
+    if (row.district_code !== evidence.districtCode || !row.geometry || row.coordinate_system !== 'WGS84' || !source || NON_OFFICIAL_GEOMETRY.test(source)) continue;
     let geometry;
     try { geometry = validateGeometry(typeof row.geometry === 'string' ? JSON.parse(row.geometry) : row.geometry); }
     catch { continue; }
@@ -141,5 +185,8 @@ export async function matchComplaintGridIn(tx: Tx, evidence: VerifiedAddress): P
     if (position === 'inside') hits.push({ code, name: String(row.name), source, version: String(row.version) });
   }
   if (hits.length !== 1) return { grid: null, reason: hits.length ? '落点命中多个正式网格，网格待核验' : '落点未命中适用的正式网格，网格待核验' };
+  if (namedGridCode) return hits[0].code === namedGridCode
+    ? { grid: hits[0], reason: '诉求网格名与正式目录唯一对应，高德位置参考落在该正式网格内' }
+    : { grid: null, reason: '高德位置参考与诉求网格名称对应的正式边界不一致，网格待核验' };
   return { grid: hits[0], reason: '依据授权正式网格边界唯一空间匹配' };
 }

@@ -18,7 +18,10 @@ test('大屏按当前行业的正式规则取色，并用同一筛选快照打�
   const data = {
     state: 'partial',
     reason: '1 件诉求缺少可核验的正式行政网格关联',
-    data: {ruleVersion:'HEAT-WATER',thresholds:[30,150,300,600,900],grids:[{code:'GRID-1',count:301,level:'orange'}]},
+    data: {ruleVersion:'HEAT-WATER',thresholds:[30,150,300,600,900],grids:[
+      {code:'GRID-1',count:301,level:'orange',administrativeCommunityName:'金月行政社区',communities:['金月住宅小区']},
+      {code:'GRID-2',count:0,level:'green',administrativeCommunityName:null,communities:['另一住宅小区']},
+    ]},
   };
   const unavailable = {state:'unavailable',reason:'无已发布热力规则',data:{ruleVersion:null,thresholds:null,grids:[]}};
   globalThis.fetch = async (input) => {
@@ -39,11 +42,13 @@ test('大屏按当前行业的正式规则取色，并用同一筛选快照打�
   try {
     const {fetchBundle,pickIndustryBundle,seedRealSession} = await vite.ssrLoadModule('/src/stats/realSource.ts');
     const {fetchDemands} = await vite.ssrLoadModule('/src/stats/api.ts');
-    const {formalHeatColor,HEAT_COLORS} = await vite.ssrLoadModule('/src/components/Map/map2d/administrativeHeat.ts');
+    const {formalGridCommunityLabel,formalHeatColor,HEAT_COLORS} = await vite.ssrLoadModule('/src/components/Map/map2d/administrativeHeat.ts');
     seedRealSession('test-token');
     const filters = {period:'30d',industry:'WATER',window:{from:'2026-10-28',to:'2026-11-26'},categoryCode:'w02'};
     const bundle = await fetchBundle(filters);
     const selected = pickIndustryBundle(bundle, filters.industry).heat;
+    assert.deepEqual(selected.data.grids.map(grid => formalGridCommunityLabel(grid.administrativeCommunityName)),
+      ['行政社区 金月行政社区','行政社区名称未配置']);
     assert.equal(formalHeatColor(selected, selected.data.grids[0].level, true), HEAT_COLORS.orange);
     assert.equal(formalHeatColor(selected, 'orange', false), undefined);
     assert.equal(formalHeatColor(pickIndustryBundle(bundle, 'GAS').heat, 'orange', true), undefined);

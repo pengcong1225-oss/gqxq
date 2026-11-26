@@ -70,6 +70,18 @@ test('大类汇总子类，小类无生效版本按已发布政策回退，零�
  assert.deepEqual(minor.data.grids.map(g=>[g.count,g.level]),[[0,'green']]);
 });
 
+test('正式热力返回源行政社区名称并排除 CIM 行政社区面',async()=>{
+ const district='420502';
+ const base={district_code:district};
+ const withParent=grid('42050200100101',{...base,geometry_source:'宜昌 CIM 宜昌网格20230512/skjc_xzq_wangge_new SmID=1',administrative_community_name:'金月行政社区'});
+ const withoutParent=grid('42050200100102',{...base,geometry_source:'宜昌 CIM 宜昌网格20230512/skjc_xzq_wangge_new SmID=2'});
+ const community=grid('420502001001',{...base,geometry_source:'宜昌 CIM 宜昌网格20230512/skjc_xzq_cun_new SmID=1'});
+ const otherSource=grid('420502001002',{...base,administrative_community_name:'无来源名称'});
+ const db=database({rules:[publication('water_service|w02','2026-11-02')],grids:[withParent,withoutParent,community,otherSource]});
+ const section=await screenHeat(result(),null,grants,{query,access,db});
+ assert.deepEqual(section.data.grids.map(g=>[g.code,g.administrativeCommunityName]),[[withParent.code,'金月行政社区'],[withoutParent.code,null],[otherSource.code,null]]);
+});
+
 test('全行业下供水分类仅取供水主账，供气标签下不会用供水系数着色',async()=>{
  const db=database({rules:[publication('water_service|w02','2026-11-02')],grids:[grid('G')]});
  const rows=[fact('G',1),fact('G',2,{business_type:'gas'}),fact('G',3,{business_type:null})];

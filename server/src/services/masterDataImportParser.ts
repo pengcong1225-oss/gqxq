@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import yauzl from 'yauzl';
 import {parse} from 'csv-parse/sync';
 import {AppError} from '../http/errors';
+import {isCimBoundarySource} from '../domain/cimBoundarySource';
 import {validateGeometry} from './serviceGridService';
 import type {ImportFile,ImportRow,MasterDataImportKind} from '../types/masterDataImport';
 export const TEMPLATE_VERSION='b4-v1';
@@ -50,7 +51,23 @@ export async function parseImportFile(file:ImportFile,kind:MasterDataImportKind)
   if(ext!=='geojson')throw AppError.validation('边界仅接受 .geojson');let source:Record<string,unknown>;try{source=JSON.parse(text(file.bytes));}catch(e){if(e instanceof AppError)throw e;throw AppError.validation('GeoJSON 损坏');}
   if(source.type!=='FeatureCollection'||source.templateVersion!==TEMPLATE_VERSION||!Array.isArray(source.features)||!source.features.length||source.features.length>IMPORT_LIMITS.rows)throw AppError.validation('GeoJSON 类型、模板版本或行数无效');let vertices=0;
   const count=(v:unknown):void=>{if(Array.isArray(v)){if(v.every(n=>typeof n==='number'))vertices++;else v.forEach(count);}};
-  const rows=source.features.map((f:Record<string,unknown>,i:number)=>{if(f?.type!=='Feature'||!f.properties||typeof f.properties!=='object')throw AppError.validation('GeoJSON Feature 无效');const p=f.properties as Record<string,unknown>;if(typeof p.code!=='string'||p.coordinateSystem!=='WGS84'||typeof p.geometrySource!=='string'||!p.geometrySource.trim()||p.conversion!=='none')throw AppError.validation('边界需现有行政网格编码、WGS84、来源与 conversion=none；不自动转换坐标');count((f.geometry as Record<string,unknown>)?.coordinates);if(vertices>IMPORT_LIMITS.vertices)throw AppError.validation('GeoJSON 顶点超限');return {sheet:'features',row:i+1,values:{code:p.code.trim(),coordinateSystem:p.coordinateSystem,geometrySource:p.geometrySource.trim(),geometry:validateGeometry(f.geometry)}};});return {templateVersion:TEMPLATE_VERSION,rows};
+  const rows=source.features.map((f:Record<string,unknown>,i:number)=>{
+   if(f?.type!=='Feature'||!f.properties||typeof f.properties!=='object')throw AppError.validation('GeoJSON Feature 无效');
+   const p=f.properties as Record<string,unknown>;
+   if(typeof p.code!=='string'||p.coordinateSystem!=='WGS84'||typeof p.geometrySource!=='string'||!p.geometrySource.trim()||p.conversion!=='none')throw AppError.validation('边界需现有行政网格编码、WGS84、来源与 conversion=none；不自动转换坐标');
+   const code=p.code.trim(),geometrySource=p.geometrySource.trim();
+   const values:Record<string,unknown>={code,coordinateSystem:p.coordinateSystem,geometrySource};
+   if('administrativeCommunityName' in p){
+    if(!isCimBoundarySource(code,geometrySource,'community-grid'))throw AppError.validation('行政社区名称仅接受 CIM 社区网格授权边界的源字段');
+    const name=p.administrativeCommunityName;
+    if(name!==null&&(typeof name!=='string'||!name.trim()||name.trim().length>128||/[\r\n\t]/.test(name)))throw AppError.validation('CIM 行政社区名称须为非空文本或 null');
+    values.administrativeCommunityName=typeof name==='string'?name.trim():null;
+   }
+   count((f.geometry as Record<string,unknown>)?.coordinates);
+   if(vertices>IMPORT_LIMITS.vertices)throw AppError.validation('GeoJSON 顶点超限');
+   return {sheet:'features',row:i+1,values:{...values,geometry:validateGeometry(f.geometry)}};
+  });
+  return {templateVersion:TEMPLATE_VERSION,rows};
  }
  if(ext==='csv'){let table:unknown[][];try{table=parse(text(file.bytes),{bom:true,relax_column_count:true,max_record_size:IMPORT_LIMITS.cellBytes*TEMPLATE_FIELDS[kind].length});}catch(e){if(e instanceof AppError)throw e;throw AppError.validation('CSV 损坏或字段超限');}return {templateVersion:TEMPLATE_VERSION,rows:tableRows(table,kind,'数据')};}
  if(ext!=='xlsx')throw AppError.validation('只接受 .xlsx 或 UTF-8 .csv');await preflightXlsx(file.bytes);const workbook=new ExcelJS.Workbook();try{await workbook.xlsx.load(file.bytes as never);}catch{throw AppError.validation('XLSX 损坏');}

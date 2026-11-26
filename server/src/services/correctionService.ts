@@ -1,4 +1,6 @@
 import {recognizeCommunityIn} from './communityRecognitionService';
+import {queueComplaintLocationJitter} from './complaintLocationJitterService';
+import {projectCorrectionItems} from './complaintProjection';
 import {confirmedCoordinateSource} from '../domain/locationFallback';
 import { z } from 'zod';
 import { writeCategoryInTx, parseCategoryRef, validateCategoryInTx } from './categoryService';
@@ -279,6 +281,7 @@ export async function confirmLocationGroup(raw: unknown, ctx: MasterDataContext,
             states[field] = !changed && prior && ['confirmed', 'no_correction'].includes(prior.resolution) ? prior : { resolution: 'confirmed', value: after[field], version: nextVersion, reason: '人工位置组核对：' + input.basis };
         }
         await tx.execute('update complaint set effective_field_state=?,edit_version=?,updated_at=? where complaint_id=?', [JSON.stringify(states), nextVersion, now, input.complaintId]);
+        await queueComplaintLocationJitter(tx, input.complaintId);
         await insertFieldVersions(tx, changes.map(c => ({ ...c, complaintId: input.complaintId, changeSource: 'manual_edit' as const, reason: input.basis, operatorId: ctx.userId, operatorName: ctx.userName, changedAt: now })));
         const analysis = await maybeEnterAnalysis(tx, { complaintId: input.complaintId, operatorId: ctx.userId, operatorName: ctx.userName, now });
         await insertAudit(tx, { userId: ctx.userId, appCode: GQXQ_APP_CODE, resourceCode: row.complaint_no, action: 'CORRECTION_LOCATION_GROUP', bizType: 'complaint', bizId: input.complaintId, result: 'success', clientIp: ctx.clientIp, createdAt: now,
@@ -1006,7 +1009,7 @@ function parseDispatchedFilter(raw: unknown): DispatchedFilter | undefined {
 }
 
 export async function listPendingCorrections(
-  query: Record<string, unknown>
+  query: Record<string, unknown>, permissionCodes:readonly string[]=[]
 ): Promise<Paged<CorrectionItem>> {
   const { page, size } = parsePageQuery(query);
   const complaintIdRaw = queryText(query.complaintId, 'complaintId', 64);
@@ -1014,7 +1017,7 @@ export async function listPendingCorrections(
     complaintIdRaw === undefined ? undefined : await resolveComplaintId(pool, complaintIdRaw);
   const dispatched = parseDispatchedFilter(query.dispatched);
   const { content, total } = await findPendingPage(pool, { complaintId, dispatched }, page, size);
-  return paged(content, total, page, size);
+  return paged(projectCorrectionItems(content,permissionCodes), total, page, size);
 }
 
 export async function listPendingComplaintSummaries(
@@ -1029,9 +1032,9 @@ export async function listPendingComplaintSummaries(
   return paged(content, total, page, size);
 }
 
-export async function listComplaintCorrections(idOrNo: string): Promise<CorrectionItem[]> {
+export async function listComplaintCorrections(idOrNo: string, permissionCodes:readonly string[]=[]): Promise<CorrectionItem[]> {
   const complaintId = await resolveComplaintId(pool, idOrNo);
-  return listByComplaint(pool, complaintId);
+  return projectCorrectionItems(await listByComplaint(pool, complaintId),permissionCodes);
 }
 
 /** 供 closureService 复用的前置块：还有多少待纠偏 */

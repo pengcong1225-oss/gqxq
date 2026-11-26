@@ -151,16 +151,7 @@ export const env = {
     pollMs: Number(opt('GQXQ_JITTER_POLL_MS', '2000')),
     pollMax: Number(opt('GQXQ_JITTER_POLL_MAX', '120')),
   },
-  /**
-   * 地图落点用哪套坐标：
-   *   'original' —— community.location_lng/lat（高德 POI 原始坐标，已 GCJ-02→WGS84）
-   *   'jitter'   —— community.jitter_lng/lat（数据服务中心抖动结果，仅用于打散重叠点位）
-   *
-   * 为什么要有这个开关：抖动是"在同一小区内部微调"，实测最大偏移仅 27m
-   * （p50≈17.8m），对 420m 缓冲面不可能造成"跑到河里"；
-   * 但客户现场质疑位移来源，需要能一键切回原始数据做 A/B 对照，
-   * 用事实排除抖动嫌疑，而不是靠口头解释。
-   */
+  /** 离线近似边界推导脚本的坐标核验选项。大屏点位固定使用已抖动成果。 */
   screenCoordSource: (opt('GQXQ_SCREEN_COORD_SOURCE', 'original') === 'jitter' ? 'jitter' : 'original') as
     | 'jitter'
     | 'original',

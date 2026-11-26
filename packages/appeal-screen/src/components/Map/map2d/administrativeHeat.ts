@@ -16,8 +16,12 @@ export interface AdministrativeHeat {
     thresholds: number[] | null;
     ruleVersion: string | null;
     categories: {code:string;name:string;parentCode:string|null}[];
-    grids: {code:string;name?:string;geometry?:Geometry;geometrySource?:string;count:number;level:Level|null;communities?:string[]}[];
+    grids: {code:string;name?:string;geometry?:Geometry;geometrySource?:string;count:number;level:Level|null;communities?:string[];administrativeCommunityName?:string|null}[];
   };
+}
+
+export function formalGridCommunityLabel(name: string | null | undefined): string {
+  return name?.trim() ? `行政社区 ${name.trim()}` : '行政社区名称未配置';
 }
 
 export function formalHeatColor(heat: AdministrativeHeat | null, level: Level | null, show: boolean): string | undefined {
