@@ -97,7 +97,7 @@ test('demo counts are explicit and a type absent this year retains the real prio
  assert.equal(old.count,0);assert.equal(old.comparisons.find(c=>c.kind==='yoy')!.baselineCount,1);
  assert.equal(old.comparisons.find(c=>c.kind==='yoy')!.changePercent,-100);
 });
-test('service enforces permission before SQL and both captures inherit enterprise scope',async()=>{
+test('service captures only selected and extended windows under the same authorized scope',async()=>{
  const access:AccessContext={userId:'u1',roles:['readonly'],scopeVersion:1,rules:[{kind:'restricted',enterpriseCodes:['E1'],districtCodes:[]}],canReadSource:false};
  const calls:{sql:string;values:unknown[]}[]=[];
  const db:SqlExecutor={query:async(sql,values=[])=>{
@@ -114,7 +114,7 @@ test('service enforces permission before SQL and both captures inherit enterpris
   assert.match(sql,/c\.source_reported_at >= \? and c\.source_reported_at < \?/);
   assert.equal(values.length,(sql.match(/\?/g)??[]).length);
  }
- assert.deepEqual(captures.map(({values})=>values.slice(0,3)),[
+ assert.deepEqual(captures.map(({values})=>values),[
   ['E1',new Date('2026-10-31T16:00:00Z'),new Date('2026-11-10T16:00:00Z')],
   ['E1',new Date('2024-12-31T16:00:00Z'),new Date('2026-11-10T16:00:00Z')],
  ]);

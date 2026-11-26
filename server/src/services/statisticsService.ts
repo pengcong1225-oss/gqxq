@@ -101,12 +101,12 @@ export async function householdRate(db: SqlExecutor, q: StatisticsQuery, enterpr
 }
 
 /** All facts, names, periods and actual evidence are read through ONE supplied snapshot. */
-export async function captureStatisticsIn(db: SqlExecutor, q: StatisticsQuery, access: AccessContext, permissions: readonly string[], clock: () => Date = () => new Date(), legacy = false): Promise<StatisticsCapture> {
-    assertStatisticsPermission(q, permissions, false, legacy);
-    const source = await readStatisticsRows(db, q, access);
+export async function captureStatisticsIn(db: SqlExecutor, q: StatisticsQuery, access: AccessContext, permissions: readonly string[], clock: () => Date = () => new Date(), options: { legacy?: boolean; currentOnly?: boolean } = {}): Promise<StatisticsCapture> {
+    assertStatisticsPermission(q, permissions, false, options.legacy);
+    const periods = options.currentOnly ? [] : resolveComparisonPeriods(q);
+    const source = await readStatisticsRows(db, q, access, periods);
     // These filters precede every missing-field exclusion in select; reducing them here preserves all contributing facts.
     const rows = source.map(r => toFact(r, q)).filter(r => (['businessType', 'enterpriseCode', 'districtCode'] as const).every(k => q[k] === undefined || r[k] === q[k]));
-    const periods = resolveComparisonPeriods(q);
     const relevantRanges = [{ from: q.from, to: q.to }, ...periods.filter(p => p.from && p.to).map(p => ({ from: p.from!, to: p.to! }))];
     const relevant = rows.filter(r => {
         if (!r.businessDay || !relevantRanges.some(p => r.businessDay! >= p.from && r.businessDay! <= p.to))
@@ -269,7 +269,7 @@ export async function captureStatisticsIn(db: SqlExecutor, q: StatisticsQuery, a
 }
 
 export async function captureStatistics(q:StatisticsQuery,access:AccessContext,permissions:readonly string[],clock:()=>Date=()=>new Date(),legacy=false):Promise<StatisticsCapture>{
- assertStatisticsPermission(q,permissions,false,legacy);const conn=await pool.getConnection();try{await conn.query('set transaction isolation level repeatable read');await conn.query('start transaction with consistent snapshot, read only');return await captureStatisticsIn(conn,q,access,permissions,clock,legacy);}finally{try{await conn.rollback();}finally{conn.release();}}
+ assertStatisticsPermission(q,permissions,false,legacy);const conn=await pool.getConnection();try{await conn.query('set transaction isolation level repeatable read');await conn.query('start transaction with consistent snapshot, read only');return await captureStatisticsIn(conn,q,access,permissions,clock,{legacy});}finally{try{await conn.rollback();}finally{conn.release();}}
 }
 export function statisticsPage(capture:StatisticsCapture,page:number,size:number):StatisticsPage {
  return {query:capture.summary.query,content:capture.rows.slice((page-1)*size,page*size),total:capture.summary.total,page,size,totalPages:Math.ceil(capture.summary.total/size),partial:capture.summary.partial,dateFilterUnavailableCount:capture.summary.dateFilterUnavailableCount,dataCutoffAt:capture.summary.dataCutoffAt};

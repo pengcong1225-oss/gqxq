@@ -2,6 +2,7 @@ import type {StatisticsCapture} from '../services/statisticsService';
 import type {StatisticsComplaint,StatisticsQuery,DimensionBucket,PeriodComparison} from '../types/statistics';
 import type {TenderPeriod,TenderStatisticsResult,TenderServiceStatistics,TenderSeriesPoint} from '../types/tenderStatistics';
 import {addDays,resolveComparisonPeriods,computePeriodChange} from './statisticsQuery';
+const shanghaiHour=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',hourCycle:'h23'});
 
 /** The extended capture uses the same authorization and projection, never raw source JSON. */
 export function tenderCaptureRange(q:StatisticsQuery):{from:string;to:string}{
@@ -84,7 +85,7 @@ export function aggregateTenderStatistics(selected:StatisticsCapture,extended:St
   const m=months.find(p=>p.key===row.businessDay?.slice(0,7));if(m)m[business]++;
   if(row.businessDay){const weekday=new Date(row.businessDay+'T00:00:00Z').getUTCDay();const w=weekdays.find(p=>p.key===String(weekday));if(w)w[business]++;}
   if(!row.businessAt||!Number.isFinite(Date.parse(row.businessAt))){missingTimeCount++;continue;}
-  const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',hourCycle:'h23'}).format(new Date(row.businessAt)));
+  const hour=Number(shanghaiHour.format(new Date(row.businessAt)));
   if(hours[hour])hours[hour][business]++;else missingTimeCount++;
  }
  return {satisfactionRate:selected.summary.satisfactionRate,timeBasis:selected.summary.timeBasis,policy:selected.summary.policy,excludedByReason:selected.summary.excludedByReason,query:q,anchorDate,dataCutoffAt:selected.summary.dataCutoffAt,total:selected.summary.total,periods:aggregatePeriods(q,extended.rows,anchorDate,names,extended.summary.partial),services,partial,dateFilterUnavailableCount:Math.max(selected.summary.dateFilterUnavailableCount,extended.summary.dateFilterUnavailableCount),sourceTimeFallbackCount:selected.summary.sourceTimeFallbackCount,demoCount:selected.rows.filter(r=>r.complaintId.startsWith('DEMO-20261110')).length,extendedDemoCount:extended.rows.filter(r=>r.complaintId.startsWith('DEMO-20261110')).length,

@@ -146,7 +146,7 @@ export async function readSeasonalStatisticsDetails(
   return { total, rows };
 }
 
-export async function readStatisticsRows(db:SqlExecutor,q:StatisticsQuery,access:AccessContext){
+export async function readStatisticsRows(db:SqlExecutor,q:StatisticsQuery,access:AccessContext,comparisonPeriods?:ReturnType<typeof resolveComparisonPeriods>){
  const scope=buildComplaintScopeSql(access,'c');
  const analysis=q.dataset==='analysis';const ar=analysis?',ar.analysis_id,ar.business_type as entry_business_type,ar.complaint_type as entry_complaint_type,ar.district_code as entry_district_code,ar.district_name as entry_district_name,ar.enterprise_code as entry_enterprise_code,ar.enterprise_name as entry_enterprise_name,ar.summary as entry_title,ar.confirmed_at,ar.statistics_snapshot_version,ar.statistics_snapshot':',null as analysis_id';
  const whereParts: string[] = [scope.sql, excludeIntegrationTestsSql('c')];
@@ -156,7 +156,7 @@ export async function readStatisticsRows(db:SqlExecutor,q:StatisticsQuery,access
    if (q.from && q.to) {
      // 保留缺来源日期的记录，以便按口径标记排除原因或回落接收时间。
      const datePredicates = ['c.source_reported_at is null'];
-     for (const {from,to} of [q, ...resolveComparisonPeriods(q)]) {
+     for (const {from,to} of [q, ...(comparisonPeriods ?? resolveComparisonPeriods(q))]) {
        if (!from || !to) continue;
        const {start,end} = toShanghaiHalfOpenRange({from,to});
        datePredicates.push('(c.source_reported_at >= ? and c.source_reported_at < ?)');

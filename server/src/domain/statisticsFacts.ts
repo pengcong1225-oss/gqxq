@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import type {StatisticsFacts,StatisticsComplaint} from '../types/statistics';
+const shanghaiBusinessDay=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'});
 const text=z.string().max(500).nullable();const key=z.string().max(64).nullable();
 const instant=z.string().datetime({offset:true}).nullable();
 const factsSchema=z.object({complaintId:z.string().min(1).max(64),complaintNo:z.string().max(64),title:text,businessType:key,complaintType:key,majorCode:key,minorCode:key,dictionaryVersion:key,districtCode:key,districtName:text,enterpriseCode:key,enterpriseName:text,longitude:z.number().finite().min(-180).max(180).nullable(),latitude:z.number().finite().min(-90).max(90).nullable(),coordinateSystem:z.enum(['WGS84','CGCS2000','unknown']).nullable(),coordinateSource:text,adminGridCode:key,communityCode:key,sourceReportedAt:instant,receivedAt:instant,editVersion:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),enteredAt:instant}).strict();
@@ -24,5 +25,5 @@ export function readStatisticsSnapshot(version:unknown,value:unknown):Statistics
 }
 export function resolveBusinessTime(facts:{sourceReportedAt:string|null;receivedAt:string|null}):Pick<StatisticsComplaint,'businessAt'|'businessDay'|'timeSource'|'timeReason'> {
  const source=statisticsIso(facts.sourceReportedAt),receipt=statisticsIso(facts.receivedAt);const businessAt=source??receipt;
- return {businessAt,businessDay:businessAt?new Date(businessAt).toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'}):null,timeSource:source?'source_reported_at':receipt?'received_fallback':'unavailable',timeReason:source?null:receipt?facts.sourceReportedAt?'来源填报时间无效，回落平台接收时间':'来源填报时间缺失，回落平台接收时间':'业务时间与接收时间均不可用'};
+ return {businessAt,businessDay:businessAt?shanghaiBusinessDay.format(new Date(businessAt)):null,timeSource:source?'source_reported_at':receipt?'received_fallback':'unavailable',timeReason:source?null:receipt?facts.sourceReportedAt?'来源填报时间无效，回落平台接收时间':'来源填报时间缺失，回落平台接收时间':'业务时间与接收时间均不可用'};
 }

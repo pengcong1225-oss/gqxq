@@ -8,8 +8,9 @@ import {aggregateTenderStatistics,tenderCaptureRange} from '../domain/tenderStat
 /** One consistent snapshot for selected chart counts and calendar/comparison cards. */
 export async function captureTenderStatisticsIn(db:SqlExecutor,q:StatisticsQuery,access:AccessContext,permissions:readonly string[],clock:()=>Date=()=>new Date()){
  assertStatisticsPermission(q,permissions);
- const selected=await captureStatisticsIn(db,q,access,permissions,clock);
- const extended=await captureStatisticsIn(db,{...q,...tenderCaptureRange(q),periodKind:'custom'},access,permissions,clock);
+ // Calendar comparisons are built from the extended current window by aggregateTenderStatistics.
+ const selected=await captureStatisticsIn(db,q,access,permissions,clock,{currentOnly:true});
+ const extended=await captureStatisticsIn(db,{...q,...tenderCaptureRange(q),periodKind:'custom'},access,permissions,clock,{currentOnly:true});
  const names=new Map<string,string>();
  // Only names referenced by authorized selected complaints, and only with master-data read capability.
  if(permissions.includes('grid.read')){

@@ -6,7 +6,8 @@ import ExcelJS from 'exceljs';
 import {calculateSourceSatisfaction,procurementExclusion,PROCUREMENT_POLICY_ID,type FollowupFact} from '../src/domain/procurementFacts';
 import {snapshotFactsFromComplaint,readStatisticsSnapshot} from '../src/domain/statisticsFacts';
 import {captureStatisticsIn} from '../src/services/statisticsService';
-import {aggregateTenderStatistics} from '../src/domain/tenderStatistics';
+import {captureTenderStatisticsIn} from '../src/services/tenderStatisticsService';
+import {aggregateTenderStatistics,tenderCaptureRange} from '../src/domain/tenderStatistics';
 import {freezeReportSnapshot,parseReportInput,canonical,digest,parseStoredSnapshot,PROCUREMENT_RENDER_PLAN} from '../src/domain/reportSnapshot';
 import {renderReport,reportChartValues,reportSections} from '../src/services/reportRenderer';
 import type {StatisticsQuery} from '../src/types/statistics';
@@ -86,6 +87,40 @@ test('procurement counts current and comparison cases using Shanghai calendar bo
  assert.deepEqual(result.rows.map(row=>row.complaintId).sort(),['1','2']);
  assert.deepEqual(result.periodFacts.find(period=>period.kind==='yoy')!.rows.map(row=>row.complaintId),['4']);
  assert.deepEqual(result.periodFacts.find(period=>period.kind==='mom')!.rows.map(row=>row.complaintId),['6']);
+});
+
+test('tender statistics retains permissions, frozen facts, exclusions and incomplete comparisons',async()=>{
+ const ledgerRows=[
+  complaint('1'),
+  complaint('2',{source_reported_at:'2025-11-09T04:00:00Z'}),
+  complaint('3',{enterprise_code:'E2'}),
+  complaint('4',{source_reported_at:null,received_at:null}),
+  complaint('5',{source_reported_at:null}),
+  complaint('6',{source_reported_at:'2025-11-09T04:00:00Z',source_event_status:'closed'}),
+  complaint('7',{source_reported_at:'2026-12-01T04:00:00Z',source_event_status:'closed'}),
+ ];
+ const analysisRows=ledgerRows.map(row=>({...row,source_reported_at:'2023-01-01T00:00:00Z',
+  analysis_id:'A'+row.complaint_id,statistics_snapshot_version:2,statistics_snapshot:snapshotFactsFromComplaint(row)}));
+ for(const comparisonPolicyId of ['candidate-calendar-v1',PROCUREMENT_POLICY_ID] as const){
+  const procurement=comparisonPolicyId===PROCUREMENT_POLICY_ID;
+  for(const dataset of ['ledger','analysis'] as const){
+   const q:StatisticsQuery={...query,dataset,projection:dataset==='analysis'?'entry_snapshot':'current',comparisonPolicyId};
+   const {db}=database(dataset==='analysis'?analysisRows:ledgerRows);
+   const result=await captureTenderStatisticsIn(db,q,access,permissions,clock);
+   const selected=await captureStatisticsIn(db,q,access,permissions,clock);
+   const extended=await captureStatisticsIn(db,{...q,...tenderCaptureRange(q),periodKind:'custom'},access,permissions,clock);
+   assert.deepEqual(result,aggregateTenderStatistics(selected,extended));
+   assert.equal(result.total,procurement?1:2);
+   assert.equal(result.partial,true);
+   assert.equal(result.dateFilterUnavailableCount,procurement?2:1);
+   assert.equal(result.sourceTimeFallbackCount,procurement?0:1);
+   assert.deepEqual(result.excludedByReason,procurement?{'来源录入时间缺失或无效':2}:{'业务日期不可用':1});
+   const yoy=result.periods[0].comparisons.find(c=>c.kind==='yoy')!;
+   assert.equal(yoy.baselineCount,procurement?1:2);
+   assert.equal(yoy.changePercent,null);
+   assert.equal(yoy.reason,'存在业务日期未知的记录，比较不完整');
+  }
+ }
 });
 
 test('procurement annual summary and frozen report chart use the tender year-to-date baseline',async()=>{
